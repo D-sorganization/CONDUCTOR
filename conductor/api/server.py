@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from conductor import __version__
 from conductor.daemon import Daemon
 from conductor.daemon.runner import Task
+from conductor.metrics import mount_metrics_endpoint
 
 
 class TaskSubmit(BaseModel):
@@ -86,6 +87,7 @@ def create_app(daemon: Daemon, *, auth_token: str | None = None) -> FastAPI:
         version=__version__,
         description="Remote control plane for Conductor daemons.",
     )
+    mount_metrics_endpoint(app)
     auth = _auth_dep(auth_token)
 
     @app.get("/health")

@@ -6,27 +6,46 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   lint:
+    name: Lint (ruff)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: pip
-      - name: Install deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+      - run: pip install -e ".[dev]"
       - name: Ruff check
-        run: ruff check .
+        run: ruff check . --output-format=github
       - name: Ruff format check
         run: ruff format --check .
 
+  typecheck:
+    name: Typecheck (mypy --strict)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: mypy conductor
+
   test:
+    name: Test (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
     steps:
@@ -35,31 +54,59 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-      - name: Install deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+      - run: pip install -e ".[dev]"
       - name: Run tests
-        run: pytest -v --cov=conductor --cov-report=xml --cov-report=term
-      - name: Upload coverage
-        if: matrix.python-version == '3.11'
+        run: pytest --cov=conductor --cov-report=xml --cov-report=term-missing
+      - name: Upload coverage artifact
+        if: matrix.python-version == '3.12'
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report
+          name: coverage-xml
           path: coverage.xml
 
-  typecheck:
+  coverage-floor:
+    name: Coverage floor (ratchet)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-xml
+      - run: python scripts/check_coverage_floor.py --xml coverage.xml
+
+  file-size-budget:
+    name: File size budget
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-          cache: pip
-      - name: Install deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
-      - name: Mypy
-        run: mypy conductor
-        continue-on-error: true  # Strict mode — tighten over time
+          python-version: "3.12"
+      - run: python scripts/check_file_size_budget.py
+
+  todo-fixme:
+    name: No untracked TODO/FIXME
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python scripts/check_todo_fixme.py conductor
+
+  build:
+    name: Build distribution
+    needs: [lint, typecheck, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build
+      - run: python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/

@@ -19,7 +19,8 @@ from typing import Any
 
 from conductor.backends import Message, MessageRole
 from conductor.config import ConductorConfig, load_config
-from conductor.core import BackendRouter, CostLedger, CostRecord
+from conductor.core import BackendRouter, BudgetEnforcer, BudgetExceededError, CostLedger, CostRecord
+from conductor.metrics import record_request
 
 log = logging.getLogger("conductor.daemon")
 
@@ -64,6 +65,7 @@ class Daemon:
         self._ledger = CostLedger(
             ledger_path or Path.home() / ".local/share/conductor/ledger.db"
         )
+        self._budget = BudgetEnforcer(config.budget, self._ledger)
         self._tasks: dict[str, Task] = {}
         self._queue: asyncio.Queue[Task] = asyncio.Queue()
         self._workers: list[asyncio.Task[None]] = []
@@ -133,12 +135,16 @@ class Daemon:
     async def _execute(self, task: Task) -> None:
         task.status = TaskStatus.RUNNING
         task.started_at = datetime.now(timezone.utc)
+        decision_backend = decision_model = "unknown"
         try:
+            self._budget.require_under_budget()
             decision = self._router.route(
                 repo=task.repo,
                 backend_override=task.backend,
                 model_override=task.model,
             )
+            decision_backend = decision.backend_name
+            decision_model = decision.model
             resp = await decision.backend.complete(
                 [Message(role=MessageRole.USER, content=task.prompt)],
                 model=decision.model,
@@ -157,10 +163,32 @@ class Daemon:
                     agent_id=task.id,
                 )
             )
+            record_request(
+                backend=decision.backend_name,
+                model=decision.model,
+                status="success",
+                tokens=resp.usage.total_tokens,
+                cost_usd=task.cost_usd,
+                duration_seconds=(
+                    datetime.now(timezone.utc) - task.started_at
+                ).total_seconds(),
+            )
+        except BudgetExceededError as e:
+            log.warning("task %s refused: %s", task.id, e)
+            task.status = TaskStatus.FAILED
+            task.error = str(e)
+            record_request(
+                backend=decision_backend,
+                model=decision_model,
+                status="budget_exceeded",
+            )
         except Exception as e:
             log.exception("task %s failed", task.id)
             task.status = TaskStatus.FAILED
             task.error = str(e)
+            record_request(
+                backend=decision_backend, model=decision_model, status="error"
+            )
         finally:
             task.finished_at = datetime.now(timezone.utc)
 

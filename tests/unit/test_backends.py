@@ -117,23 +117,38 @@ class TestCostEstimation:
         assert backend.estimate_cost(usage, "any-model") == pytest.approx(0.002)
 
 
-@pytest.mark.asyncio
 class TestBackendInterface:
-    async def test_complete_returns_response(self) -> None:
+    """Synchronous tests that drive async methods via asyncio.run()."""
+
+    def test_complete_returns_response(self) -> None:
+        import asyncio
+
         backend = FakeBackend(canned_response="world")
-        resp = await backend.complete(
-            [Message(role=MessageRole.USER, content="hi")],
-            model="test-model",
+        resp = asyncio.run(
+            backend.complete(
+                [Message(role=MessageRole.USER, content="hi")],
+                model="test-model",
+            )
         )
         assert resp.content == "world"
         assert resp.backend == "fake"
         assert resp.usage.total_tokens == 30
 
-    async def test_stream_yields_chunks(self) -> None:
-        backend = FakeBackend(canned_response="abc")
-        chunks = [c async for c in backend.stream([Message(role=MessageRole.USER, content="hi")], model="test")]
-        assert chunks == ["a", "b", "c"]
+    def test_stream_yields_chunks(self) -> None:
+        import asyncio
 
-    async def test_health_check(self) -> None:
-        backend = FakeBackend()
-        assert await backend.health_check() is True
+        async def collect() -> list[str]:
+            backend = FakeBackend(canned_response="abc")
+            return [
+                c
+                async for c in backend.stream(
+                    [Message(role=MessageRole.USER, content="hi")], model="test"
+                )
+            ]
+
+        assert asyncio.run(collect()) == ["a", "b", "c"]
+
+    def test_health_check(self) -> None:
+        import asyncio
+
+        assert asyncio.run(FakeBackend().health_check()) is True

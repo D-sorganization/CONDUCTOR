@@ -29,16 +29,22 @@ from conductor.core import BackendRouter
 app = typer.Typer(
     name="conductor",
     help="Multi-backend autonomous code agent orchestrator.",
-    no_args_is_help=True,
+    no_args_is_help=False,
     rich_markup_mode="rich",
 )
 console = Console()
 
 
-@app.callback()
-def _root(version: bool = typer.Option(False, "--version", "-V")) -> None:
+@app.callback(invoke_without_command=True)
+def _root(
+    ctx: typer.Context,
+    version: bool = typer.Option(False, "--version", "-V"),
+) -> None:
     if version:
         console.print(f"conductor {__version__}")
+        raise typer.Exit()
+    if ctx.invoked_subcommand is None:
+        console.print(ctx.get_help())
         raise typer.Exit()
 
 
