@@ -24,6 +24,7 @@ class FakeExecutor:
         issue_number: int,
         model: str,
         mode: str = "plan",
+        **_: Any,
     ) -> Any:
         from conductor.gh.executor import IssueResult
 

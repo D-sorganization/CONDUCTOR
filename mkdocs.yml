@@ -62,5 +62,6 @@ nav:
       - GitHub webhooks: operations/webhooks.md
   - Reference:
       - CLI: reference/cli.md
+      - Tasks CLI: reference/tasks-cli.md
       - REST API: reference/api.md
   - Contributing: contributing.md

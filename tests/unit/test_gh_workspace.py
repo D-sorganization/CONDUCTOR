@@ -44,28 +44,16 @@ class FakeGit:
 class TestClone:
     def test_clones_when_absent(self, tmp_path: Path) -> None:
         git = FakeGit()
-        git.respond(
-            "git",
-            "clone",
-            "--depth",
-            "50",
-            "https://github.com/owner/repo.git",
-            str(tmp_path / "repo"),
-        )
         ws = Workspace(root=tmp_path, runner=git)
-
-        asyncio.run(ws.ensure_clone("owner/repo"))
-
+        asyncio.run(ws.ensure_clone("owner/repo", task_id="t-1"))
         assert any("clone" in call[0] for call in git.calls)
 
     def test_fetches_when_present(self, tmp_path: Path) -> None:
-        repo_path = tmp_path / "repo"
-        (repo_path / ".git").mkdir(parents=True)
+        # Seed the per-task checkout directory.
+        (tmp_path / "repo" / "t-1" / ".git").mkdir(parents=True)
         git = FakeGit()
         ws = Workspace(root=tmp_path, runner=git)
-
-        asyncio.run(ws.ensure_clone("owner/repo"))
-
+        asyncio.run(ws.ensure_clone("owner/repo", task_id="t-1"))
         cmds = [c[0] for c in git.calls]
         assert any("fetch" in c for c in cmds)
         assert not any("clone" in c for c in cmds)
@@ -78,38 +66,39 @@ class TestClone:
             "--depth",
             "50",
             "https://github.com/owner/repo.git",
-            str(tmp_path / "repo"),
+            str((tmp_path / "repo" / "t-1").resolve()),
             returncode=128,
             stderr=b"Repository not found",
         )
         ws = Workspace(root=tmp_path, runner=git)
         with pytest.raises(WorkspaceError, match="Repository not found"):
-            asyncio.run(ws.ensure_clone("owner/repo"))
+            asyncio.run(ws.ensure_clone("owner/repo", task_id="t-1"))
 
 
 class TestBranchLifecycle:
     def test_create_branch_from_main(self, tmp_path: Path) -> None:
-        repo_path = tmp_path / "repo"
-        (repo_path / ".git").mkdir(parents=True)
+        (tmp_path / "repo" / "t-1" / ".git").mkdir(parents=True)
         git = FakeGit()
         ws = Workspace(root=tmp_path, runner=git)
-
-        asyncio.run(ws.create_branch("owner/repo", "conductor/issue-42", base="main"))
-
+        asyncio.run(
+            ws.create_branch("owner/repo", "conductor/issue-42", base="main", task_id="t-1")
+        )
         cmds = [c[0] for c in git.calls]
         assert ("git", "checkout", "main") in cmds
         assert ("git", "checkout", "-B", "conductor/issue-42") in cmds
 
     def test_commit_and_push(self, tmp_path: Path) -> None:
-        repo_path = tmp_path / "repo"
-        (repo_path / ".git").mkdir(parents=True)
+        (tmp_path / "repo" / "t-1" / ".git").mkdir(parents=True)
         git = FakeGit()
         ws = Workspace(root=tmp_path, runner=git)
-
         asyncio.run(
-            ws.commit_and_push("owner/repo", branch="conductor/issue-42", message="Fix #42")
+            ws.commit_and_push(
+                "owner/repo",
+                branch="conductor/issue-42",
+                message="Fix #42",
+                task_id="t-1",
+            )
         )
-
         cmds = [c[0] for c in git.calls]
         assert ("git", "add", "-A") in cmds
         assert ("git", "commit", "-m", "Fix #42") in cmds
@@ -118,21 +107,17 @@ class TestBranchLifecycle:
 
 class TestApplyDiff:
     def test_applies_valid_patch(self, tmp_path: Path) -> None:
-        repo_path = tmp_path / "repo"
-        (repo_path / ".git").mkdir(parents=True)
+        (tmp_path / "repo" / "t-1" / ".git").mkdir(parents=True)
         git = FakeGit()
         git.respond("git", "apply", "--index", "-", returncode=0)
         ws = Workspace(root=tmp_path, runner=git)
-
         diff = "diff --git a/x b/x\n@@ -0,0 +1 @@\n+new\n"
-        asyncio.run(ws.apply_diff("owner/repo", diff))
-
+        asyncio.run(ws.apply_diff("owner/repo", diff, task_id="t-1"))
         cmds = [c[0] for c in git.calls]
         assert ("git", "apply", "--index", "-") in cmds
 
     def test_propagates_apply_failure(self, tmp_path: Path) -> None:
-        repo_path = tmp_path / "repo"
-        (repo_path / ".git").mkdir(parents=True)
+        (tmp_path / "repo" / "t-1" / ".git").mkdir(parents=True)
         git = FakeGit()
         git.respond(
             "git",
@@ -143,6 +128,5 @@ class TestApplyDiff:
             stderr=b"patch does not apply",
         )
         ws = Workspace(root=tmp_path, runner=git)
-
         with pytest.raises(WorkspaceError, match="does not apply"):
-            asyncio.run(ws.apply_diff("owner/repo", "garbage"))
+            asyncio.run(ws.apply_diff("owner/repo", "garbage", task_id="t-1"))

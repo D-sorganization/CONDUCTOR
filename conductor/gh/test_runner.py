@@ -17,13 +17,16 @@ Security considerations
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 __all__ = [
+    "OnChunkCallback",
     "TestResult",
     "TestRunner",
     "TestRunnerError",
@@ -31,6 +34,8 @@ __all__ = [
 ]
 
 RunnerFn = Callable[..., Awaitable[tuple[int, bytes, bytes]]]
+#: Called with (chunk_text, stream_name) for every line/chunk of test output.
+OnChunkCallback = Callable[[str, str], Awaitable[None]]
 
 
 class TestRunnerError(RuntimeError):
@@ -118,10 +123,12 @@ class TestRunner:
         runner: RunnerFn | None = None,
         default_timeout_seconds: float = 300.0,
         tail_bytes: int = 8192,
+        on_chunk: OnChunkCallback | None = None,
     ) -> None:
         self._run = runner or _default_runner
         self._default_timeout = default_timeout_seconds
         self._tail_bytes = tail_bytes
+        self._on_chunk = on_chunk
 
     async def detect_and_run(
         self,
@@ -129,6 +136,7 @@ class TestRunner:
         *,
         command: list[str] | None = None,
         timeout: float | None = None,
+        on_chunk: OnChunkCallback | None = None,
     ) -> TestResult:
         cmd = command or detect_command(repo_path)
         if cmd is None:
@@ -136,17 +144,31 @@ class TestRunner:
                 f"could not detect a test command in {repo_path}. "
                 "Set repo.test_command in conductor.yaml to override."
             )
+        # Per-call callback takes precedence over the constructor-supplied one
+        # so the executor can bind task-specific context (like task_id).
+        callback = on_chunk or self._on_chunk
         return await self._run_with_timeout(
-            cmd, cwd=repo_path, timeout=timeout or self._default_timeout
+            cmd,
+            cwd=repo_path,
+            timeout=timeout or self._default_timeout,
+            on_chunk=callback,
         )
 
-    async def _run_with_timeout(self, argv: list[str], *, cwd: Path, timeout: float) -> TestResult:
+    async def _run_with_timeout(
+        self,
+        argv: list[str],
+        *,
+        cwd: Path,
+        timeout: float,
+        on_chunk: OnChunkCallback | None = None,
+    ) -> TestResult:
         start = time.monotonic()
         command_str = " ".join(argv)
+        kwargs: dict[str, Any] = {"cwd": str(cwd)}
+        if on_chunk is not None and _runner_accepts_on_chunk(self._run):
+            kwargs["on_chunk"] = on_chunk
         try:
-            rc, stdout, stderr = await asyncio.wait_for(
-                self._run(*argv, cwd=str(cwd)), timeout=timeout
-            )
+            rc, stdout, stderr = await asyncio.wait_for(self._run(*argv, **kwargs), timeout=timeout)
         except asyncio.TimeoutError:
             return TestResult(
                 passed=False,
@@ -167,3 +189,13 @@ class TestRunner:
             duration_seconds=time.monotonic() - start,
             output_tail=tail.decode(errors="replace"),
         )
+
+
+def _runner_accepts_on_chunk(runner: RunnerFn) -> bool:
+    try:
+        sig = inspect.signature(runner)
+    except (TypeError, ValueError):
+        return False
+    return "on_chunk" in sig.parameters or any(
+        p.kind is inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+    )

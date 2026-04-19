@@ -26,6 +26,7 @@ class EventKind(str, Enum):
     TASK_STARTED = "task_started"
     TASK_COMPLETED = "task_completed"
     TASK_FAILED = "task_failed"
+    TEST_OUTPUT = "test_output"
     BUDGET_ALERT = "budget_alert"
     BACKEND_HEALTH = "backend_health"
 

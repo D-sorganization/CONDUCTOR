@@ -21,7 +21,7 @@ class FakeIssueExecutor:
         pass
 
     async def execute_issue(
-        self, *, repo: str, issue_number: int, model: str, mode: str = "plan"
+        self, *, repo: str, issue_number: int, model: str, mode: str = "plan", **_: Any
     ) -> Any:
         from conductor.gh.executor import IssueResult
 

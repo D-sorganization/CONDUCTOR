@@ -24,6 +24,7 @@ from fastapi import (
     FastAPI,
     Header,
     HTTPException,
+    Query,
     Request,
     Response,
     WebSocket,
@@ -191,8 +192,21 @@ def create_app(
         return TaskView.from_task(task)
 
     @app.get("/api/v1/tasks", dependencies=[Depends(auth)])
-    async def list_tasks() -> list[TaskView]:
-        return [TaskView.from_task(t) for t in daemon.state().tasks.values()]
+    async def list_tasks(
+        status: Annotated[str | None, Query()] = None,
+        kind: Annotated[str | None, Query()] = None,
+        repo: Annotated[str | None, Query()] = None,
+        limit: Annotated[int, Query(ge=1, le=1000)] = 100,
+    ) -> list[TaskView]:
+        tasks = list(daemon.state().tasks.values())
+        if status:
+            tasks = [t for t in tasks if t.status.value == status]
+        if kind:
+            tasks = [t for t in tasks if t.kind.value == kind]
+        if repo:
+            tasks = [t for t in tasks if t.repo == repo or t.issue_repo == repo]
+        tasks.sort(key=lambda t: t.created_at, reverse=True)
+        return [TaskView.from_task(t) for t in tasks[:limit]]
 
     @app.get("/api/v1/tasks/{task_id}", dependencies=[Depends(auth)])
     async def get_task(task_id: str) -> TaskView:
@@ -200,6 +214,16 @@ def create_app(
         if t is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "task not found")
         return TaskView.from_task(t)
+
+    @app.post("/api/v1/tasks/{task_id}/cancel", dependencies=[Depends(auth)])
+    async def cancel_task(task_id: str) -> TaskView:
+        try:
+            cancelled = daemon.cancel_task(task_id)
+        except KeyError:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "task not found") from None
+        except ValueError as e:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from None
+        return TaskView.from_task(cancelled)
 
     @app.post(
         "/api/v1/issues",

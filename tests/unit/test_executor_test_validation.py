@@ -41,13 +41,13 @@ class _GH:
 class _WS:
     apply_calls: int = 0
 
-    async def ensure_clone(self, repo: str) -> Path:
+    async def ensure_clone(self, repo: str, **_: Any) -> Path:
         return Path("/fake")
 
     async def create_branch(self, *a: Any, **kw: Any) -> None:
         pass
 
-    async def apply_diff(self, repo: str, diff: str) -> None:
+    async def apply_diff(self, repo: str, diff: str, **_: Any) -> None:
         self.apply_calls += 1
 
     async def commit_and_push(self, *a: Any, **kw: Any) -> None:
@@ -60,7 +60,12 @@ class _TestRunnerStub:
     calls: int = 0
 
     async def detect_and_run(
-        self, repo_path: Path, *, command: list[str] | None = None, timeout: float | None = None
+        self,
+        repo_path: Path,
+        *,
+        command: list[str] | None = None,
+        timeout: float | None = None,
+        **_: Any,
     ) -> TestResult:
         idx = min(self.calls, len(self.results) - 1)
         self.calls += 1

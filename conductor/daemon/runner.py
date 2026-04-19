@@ -26,7 +26,9 @@ from conductor.core import (
     BudgetExceededError,
     CostLedger,
     CostRecord,
+    resolve_overrides,
 )
+from conductor.core.task_store import TaskStore
 from conductor.events import Event, EventBus, EventKind
 from conductor.metrics import record_request
 
@@ -84,6 +86,7 @@ class Daemon:
         *,
         ledger_path: Path | None = None,
         workspace_root: Path | None = None,
+        task_store_path: Path | None = None,
     ) -> None:
         self._config = config
         self._router = BackendRouter(config)
@@ -91,6 +94,9 @@ class Daemon:
         self._budget = BudgetEnforcer(config.budget, self._ledger)
         self._events = EventBus()
         self._workspace_root = workspace_root or Path.home() / ".local/share/conductor/workspaces"
+        # Durable task store lives next to the cost ledger by default.
+        default_store = Path.home() / ".local/share/conductor/tasks.db"
+        self._task_store = TaskStore(task_store_path or default_store)
         self._tasks: dict[str, Task] = {}
         self._queue: asyncio.Queue[Task] = asyncio.Queue()
         self._workers: list[asyncio.Task[None]] = []
@@ -110,13 +116,25 @@ class Daemon:
     def from_config_path(cls, path: Path | str | None = None) -> Daemon:
         return cls(load_config(path))
 
-    async def start(self, *, worker_count: int = 2) -> None:
+    async def start(self, *, worker_count: int = 2, recover: bool = True) -> None:
         if self._running:
             return
+        if recover:
+            self.recover()
         self._running = True
         for i in range(worker_count):
             self._workers.append(asyncio.create_task(self._worker_loop(i), name=f"worker-{i}"))
         log.info("daemon started with %d workers", worker_count)
+
+    def recover(self) -> list[Task]:
+        """Re-queue tasks from a prior daemon run. Called automatically from start()."""
+        recovered = self._task_store.recover_pending()
+        for task in recovered:
+            self._tasks[task.id] = task
+            self._queue.put_nowait(task)
+        if recovered:
+            log.info("recovered %d pending task(s) from previous run", len(recovered))
+        return recovered
 
     async def stop(self, *, drain: bool = False, timeout: float = 30.0) -> None:
         """Stop the daemon.
@@ -160,6 +178,7 @@ class Daemon:
             model=model,
         )
         self._tasks[task.id] = task
+        self._task_store.save(task)
         self._queue.put_nowait(task)
         # Fire-and-forget: if there's no running loop yet (e.g. sync test
         # submits before start()), skip the event — the queued state is
@@ -198,6 +217,7 @@ class Daemon:
             issue_mode=mode,
         )
         self._tasks[task.id] = task
+        self._task_store.save(task)
         self._queue.put_nowait(task)
         with contextlib.suppress(RuntimeError):
             loop = asyncio.get_running_loop()
@@ -233,6 +253,31 @@ class Daemon:
     def get_task(self, task_id: str) -> Task | None:
         return self._tasks.get(task_id)
 
+    def cancel_task(self, task_id: str) -> Task:
+        """Cancel a queued task. Raises ValueError if not found or not cancellable."""
+        task = self._tasks.get(task_id)
+        if task is None:
+            raise KeyError(task_id)
+        if task.status is not TaskStatus.QUEUED:
+            raise ValueError(
+                f"task {task_id} is {task.status.value}; only queued tasks can be cancelled"
+            )
+        task.status = TaskStatus.CANCELLED
+        task.finished_at = datetime.now(timezone.utc)
+        self._task_store.update_status(task.id, TaskStatus.CANCELLED, finished_at=task.finished_at)
+        with contextlib.suppress(RuntimeError):
+            loop = asyncio.get_running_loop()
+            bg = loop.create_task(
+                self._events.publish(
+                    Event(
+                        kind=EventKind.TASK_FAILED, payload={"id": task_id, "reason": "cancelled"}
+                    )
+                )
+            )
+            self._bg_tasks.add(bg)
+            bg.add_done_callback(self._bg_tasks.discard)
+        return task
+
     def state(self) -> DaemonState:
         return DaemonState(
             version="0.1.0",
@@ -249,11 +294,16 @@ class Daemon:
                 task = await asyncio.wait_for(self._queue.get(), timeout=0.2)
             except asyncio.TimeoutError:
                 continue
+            # Tasks cancelled while queued shouldn't be executed.
+            if task.status is TaskStatus.CANCELLED:
+                continue
             await self._execute(task)
 
     async def _execute(self, task: Task) -> None:
         task.status = TaskStatus.RUNNING
         task.started_at = datetime.now(timezone.utc)
+        with contextlib.suppress(Exception):
+            self._task_store.update_status(task.id, TaskStatus.RUNNING, started_at=task.started_at)
         await self._events.publish(
             Event(kind=EventKind.TASK_STARTED, payload={"id": task.id, "prompt": task.prompt})
         )
@@ -329,6 +379,11 @@ class Daemon:
             )
         finally:
             task.finished_at = datetime.now(timezone.utc)
+            # Persist the final task state so restarts see exactly what the
+            # daemon saw. Save rather than update_status because status may
+            # have flipped more than once through the try/except chain.
+            with contextlib.suppress(Exception):
+                self._task_store.save(task)
 
     async def _execute_issue(self, task: Task, decision: Any) -> None:
         """Run the issue → PR flow. Called with status already RUNNING."""
@@ -348,11 +403,28 @@ class Daemon:
         )
 
         mode = task.issue_mode if task.issue_mode in {"plan", "implement"} else "plan"
+        overrides = resolve_overrides(self._config, repo=task.issue_repo)
+
+        async def _emit_test_output(chunk: str, stream: str) -> None:
+            await self._events.publish(
+                Event(
+                    kind=EventKind.TEST_OUTPUT,
+                    payload={
+                        "task_id": task.id,
+                        "chunk": chunk,
+                        "stream": stream,
+                    },
+                )
+            )
+
         result = await executor.execute_issue(
             repo=task.issue_repo,
             issue_number=task.issue_number,
             model=decision.model,
             mode=mode,  # type: ignore[arg-type]
+            overrides=overrides,
+            task_id=task.id,
+            on_test_output=_emit_test_output,
         )
         task.status = TaskStatus.COMPLETED
         task.pr_url = result.pr_url

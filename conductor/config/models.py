@@ -56,6 +56,12 @@ class RepoConfig(BaseModel):
     backend: str | None = Field(None, description="Override default backend for this repo")
     model: str | None = None
     tags: list[str] = Field(default_factory=list)
+    # Per-repo overrides of IssueExecutor behaviour. None = use executor default.
+    # Lookup lives in conductor.core.repo_overrides so the config model stays dumb.
+    test_command: list[str] | None = Field(None, min_length=1)
+    context_max_chars: int | None = Field(None, ge=0)
+    max_test_retries: int | None = Field(None, ge=0)
+    max_diff_retries: int | None = Field(None, ge=0)
 
     @field_validator("path", mode="before")
     @classmethod

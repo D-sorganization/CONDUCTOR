@@ -42,18 +42,18 @@ class _WS:
     apply_fails_first_n: int = 0
     apply_calls: list[str] = field(default_factory=list)
 
-    async def ensure_clone(self, repo: str) -> Path:
+    async def ensure_clone(self, repo: str, **_: Any) -> Path:
         return Path("/fake")
 
-    async def create_branch(self, repo: str, branch: str, *, base: str = "main") -> None:
+    async def create_branch(self, repo: str, branch: str, *, base: str = "main", **_: Any) -> None:
         pass
 
-    async def apply_diff(self, repo: str, diff: str) -> None:
+    async def apply_diff(self, repo: str, diff: str, **_: Any) -> None:
         self.apply_calls.append(diff)
         if len(self.apply_calls) <= self.apply_fails_first_n:
             raise WorkspaceError("patch does not apply")
 
-    async def commit_and_push(self, repo: str, *, branch: str, message: str) -> None:
+    async def commit_and_push(self, repo: str, *, branch: str, message: str, **_: Any) -> None:
         pass
 
 

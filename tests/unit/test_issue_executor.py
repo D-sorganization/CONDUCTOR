@@ -57,17 +57,17 @@ class FakeGitHub:
 class FakeWorkspace:
     log: list[tuple[str, tuple[Any, ...]]] = field(default_factory=list)
 
-    async def ensure_clone(self, repo: str) -> Path:
+    async def ensure_clone(self, repo: str, **_: Any) -> Path:
         self.log.append(("clone", (repo,)))
         return Path("/fake") / repo.split("/", 1)[1]
 
-    async def create_branch(self, repo: str, branch: str, *, base: str = "main") -> None:
+    async def create_branch(self, repo: str, branch: str, *, base: str = "main", **_: Any) -> None:
         self.log.append(("branch", (repo, branch, base)))
 
-    async def apply_diff(self, repo: str, diff: str) -> None:
+    async def apply_diff(self, repo: str, diff: str, **_: Any) -> None:
         self.log.append(("apply", (repo, len(diff))))
 
-    async def commit_and_push(self, repo: str, *, branch: str, message: str) -> None:
+    async def commit_and_push(self, repo: str, *, branch: str, message: str, **_: Any) -> None:
         self.log.append(("commit_push", (repo, branch, message)))
 
 

@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
 from conductor.backends.base import ILLMBackend, Message, MessageRole
+from conductor.core.repo_overrides import RepoOverrides
 from conductor.gh.context import ContextBuilder
 from conductor.gh.test_runner import TestResult, TestRunner
 from conductor.gh.workspace import WorkspaceError
@@ -59,10 +60,14 @@ class _GitHubProto(Protocol):
 
 
 class _WorkspaceProto(Protocol):
-    async def ensure_clone(self, repo: str) -> Any: ...
-    async def create_branch(self, repo: str, branch: str, *, base: str = "main") -> None: ...
-    async def apply_diff(self, repo: str, diff: str) -> None: ...
-    async def commit_and_push(self, repo: str, *, branch: str, message: str) -> None: ...
+    async def ensure_clone(self, repo: str, *, task_id: str) -> Any: ...
+    async def create_branch(
+        self, repo: str, branch: str, *, base: str = "main", task_id: str
+    ) -> None: ...
+    async def apply_diff(self, repo: str, diff: str, *, task_id: str) -> None: ...
+    async def commit_and_push(
+        self, repo: str, *, branch: str, message: str, task_id: str
+    ) -> None: ...
 
 
 _SYSTEM_PROMPT = """You are a senior engineer drafting a pull request for a GitHub issue.
@@ -113,17 +118,29 @@ class IssueExecutor:
         model: str,
         mode: Mode = "plan",
         base_branch: str = "main",
+        overrides: RepoOverrides | None = None,
+        task_id: str | None = None,
+        on_test_output: Any = None,
     ) -> IssueResult:
         issue = await self._gh.get_issue(repo, issue_number)
         branch = f"conductor/issue-{issue_number}"
+        # Fall back to a derived id when the caller didn't supply one so the
+        # executor stays usable in non-Daemon contexts (one-off scripts, tests).
+        effective_task_id = task_id or f"issue-{issue_number}"
+
+        # Resolve per-call settings: overrides first, executor defaults second.
+        ctx_max = self._pick(overrides, "context_max_chars", self._context_max_chars)
+        max_diff_retries = self._pick(overrides, "max_diff_retries", self._max_diff_retries)
+        max_test_retries = self._pick(overrides, "max_test_retries", self._max_test_retries)
+        test_command = overrides.test_command if overrides else None
 
         # Build context if we have a builder AND we're in implement mode (plan
         # mode doesn't need a clone; enable via a follow-up if it helps).
         context_prompt = ""
         if mode == "implement" and self._context_builder is not None:
-            repo_path = await self._ws.ensure_clone(repo)
+            repo_path = await self._ws.ensure_clone(repo, task_id=effective_task_id)
             ctx = await self._context_builder.build(repo_path, issue.body)
-            context_prompt = ctx.to_prompt(max_chars=self._context_max_chars)
+            context_prompt = ctx.to_prompt(max_chars=ctx_max)
 
         plan, diff = await self._draft_change(
             issue_title=issue.title,
@@ -142,8 +159,8 @@ class IssueExecutor:
                 )
             # If we didn't already clone for context, clone now.
             if not context_prompt:
-                await self._ws.ensure_clone(repo)
-            await self._ws.create_branch(repo, branch, base=base_branch)
+                await self._ws.ensure_clone(repo, task_id=effective_task_id)
+            await self._ws.create_branch(repo, branch, base=base_branch, task_id=effective_task_id)
             plan, diff = await self._apply_with_retry(
                 repo=repo,
                 issue_title=issue.title,
@@ -151,6 +168,8 @@ class IssueExecutor:
                 model=model,
                 plan=plan,
                 diff=diff,
+                max_retries=max_diff_retries,
+                task_id=effective_task_id,
             )
             if self._test_runner is not None:
                 plan, diff, test_result = await self._validate_with_tests(
@@ -162,11 +181,17 @@ class IssueExecutor:
                     plan=plan,
                     diff=diff,
                     base_branch=base_branch,
+                    max_retries=max_test_retries,
+                    test_command=test_command,
+                    max_diff_retries=max_diff_retries,
+                    task_id=effective_task_id,
+                    on_test_output=on_test_output,
                 )
             await self._ws.commit_and_push(
                 repo,
                 branch=branch,
                 message=f"Fix #{issue_number}: {issue.title}",
+                task_id=effective_task_id,
             )
             applied = True
 
@@ -203,28 +228,37 @@ class IssueExecutor:
         plan: str,
         diff: str,
         base_branch: str,
+        max_retries: int,
+        test_command: list[str] | None,
+        max_diff_retries: int,
+        task_id: str,
+        on_test_output: Any = None,
     ) -> tuple[str, str, TestResult]:
         """Run repo tests; if they fail, ask the LLM to refine the diff and retry.
 
         Returns the final (plan, diff, test_result). Raises if tests still fail
-        after ``max_test_retries`` refinements.
+        after ``max_retries`` refinements.
         """
         assert self._test_runner is not None
         attempt = 0
         current_plan, current_diff = plan, diff
-        repo_path = self._workspace_path(repo)
+        repo_path = self._workspace_path(repo, task_id)
 
         while True:
-            result = await self._test_runner.detect_and_run(repo_path, timeout=self._test_timeout)
+            result = await self._test_runner.detect_and_run(
+                repo_path,
+                timeout=self._test_timeout,
+                command=test_command,
+                on_chunk=on_test_output,
+            )
             if result.passed:
                 return current_plan, current_diff, result
             attempt += 1
-            if attempt > self._max_test_retries:
+            if attempt > max_retries:
                 raise IssueExecutionError(
                     f"tests still failing after {attempt} attempt(s); "
                     f"last output: {result.output_tail[-500:]}"
                 )
-            # Reset the workspace to base and regenerate a corrected diff.
             current_plan, current_diff = await self._refine_from_tests(
                 issue_title=issue_title,
                 issue_body=issue_body,
@@ -233,7 +267,7 @@ class IssueExecutor:
                 previous_diff=current_diff,
                 test_output=result.output_tail,
             )
-            await self._ws.create_branch(repo, branch, base=base_branch)
+            await self._ws.create_branch(repo, branch, base=base_branch, task_id=task_id)
             await self._apply_with_retry(
                 repo=repo,
                 issue_title=issue_title,
@@ -241,19 +275,25 @@ class IssueExecutor:
                 model=model,
                 plan=current_plan,
                 diff=current_diff,
+                max_retries=max_diff_retries,
+                task_id=task_id,
             )
 
-    def _workspace_path(self, repo: str) -> Any:
-        """Return the local checkout directory for ``repo``.
+    def _workspace_path(self, repo: str, task_id: str | None = None) -> Any:
+        """Return the local checkout directory for ``(repo, task_id)``.
 
         Uses the workspace's ``path_for`` method when available (real
         Workspace) or falls back to a Path derived from the stub test double.
         """
         if hasattr(self._ws, "path_for"):
-            return self._ws.path_for(repo)
+            try:
+                return self._ws.path_for(repo, task_id=task_id or "test")
+            except TypeError:
+                # Legacy stub without task_id
+                return self._ws.path_for(repo)
         from pathlib import Path
 
-        return Path("/tmp/conductor-workspace") / repo.split("/", 1)[1]
+        return Path("/tmp/conductor-workspace") / repo.split("/", 1)[1] / (task_id or "test")
 
     async def _refine_from_tests(
         self,
@@ -293,19 +333,22 @@ class IssueExecutor:
         model: str,
         plan: str,
         diff: str,
+        max_retries: int | None = None,
+        task_id: str = "test",
     ) -> tuple[str, str]:
         """Try to apply the diff; on failure, ask the LLM for a corrected diff."""
+        limit = max_retries if max_retries is not None else self._max_diff_retries
         attempts = 0
         last_error: str = ""
         current_plan, current_diff = plan, diff
         while True:
             try:
-                await self._ws.apply_diff(repo, current_diff)
+                await self._ws.apply_diff(repo, current_diff, task_id=task_id)
                 return current_plan, current_diff
             except WorkspaceError as e:
                 last_error = str(e)
                 attempts += 1
-                if attempts > self._max_diff_retries:
+                if attempts > limit:
                     raise IssueExecutionError(
                         f"diff did not apply after {attempts} attempt(s); last error: {last_error}"
                     ) from e
@@ -317,6 +360,14 @@ class IssueExecutor:
                     previous_diff=current_diff,
                     error=last_error,
                 )
+
+    @staticmethod
+    def _pick(overrides: RepoOverrides | None, attr: str, default: Any) -> Any:
+        """Prefer an override value when it's set, otherwise fall back to default."""
+        if overrides is None:
+            return default
+        value = getattr(overrides, attr, None)
+        return value if value is not None else default
 
     async def _refine_diff(
         self,
