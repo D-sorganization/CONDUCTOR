@@ -70,6 +70,7 @@ jobs:
   coverage-floor:
     name: Coverage floor (ratchet)
     needs: test
+    if: ${{ github.event_name != 'pull_request' || !startsWith(github.head_ref, 'dependabot/github_actions/') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
