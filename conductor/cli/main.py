@@ -219,12 +219,23 @@ def cost(
     check = enforcer.check()
 
     status_color = {"ok": "green", "alert": "yellow", "exceeded": "red"}[check.status]
+    forecast_line = ""
+    if check.forecast_usd is not None and check.forecast_usd > 0:
+        forecast_line = f"\n[bold]Forecast (month-end):[/bold] ${check.forecast_usd:.2f}"
+        if check.limit_usd is not None:
+            headroom = check.limit_usd - check.forecast_usd
+            headroom_colour = "green" if headroom > 0 else "red"
+            forecast_line += (
+                f"  [[{headroom_colour}]{'+' if headroom >= 0 else ''}"
+                f"${headroom:.2f} vs limit[/{headroom_colour}]]"
+            )
     console.print(
         Panel.fit(
             f"[bold]Month-to-date:[/bold] ${check.spent_usd:.2f}\n"
             f"[bold]Limit:[/bold] "
             f"{'$' + format(check.limit_usd, '.2f') if check.limit_usd else '(unset)'}\n"
-            f"[bold]Utilisation:[/bold] {check.utilisation:.1%}\n"
+            f"[bold]Utilisation:[/bold] {check.utilisation:.1%}"
+            f"{forecast_line}\n"
             f"[bold]Status:[/bold] [{status_color}]{check.status}[/{status_color}]",
             title="Cost summary",
             border_style=status_color,

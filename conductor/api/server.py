@@ -17,6 +17,7 @@ from __future__ import annotations
 import hmac
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path as _Path
 from typing import Annotated, Any
 
 from fastapi import (
@@ -38,6 +39,27 @@ from conductor.daemon import Daemon
 from conductor.daemon.runner import Task
 from conductor.logging import bind_context
 from conductor.metrics import mount_metrics_endpoint
+
+_UI_DIR = _Path(__file__).parent / "ui"
+
+
+def _mount_web_ui(app: FastAPI) -> None:
+    """Serve the vanilla-JS dashboard at ``/ui/``.
+
+    Uses ``StaticFiles`` so there's no per-request Python overhead and
+    content-types are set correctly from the file extension.
+    """
+    from fastapi.responses import RedirectResponse
+    from fastapi.staticfiles import StaticFiles
+
+    if not _UI_DIR.is_dir():
+        return  # Missing assets — skip mounting rather than fail startup.
+
+    app.mount("/ui/", StaticFiles(directory=_UI_DIR, html=True), name="conductor-ui")
+
+    @app.get("/ui", include_in_schema=False)
+    async def _ui_no_slash() -> RedirectResponse:
+        return RedirectResponse(url="/ui/", status_code=308)
 
 
 class TaskSubmit(BaseModel):
@@ -62,6 +84,10 @@ class IssueDispatch(BaseModel):
     mode: str = Field(default="plan", pattern=r"^(plan|implement)$")
     backend: str | None = None
     model: str | None = None
+
+
+class IssueBatchDispatch(BaseModel):
+    items: list[IssueDispatch] = Field(..., min_length=1, max_length=100)
 
 
 class TaskView(BaseModel):
@@ -142,7 +168,23 @@ def create_app(
         description="Remote control plane for Conductor daemons.",
     )
     mount_metrics_endpoint(app)
+    _mount_web_ui(app)
     auth = _auth_dep(auth_token)
+
+    # Rate-limit middleware — installs only when config declares a default group.
+    api_cfg = daemon._config.api
+    if api_cfg.rate_limit_default is not None:
+        from conductor.api.rate_limit import install_rate_limiter
+
+        install_rate_limiter(
+            app,
+            default_rate=api_cfg.rate_limit_default.rate,
+            default_burst=api_cfg.rate_limit_default.burst,
+            groups={
+                name: {"rate": g.rate, "burst": g.burst}
+                for name, g in api_cfg.rate_limit_groups.items()
+            },
+        )
 
     @app.middleware("http")
     async def request_id_middleware(request: Request, call_next: Any) -> Response:
@@ -268,6 +310,39 @@ def create_app(
             model=payload.model,
         )
         return TaskView.from_task(task)
+
+    @app.post(
+        "/api/v1/issues/batch-dispatch",
+        dependencies=[Depends(auth)],
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    async def batch_dispatch_issues(payload: IssueBatchDispatch) -> dict[str, Any]:
+        """Queue up to 100 issues in one call.
+
+        Per-item failures (e.g. submit_issue raising ValueError) are recorded
+        but don't abort the batch — callers get back separate dispatched/
+        failed counts plus per-item details.
+        """
+        dispatched: list[TaskView] = []
+        failures: list[dict[str, Any]] = []
+        for item in payload.items:
+            try:
+                task = daemon.submit_issue(
+                    repo=item.repo,
+                    issue_number=item.number,
+                    mode=item.mode,
+                    backend=item.backend,
+                    model=item.model,
+                )
+                dispatched.append(TaskView.from_task(task))
+            except Exception as e:
+                failures.append({"repo": item.repo, "number": item.number, "error": str(e)})
+        return {
+            "dispatched": len(dispatched),
+            "failed": len(failures),
+            "tasks": [t.model_dump(mode="json") for t in dispatched],
+            "failures": failures,
+        }
 
     @app.get("/api/v1/issues/{owner}/{name}", dependencies=[Depends(auth)])
     async def list_repo_issues(

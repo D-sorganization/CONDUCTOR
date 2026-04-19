@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Literal
 
 from fastapi import FastAPI, Response
-from prometheus_client import CollectorRegistry, Counter, Histogram, generate_latest
+from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, generate_latest
 
 __all__ = [
     "CONDUCTOR_REQUESTS_TOTAL",
@@ -41,6 +41,11 @@ CONDUCTOR_REQUEST_COST = Counter(
     "conductor_request_cost_usd_total",
     "Cumulative request cost in USD",
     labelnames=("backend", "model"),
+)
+
+CONDUCTOR_COST_FORECAST_USD = Gauge(
+    "conductor_cost_forecast_usd",
+    "Linear month-end spend forecast from the cost ledger",
 )
 
 CONDUCTOR_REQUEST_DURATION = Histogram(

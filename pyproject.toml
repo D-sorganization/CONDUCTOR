@@ -69,6 +69,11 @@ Issues = "https://github.com/D-sorganization/CONDUCTOR/issues"
 [tool.hatch.build.targets.wheel]
 packages = ["conductor"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"conductor/api/ui/index.html" = "conductor/api/ui/index.html"
+"conductor/api/ui/app.js" = "conductor/api/ui/app.js"
+"conductor/api/ui/style.css" = "conductor/api/ui/style.css"
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"

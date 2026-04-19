@@ -101,6 +101,11 @@ class GithubConfig(BaseModel):
     routes: list[WebhookRouteConfig] = Field(default_factory=list)
 
 
+class RateLimitConfig(BaseModel):
+    rate: float = Field(10.0, gt=0, description="Tokens refilled per second")
+    burst: int = Field(50, ge=1, description="Bucket capacity (max burst)")
+
+
 class APIConfig(BaseModel):
     enabled: bool = True
     host: str = "127.0.0.1"
@@ -108,6 +113,9 @@ class APIConfig(BaseModel):
     auth_token: str | None = None
     tls_cert: Path | None = None
     tls_key: Path | None = None
+    # Rate limiting. Absent = disabled entirely.
+    rate_limit_default: RateLimitConfig | None = None
+    rate_limit_groups: dict[str, RateLimitConfig] = Field(default_factory=dict)
 
 
 class ConductorConfig(BaseModel):

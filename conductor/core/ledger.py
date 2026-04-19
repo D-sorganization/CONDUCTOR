@@ -105,7 +105,30 @@ class CostLedger:
             ).fetchall()
         return {backend: float(cost) for backend, cost in rows}
 
-    def month_to_date(self) -> float:
-        now = datetime.now(timezone.utc)
+    def month_to_date(self, *, now: datetime | None = None) -> float:
+        now = now or datetime.now(timezone.utc)
         start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         return self.total_since(start)
+
+    def forecast_month_end(self, *, now: datetime | None = None) -> float:
+        """Linear extrapolation from MTD spend to the end of the calendar month.
+
+        Guards against divide-by-near-zero at the start of a month by clamping
+        the elapsed fraction to at least one minute's worth of the month. That
+        means the day-1 forecast is a wild extrapolation, but it's finite.
+        """
+        import calendar
+
+        now = now or datetime.now(timezone.utc)
+        spent = self.month_to_date(now=now)
+        if spent <= 0:
+            return 0.0
+
+        start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        month_days = calendar.monthrange(now.year, now.month)[1]
+        month_total_seconds = month_days * 86400
+        elapsed_seconds = (now - start).total_seconds()
+        # Clamp to avoid crazy-large forecasts in the first minute of a month.
+        min_elapsed = 60.0
+        fraction = max(elapsed_seconds, min_elapsed) / month_total_seconds
+        return spent / fraction
