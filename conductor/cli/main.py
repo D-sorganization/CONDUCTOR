@@ -15,11 +15,7 @@ from rich.table import Table
 from conductor import __version__
 from conductor.backends import Message, MessageRole, registry
 from conductor.config import (
-    AgentConfig,
-    APIConfig,
-    BackendConfig,
     ConductorConfig,
-    FleetConfig,
     load_config,
     save_config,
 )
@@ -60,22 +56,23 @@ def init(
         console.print("Pass --force to overwrite.")
         raise typer.Exit(1)
 
-    cfg = ConductorConfig(
-        backends={
-            "claude": BackendConfig(
-                type="claude",
-                model="claude-sonnet-4-6",
-                api_key="${ANTHROPIC_API_KEY}",
-            ),
-            "ollama": BackendConfig(
-                type="ollama",
-                model="llama3.1",
-                base_url="http://localhost:11434",
-            ),
-        },
-        agent=AgentConfig(default_backend="claude"),
-        fleet=FleetConfig(),
-        api=APIConfig(enabled=True, host="127.0.0.1", port=8080),
+    cfg = ConductorConfig.model_validate(
+        {
+            "backends": {
+                "claude": {
+                    "type": "claude",
+                    "model": "claude-sonnet-4-6",
+                    "api_key": "${ANTHROPIC_API_KEY}",
+                },
+                "ollama": {
+                    "type": "ollama",
+                    "model": "llama3.1",
+                    "base_url": "http://localhost:11434",
+                },
+            },
+            "agent": {"default_backend": "claude"},
+            "api": {"enabled": True, "host": "127.0.0.1", "port": 8080},
+        }
     )
     written = save_config(cfg, target)
     console.print(

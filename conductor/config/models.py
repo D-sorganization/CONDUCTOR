@@ -54,6 +54,7 @@ class RepoConfig(BaseModel):
     def _expand_path(cls, v: Any) -> Path:
         if isinstance(v, str):
             return Path(v).expanduser()
+        assert isinstance(v, Path)
         return v
 
 
@@ -88,11 +89,11 @@ class ConductorConfig(BaseModel):
 
     version: str = "1"
     backends: dict[str, BackendConfig] = Field(default_factory=dict)
-    agent: AgentConfig = Field(default_factory=AgentConfig)
+    agent: AgentConfig = Field(default_factory=lambda: AgentConfig())
     repos: list[RepoConfig] = Field(default_factory=list)
-    fleet: FleetConfig = Field(default_factory=FleetConfig)
-    api: APIConfig = Field(default_factory=APIConfig)
-    budget: BudgetConfig = Field(default_factory=BudgetConfig)
+    fleet: FleetConfig = Field(default_factory=lambda: FleetConfig())
+    api: APIConfig = Field(default_factory=lambda: APIConfig())
+    budget: BudgetConfig = Field(default_factory=lambda: BudgetConfig())
 
     @field_validator("backends")
     @classmethod

@@ -82,14 +82,18 @@ class ClaudeBackend(ILLMBackend):
         system, msgs = self._split_system(messages)
         resp = await self._client.messages.create(
             model=model,
-            messages=msgs,
-            system=system or anthropic.NOT_GIVEN,
+            messages=msgs,  # type: ignore[arg-type]
+            system=system or anthropic.NOT_GIVEN,  # type: ignore[arg-type]
             temperature=temperature,
             max_tokens=max_tokens or 4096,
-            tools=tools or anthropic.NOT_GIVEN,
+            tools=tools or anthropic.NOT_GIVEN,  # type: ignore[arg-type]
             **kwargs,
         )
-        text_parts = [b.text for b in resp.content if getattr(b, "type", None) == "text"]
+        text_parts = [
+            getattr(b, "text", "")
+            for b in resp.content
+            if getattr(b, "type", None) == "text"
+        ]
         return BackendResponse(
             content="".join(text_parts),
             finish_reason=resp.stop_reason or "stop",
@@ -117,11 +121,11 @@ class ClaudeBackend(ILLMBackend):
         system, msgs = self._split_system(messages)
         async with self._client.messages.stream(
             model=model,
-            messages=msgs,
-            system=system or anthropic.NOT_GIVEN,
+            messages=msgs,  # type: ignore[arg-type]
+            system=system or anthropic.NOT_GIVEN,  # type: ignore[arg-type]
             temperature=temperature,
             max_tokens=max_tokens or 4096,
-            tools=tools or anthropic.NOT_GIVEN,
+            tools=tools or anthropic.NOT_GIVEN,  # type: ignore[arg-type]
             **kwargs,
         ) as stream:
             async for text in stream.text_stream:
