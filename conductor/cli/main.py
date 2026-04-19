@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated
 
@@ -197,6 +198,74 @@ def ask(
     except KeyboardInterrupt:
         console.print("\n[yellow]Interrupted[/yellow]")
         sys.exit(130)
+
+
+@app.command()
+def cost(
+    config: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+    ledger: Annotated[Path | None, typer.Option("--ledger", help="Ledger DB path")] = None,
+) -> None:
+    """Show current month-to-date spend and budget status."""
+    from conductor.core import BudgetEnforcer, CostLedger
+
+    cfg = load_config(config)
+    ledger_path = ledger or Path.home() / ".local/share/conductor/ledger.db"
+    ledger_obj = CostLedger(ledger_path)
+    enforcer = BudgetEnforcer(cfg.budget, ledger_obj)
+    check = enforcer.check()
+
+    status_color = {"ok": "green", "alert": "yellow", "exceeded": "red"}[check.status]
+    console.print(
+        Panel.fit(
+            f"[bold]Month-to-date:[/bold] ${check.spent_usd:.2f}\n"
+            f"[bold]Limit:[/bold] "
+            f"{'$' + format(check.limit_usd, '.2f') if check.limit_usd else '(unset)'}\n"
+            f"[bold]Utilisation:[/bold] {check.utilisation:.1%}\n"
+            f"[bold]Status:[/bold] [{status_color}]{check.status}[/{status_color}]",
+            title="Cost summary",
+            border_style=status_color,
+        )
+    )
+
+    by_backend = ledger_obj.by_backend(
+        datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    )
+    if by_backend:
+        t = Table(title="By backend", header_style="bold cyan")
+        t.add_column("Backend")
+        t.add_column("Spend (USD)", justify="right")
+        for name, spend in sorted(by_backend.items(), key=lambda kv: -kv[1]):
+            t.add_row(name, f"${spend:.4f}")
+        console.print(t)
+
+
+@app.command()
+def serve(
+    config: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+    host: Annotated[str, typer.Option("--host")] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port")] = 8080,
+    workers: Annotated[int, typer.Option("--workers")] = 2,
+) -> None:
+    """Run the daemon + REST API together (foreground)."""
+    import uvicorn
+
+    from conductor.api import create_app
+    from conductor.daemon import Daemon
+
+    cfg = load_config(config)
+    daemon = Daemon(cfg)
+
+    async def _boot() -> None:
+        await daemon.start(worker_count=workers)
+
+    asyncio.run(_boot())
+
+    try:
+        fastapi_app = create_app(daemon, auth_token=cfg.api.auth_token)
+        console.print(f"[green]✓[/green] Conductor serving on http://{host}:{port}")
+        uvicorn.run(fastapi_app, host=host, port=port, log_level="info")
+    finally:
+        asyncio.run(daemon.stop())
 
 
 def main() -> None:

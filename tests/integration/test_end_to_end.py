@@ -20,9 +20,7 @@ from conductor.daemon import Daemon
 
 
 @pytest.fixture
-def e2e_config_path(
-    tmp_path: Path, register_recording_backend: None
-) -> Path:
+def e2e_config_path(tmp_path: Path, register_recording_backend: None) -> Path:
     cfg = ConductorConfig.model_validate(
         {
             "backends": {

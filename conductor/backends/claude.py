@@ -90,9 +90,7 @@ class ClaudeBackend(ILLMBackend):
             **kwargs,
         )
         text_parts = [
-            getattr(b, "text", "")
-            for b in resp.content
-            if getattr(b, "type", None) == "text"
+            getattr(b, "text", "") for b in resp.content if getattr(b, "type", None) == "text"
         ]
         return BackendResponse(
             content="".join(text_parts),
