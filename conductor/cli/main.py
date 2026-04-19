@@ -151,9 +151,7 @@ def health(
             try:
                 decision = router.route(backend_override=name)
                 ok = await decision.backend.health_check()
-                table.add_row(
-                    name, "[green]healthy[/green]" if ok else "[red]unreachable[/red]"
-                )
+                table.add_row(name, "[green]healthy[/green]" if ok else "[red]unreachable[/red]")
                 if not ok:
                     failures += 1
             except Exception as e:
@@ -195,10 +193,7 @@ def ask(
             resp = await decision.backend.complete(msgs, model=decision.model)
             console.print(resp.content)
             cost = decision.backend.estimate_cost(resp.usage, decision.model)
-            console.print(
-                f"\n[dim]tokens: {resp.usage.total_tokens}  "
-                f"cost: ${cost:.4f}[/dim]"
-            )
+            console.print(f"\n[dim]tokens: {resp.usage.total_tokens}  cost: ${cost:.4f}[/dim]")
 
     try:
         asyncio.run(_run())

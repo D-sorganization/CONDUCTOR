@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -92,7 +91,9 @@ class TestConfigLoad:
             cfg.default_backend_config()
 
     def test_rejects_unknown_top_level_keys(self) -> None:
-        with pytest.raises(Exception):  # pydantic ValidationError
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
             ConductorConfig.model_validate(
                 {
                     "backends": {"c": {"type": "claude", "model": "x"}},

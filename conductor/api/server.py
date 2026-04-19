@@ -78,6 +78,7 @@ def _auth_dep(token: str | None) -> Any:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "missing bearer token")
         if authorization.removeprefix("Bearer ").strip() != token:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid token")
+
     return _check
 
 
@@ -96,9 +97,7 @@ def create_app(daemon: Daemon, *, auth_token: str | None = None) -> FastAPI:
         return {
             "status": "ok",
             "version": state.version,
-            "uptime_seconds": (
-                datetime.now(timezone.utc) - state.started_at
-            ).total_seconds(),
+            "uptime_seconds": (datetime.now(timezone.utc) - state.started_at).total_seconds(),
         }
 
     @app.get("/api/v1/backends", dependencies=[Depends(auth)])

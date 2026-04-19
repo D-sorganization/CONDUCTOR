@@ -50,12 +50,8 @@ class ClaudeBackend(ILLMBackend):
     ) -> None:
         key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         if not key:
-            raise BackendUnavailableError(
-                "ANTHROPIC_API_KEY not set and no api_key passed"
-            )
-        self._client = anthropic.AsyncAnthropic(
-            api_key=key, base_url=base_url, timeout=timeout
-        )
+            raise BackendUnavailableError("ANTHROPIC_API_KEY not set and no api_key passed")
+        self._client = anthropic.AsyncAnthropic(api_key=key, base_url=base_url, timeout=timeout)
 
     def _split_system(self, messages: list[Message]) -> tuple[str | None, list[dict[str, Any]]]:
         system: str | None = None

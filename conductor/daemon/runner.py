@@ -15,11 +15,16 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any
 
 from conductor.backends import Message, MessageRole
 from conductor.config import ConductorConfig, load_config
-from conductor.core import BackendRouter, BudgetEnforcer, BudgetExceededError, CostLedger, CostRecord
+from conductor.core import (
+    BackendRouter,
+    BudgetEnforcer,
+    BudgetExceededError,
+    CostLedger,
+    CostRecord,
+)
 from conductor.metrics import record_request
 
 log = logging.getLogger("conductor.daemon")
@@ -62,9 +67,7 @@ class Daemon:
     def __init__(self, config: ConductorConfig, *, ledger_path: Path | None = None) -> None:
         self._config = config
         self._router = BackendRouter(config)
-        self._ledger = CostLedger(
-            ledger_path or Path.home() / ".local/share/conductor/ledger.db"
-        )
+        self._ledger = CostLedger(ledger_path or Path.home() / ".local/share/conductor/ledger.db")
         self._budget = BudgetEnforcer(config.budget, self._ledger)
         self._tasks: dict[str, Task] = {}
         self._queue: asyncio.Queue[Task] = asyncio.Queue()
@@ -169,9 +172,7 @@ class Daemon:
                 status="success",
                 tokens=resp.usage.total_tokens,
                 cost_usd=task.cost_usd,
-                duration_seconds=(
-                    datetime.now(timezone.utc) - task.started_at
-                ).total_seconds(),
+                duration_seconds=(datetime.now(timezone.utc) - task.started_at).total_seconds(),
             )
         except BudgetExceededError as e:
             log.warning("task %s refused: %s", task.id, e)
@@ -186,9 +187,7 @@ class Daemon:
             log.exception("task %s failed", task.id)
             task.status = TaskStatus.FAILED
             task.error = str(e)
-            record_request(
-                backend=decision_backend, model=decision_model, status="error"
-            )
+            record_request(backend=decision_backend, model=decision_model, status="error")
         finally:
             task.finished_at = datetime.now(timezone.utc)
 
