@@ -59,6 +59,7 @@ nav:
       - Deployment (Ansible): operations/ansible.md
       - Observability: operations/observability.md
       - Budgets: operations/budgets.md
+      - GitHub webhooks: operations/webhooks.md
   - Reference:
       - CLI: reference/cli.md
       - REST API: reference/api.md

@@ -271,6 +271,75 @@ def create_app(
             by_backend=daemon._ledger.by_backend(start),
         )
 
+    @app.post("/api/v1/webhooks/github")
+    async def github_webhook(request: Request) -> Response:
+        """Receive GitHub webhook events.
+
+        Authenticated with HMAC-SHA256 via X-Hub-Signature-256. No bearer-token
+        dependency is applied so GitHub's retry delivery system isn't double-gated.
+        """
+        import json as _json
+
+        from fastapi.responses import JSONResponse
+
+        from conductor.gh.webhook import (
+            WebhookConfig,
+            WebhookRoute,
+            WebhookRouter,
+            verify_signature,
+        )
+
+        body = await request.body()
+        signature = request.headers.get("x-hub-signature-256", "")
+        event_type = request.headers.get("x-github-event", "")
+
+        config_secret = (
+            daemon._config.github.webhook_secret.get_secret_value()
+            if daemon._config.github.webhook_secret is not None
+            else None
+        )
+        if config_secret is None:
+            return JSONResponse(
+                {"detail": "webhooks disabled"}, status_code=status.HTTP_404_NOT_FOUND
+            )
+        if not verify_signature(config_secret, body, signature):
+            return JSONResponse(
+                {"detail": "invalid signature"},
+                status_code=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        try:
+            payload = _json.loads(body) if body else {}
+        except _json.JSONDecodeError:
+            return JSONResponse(
+                {"detail": "malformed json"},
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        routes = [
+            WebhookRoute(
+                event=r.event,
+                action=r.action,
+                mode=r.mode,  # type: ignore[arg-type]
+                label=r.label,
+                trigger=r.trigger,
+            )
+            for r in daemon._config.github.routes
+        ]
+        router = WebhookRouter(
+            WebhookConfig(
+                secret=config_secret,
+                allowed_repos=daemon._config.github.allowed_repos,
+                routes=routes,
+            ),
+            daemon=daemon,
+        )
+        dispatches = router.handle(event_type=event_type, payload=payload)
+        return JSONResponse(
+            {"event": event_type, "dispatched": len(dispatches)},
+            status_code=status.HTTP_200_OK,
+        )
+
     @app.websocket("/api/v1/events")
     async def events_ws(ws: WebSocket) -> None:
         """Stream daemon events as JSON frames to the client.

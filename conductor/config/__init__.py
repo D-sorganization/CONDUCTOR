@@ -8,8 +8,10 @@ from conductor.config.models import (
     BudgetConfig,
     ConductorConfig,
     FleetConfig,
+    GithubConfig,
     MachineConfig,
     RepoConfig,
+    WebhookRouteConfig,
 )
 
 __all__ = [
@@ -19,8 +21,10 @@ __all__ = [
     "BudgetConfig",
     "ConductorConfig",
     "FleetConfig",
+    "GithubConfig",
     "MachineConfig",
     "RepoConfig",
+    "WebhookRouteConfig",
     "load_config",
     "save_config",
 ]

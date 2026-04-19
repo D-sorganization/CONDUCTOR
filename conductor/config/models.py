@@ -81,6 +81,20 @@ class FleetConfig(BaseModel):
     heartbeat_seconds: int = Field(30, ge=5)
 
 
+class WebhookRouteConfig(BaseModel):
+    event: str = Field(..., description="GitHub event name: issues, issue_comment, ...")
+    action: str = Field(..., description="Event action: opened, closed, created, ...")
+    mode: str = Field(default="plan", pattern=r"^(plan|implement)$")
+    label: str | None = Field(None, description="Required issue label, if any")
+    trigger: str | None = Field(None, description="Required comment substring, if any")
+
+
+class GithubConfig(BaseModel):
+    webhook_secret: SecretStr | None = None
+    allowed_repos: list[str] = Field(default_factory=list)
+    routes: list[WebhookRouteConfig] = Field(default_factory=list)
+
+
 class APIConfig(BaseModel):
     enabled: bool = True
     host: str = "127.0.0.1"
@@ -102,6 +116,7 @@ class ConductorConfig(BaseModel):
     fleet: FleetConfig = Field(default_factory=lambda: FleetConfig())
     api: APIConfig = Field(default_factory=lambda: APIConfig())
     budget: BudgetConfig = Field(default_factory=lambda: BudgetConfig())
+    github: GithubConfig = Field(default_factory=lambda: GithubConfig())
 
     @field_validator("backends")
     @classmethod
