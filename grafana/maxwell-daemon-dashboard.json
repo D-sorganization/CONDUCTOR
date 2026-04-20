@@ -51,16 +51,16 @@
     },
     {
       "type": "stat",
-      "title": "Month-end forecast (USD)",
+      "title": "Free Requests",
       "gridPos": {"h": 8, "w": 6, "x": 12, "y": 8},
       "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
       "targets": [
         {
-          "expr": "maxwell_daemon_cost_forecast_usd",
+          "expr": "sum(maxwell_daemon_free_requests_total)",
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "currencyUSD"}, "overrides": []}
+      "fieldConfig": {"defaults": {"unit": "none"}, "overrides": []}
     },
     {
       "type": "stat",

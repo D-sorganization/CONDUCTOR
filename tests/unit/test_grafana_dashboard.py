@@ -47,7 +47,7 @@ class TestMetricsAreReal:
 
     def _exported_metrics(self) -> set[str]:
         from maxwell_daemon.metrics import (
-            MAXWELL_COST_FORECAST_USD,
+            MAXWELL_FREE_REQUESTS_TOTAL,
             MAXWELL_REQUEST_COST,
             MAXWELL_REQUEST_DURATION,
             MAXWELL_REQUESTS_TOTAL,
@@ -61,7 +61,7 @@ class TestMetricsAreReal:
             MAXWELL_TOKENS_TOTAL._name,
             MAXWELL_REQUEST_COST._name,
             MAXWELL_REQUEST_DURATION._name,
-            MAXWELL_COST_FORECAST_USD._name,
+            MAXWELL_FREE_REQUESTS_TOTAL._name,
         }
 
     def test_every_referenced_metric_exists(self, dashboard: dict) -> None:

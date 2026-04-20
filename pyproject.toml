@@ -83,12 +83,19 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RUF"]
-ignore = ["E501"]
+ignore = [
+    "E501",
+    # ContractViolation intentionally breaks the 'Error' suffix convention
+    # because it represents a programming defect (DbC violation), not a
+    # recoverable runtime error. Renaming to ContractViolationError would be
+    # semantically misleading.
+    "N818",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "-ra --strict-markers --cov=maxwell_daemon --cov-report=term-missing"
+addopts = "-ra --strict-markers"
 
 [tool.mypy]
 python_version = "3.10"

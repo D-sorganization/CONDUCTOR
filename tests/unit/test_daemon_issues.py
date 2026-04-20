@@ -73,7 +73,9 @@ class TestSubmitIssue:
         assert t.issue_mode == "plan"
 
     def test_rejects_invalid_mode(self, daemon_with_fake_executor: Daemon) -> None:
-        with pytest.raises(ValueError, match="mode"):
+        from maxwell_daemon.contracts import PreconditionError
+
+        with pytest.raises(PreconditionError, match="mode"):
             daemon_with_fake_executor.submit_issue(repo="owner/repo", issue_number=1, mode="yolo")
 
 

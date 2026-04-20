@@ -19,8 +19,10 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from maxwell_daemon import __version__
 from maxwell_daemon.backends import Message, MessageRole
 from maxwell_daemon.config import MaxwellDaemonConfig, load_config
+from maxwell_daemon.contracts import require
 from maxwell_daemon.core import (
     BackendRouter,
     BudgetEnforcer,
@@ -144,6 +146,29 @@ class Daemon:
     def events(self) -> EventBus:
         return self._events
 
+    @property
+    def github_config(self) -> Any:
+        """Public accessor for the github configuration block.
+
+        Prevents external callers from reaching through ``daemon._config.github``
+        (Law of Demeter boundary).
+        """
+        return self._config.github
+
+    def cost_summary(self, since: Any | None = None) -> dict[str, Any]:
+        """Return a snapshot of month-to-date cost data.
+
+        Replaces direct ``daemon._ledger`` access from the API server, preserving
+        the encapsulation boundary. ``since`` defaults to the start of the current
+        calendar month.
+        """
+        now = datetime.now(timezone.utc)
+        start = since or now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        return {
+            "month_to_date_usd": self._ledger.month_to_date(),
+            "by_backend": self._ledger.by_backend(start),
+        }
+
     @classmethod
     def from_config_path(cls, path: Path | str | None = None) -> Daemon:
         return cls(load_config(path))
@@ -196,6 +221,19 @@ class Daemon:
             await self._router.aclose_all()
         log.info("daemon stopped")
 
+    def _fire_event_bg(self, event: Event) -> None:
+        """Fire-and-forget event publish from a synchronous context.
+
+        Suppresses RuntimeError when no event loop is running (e.g. sync unit
+        tests that call submit() before start()). The queued task state is still
+        observable via get_task() so no information is lost.
+        """
+        with contextlib.suppress(RuntimeError):
+            loop = asyncio.get_running_loop()
+            bg = loop.create_task(self._events.publish(event))
+            self._bg_tasks.add(bg)
+            bg.add_done_callback(self._bg_tasks.discard)
+
     def submit(
         self,
         prompt: str,
@@ -216,17 +254,7 @@ class Daemon:
         self._tasks[task.id] = task
         self._task_store.save(task)
         self._queue.put_nowait(task)
-        # Fire-and-forget: if there's no running loop yet (e.g. sync test
-        # submits before start()), skip the event — the queued state is
-        # observable via get_task().
-        with contextlib.suppress(RuntimeError):
-            loop = asyncio.get_running_loop()
-            # Task kept alive via strong reference in _bg_tasks.
-            bg = loop.create_task(
-                self._events.publish(Event(kind=EventKind.TASK_QUEUED, payload={"id": task.id}))
-            )
-            self._bg_tasks.add(bg)
-            bg.add_done_callback(self._bg_tasks.discard)
+        self._fire_event_bg(Event(kind=EventKind.TASK_QUEUED, payload={"id": task.id}))
         return task
 
     def submit_issue(
@@ -239,8 +267,10 @@ class Daemon:
         model: str | None = None,
     ) -> Task:
         """Queue a task that reads a GitHub issue and opens a draft PR for it."""
-        if mode not in {"plan", "implement"}:
-            raise ValueError(f"mode must be 'plan' or 'implement', got {mode!r}")
+        require(
+            mode in {"plan", "implement"},
+            f"mode must be 'plan' or 'implement', got {mode!r}",
+        )
         task = Task(
             id=uuid.uuid4().hex[:12],
             prompt=f"{repo}#{issue_number}",
@@ -252,27 +282,20 @@ class Daemon:
             issue_number=issue_number,
             issue_mode=mode,
         )
-        # dict[k] = v is GIL-atomic — no lock needed for a single-key write.
         self._tasks[task.id] = task
         self._task_store.save(task)
         self._queue.put_nowait(task)
-        with contextlib.suppress(RuntimeError):
-            loop = asyncio.get_running_loop()
-            bg = loop.create_task(
-                self._events.publish(
-                    Event(
-                        kind=EventKind.TASK_QUEUED,
-                        payload={
-                            "id": task.id,
-                            "kind": "issue",
-                            "repo": repo,
-                            "issue": issue_number,
-                        },
-                    )
-                )
+        self._fire_event_bg(
+            Event(
+                kind=EventKind.TASK_QUEUED,
+                payload={
+                    "id": task.id,
+                    "kind": "issue",
+                    "repo": repo,
+                    "issue": issue_number,
+                },
             )
-            self._bg_tasks.add(bg)
-            bg.add_done_callback(self._bg_tasks.discard)
+        )
         return task
 
     def submit_issue_ab(
@@ -358,7 +381,7 @@ class Daemon:
         with self._tasks_lock:
             tasks_snapshot = dict(self._tasks)
         return DaemonState(
-            version="0.1.0",
+            version=__version__,
             config_path=None,
             tasks=tasks_snapshot,
             started_at=self._started_at,
@@ -488,6 +511,16 @@ class Daemon:
         from maxwell_daemon.gh.executor import IssueExecutor
         from maxwell_daemon.gh.workspace import Workspace
 
+        require(
+            task.issue_repo is not None,
+            f"_execute_issue called on task {task.id!r} with no issue_repo",
+        )
+        require(
+            task.issue_number is not None,
+            f"_execute_issue called on task {task.id!r} with no issue_number",
+        )
+        # Narrow Optional types for mypy: require() raises if None so these
+        # assertions are unreachable at runtime but needed for type-checking.
         assert task.issue_repo is not None
         assert task.issue_number is not None
 

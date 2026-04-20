@@ -215,6 +215,40 @@ def create_app(
         response.headers["x-request-id"] = request_id
         return response
 
+    # ── Webhook router — built once at startup, never per-request ──────────
+    # Avoids rebuilding config + router objects on every delivery (DRY) and
+    # removes per-request access to daemon._config (LOD).
+    _wh_cfg = daemon.github_config
+    _wh_router: Any = None
+    if _wh_cfg is not None and getattr(_wh_cfg, "webhook_secret", None) is not None:
+        from maxwell_daemon.gh.webhook import (
+            WebhookConfig as _WConfig,
+        )
+        from maxwell_daemon.gh.webhook import (
+            WebhookRoute as _WRoute,
+        )
+        from maxwell_daemon.gh.webhook import (
+            WebhookRouter as _WRouter,
+        )
+
+        _wh_router = _WRouter(
+            _WConfig(
+                secret=_wh_cfg.webhook_secret.get_secret_value(),
+                allowed_repos=_wh_cfg.allowed_repos,
+                routes=[
+                    _WRoute(
+                        event=r.event,
+                        action=r.action,
+                        mode=r.mode,
+                        label=r.label,
+                        trigger=r.trigger,
+                    )
+                    for r in _wh_cfg.routes
+                ],
+            ),
+            daemon=daemon,
+        )
+
     def _gh() -> Any:
         if github_client is not None:
             return github_client
@@ -411,11 +445,10 @@ def create_app(
 
     @app.get("/api/v1/cost", dependencies=[Depends(auth)])
     async def cost_summary() -> CostSummary:
-        now = datetime.now(timezone.utc)
-        start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        summary = daemon.cost_summary()
         return CostSummary(
-            month_to_date_usd=daemon._ledger.month_to_date(),
-            by_backend=daemon._ledger.by_backend(start),
+            month_to_date_usd=summary["month_to_date_usd"],
+            by_backend=summary["by_backend"],
         )
 
     @app.post("/api/v1/webhooks/github")
@@ -424,30 +457,26 @@ def create_app(
 
         Authenticated with HMAC-SHA256 via X-Hub-Signature-256. No bearer-token
         dependency is applied so GitHub's retry delivery system isn't double-gated.
+
+        The WebhookRouter is built once at app startup (not per-request) so
+        config objects are never re-parsed under load.
         """
         import json as _json
 
         from fastapi.responses import JSONResponse
 
-        from maxwell_daemon.gh.webhook import (
-            WebhookConfig,
-            WebhookRoute,
-            WebhookRouter,
-            verify_signature,
-        )
+        from maxwell_daemon.gh.webhook import verify_signature
 
         body = await request.body()
         signature = request.headers.get("x-hub-signature-256", "")
         event_type = request.headers.get("x-github-event", "")
 
-        config_secret = (
-            daemon._config.github.webhook_secret.get_secret_value()
-            if daemon._config.github.webhook_secret is not None
-            else None
-        )
-        if config_secret is None:
+        if _wh_router is None:
             return JSONResponse({"disabled": True}, status_code=status.HTTP_200_OK)
-        if not verify_signature(config_secret, body, signature):
+
+        # Re-verify HMAC on every delivery — callers cannot bypass auth.
+        wh_secret = _wh_router._config.secret
+        if not verify_signature(wh_secret, body, signature):
             return JSONResponse(
                 {"detail": "invalid signature"},
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -461,25 +490,7 @@ def create_app(
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
 
-        routes = [
-            WebhookRoute(
-                event=r.event,
-                action=r.action,
-                mode=r.mode,  # type: ignore[arg-type]
-                label=r.label,
-                trigger=r.trigger,
-            )
-            for r in daemon._config.github.routes
-        ]
-        router = WebhookRouter(
-            WebhookConfig(
-                secret=config_secret,
-                allowed_repos=daemon._config.github.allowed_repos,
-                routes=routes,
-            ),
-            daemon=daemon,
-        )
-        dispatches = router.handle(event_type=event_type, payload=payload)
+        dispatches = _wh_router.handle(event_type=event_type, payload=payload)
         return JSONResponse(
             {"event": event_type, "dispatched": len(dispatches)},
             status_code=status.HTTP_200_OK,
