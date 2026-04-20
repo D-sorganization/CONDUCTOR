@@ -15,11 +15,10 @@ from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, gene
 __all__ = [
     "MAXWELL_COST_FORECAST_USD",
     "MAXWELL_FREE_REQUESTS_TOTAL",
-    "MAXWELL_REQUESTS_TOTAL",
     "MAXWELL_REQUEST_COST",
     "MAXWELL_REQUEST_DURATION",
+    "MAXWELL_REQUESTS_TOTAL",
     "MAXWELL_TOKENS_TOTAL",
-    "MAXWELL_COST_FORECAST_USD",
     "build_registry",
     "mount_metrics_endpoint",
     "record_request",
