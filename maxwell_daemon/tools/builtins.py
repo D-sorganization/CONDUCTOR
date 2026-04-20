@@ -15,6 +15,7 @@ These rules apply to every path argument across every tool.
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 import subprocess
 from collections.abc import Awaitable, Callable
@@ -152,12 +153,40 @@ def make_edit_file(root: Path) -> Callable[..., str]:
 
 
 # ── run_bash ─────────────────────────────────────────────────────────────────
+
+#: Env vars that *always* pass through to the ``run_bash`` child. Anything
+#: outside this set is stripped so secrets accidentally exported in the
+#: daemon's process (``AWS_*``, ``ANTHROPIC_API_KEY``, …) cannot leak into an
+#: LLM-controlled subprocess. Operators can extend the list on an ad-hoc basis
+#: with the ``MAXWELL_ALLOW_ENV`` comma-separated allowlist.
+_RUN_BASH_ENV_ALLOWLIST: frozenset[str] = frozenset(
+    {"PATH", "HOME", "LANG", "LC_ALL", "TERM", "USER", "SHELL"}
+)
+
+
+def _build_run_bash_env() -> dict[str, str]:
+    """Build the environment passed to ``run_bash`` subprocesses.
+
+    Inherits only the static allowlist plus any names named in
+    ``MAXWELL_ALLOW_ENV`` (comma-separated). Pure function so tests can poke
+    it directly.
+    """
+    allowed: set[str] = set(_RUN_BASH_ENV_ALLOWLIST)
+    extra = os.environ.get("MAXWELL_ALLOW_ENV", "")
+    for name in extra.split(","):
+        trimmed = name.strip()
+        if trimmed:
+            allowed.add(trimmed)
+    return {k: v for k, v in os.environ.items() if k in allowed}
+
+
 async def _default_runner(cmd: list[str], cwd: str, timeout: float) -> tuple[int, bytes, bytes]:
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         cwd=cwd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=_build_run_bash_env(),
     )
     try:
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
@@ -181,8 +210,9 @@ def make_run_bash(
         name="run_bash",
         description=(
             "Run a bash command inside the workspace root. The command runs via "
-            "``bash -lc`` with ``cwd`` pinned to the workspace. Output is combined "
-            "stdout+stderr, truncated to a bounded length."
+            "``bash -c`` with ``cwd`` pinned to the workspace. Environment is "
+            "reduced to a safe allowlist (see MAXWELL_ALLOW_ENV). Output is "
+            "combined stdout+stderr, truncated to a bounded length."
         ),
         params=[
             ToolParam(name="command", type="string", description="Bash command line"),
@@ -197,7 +227,8 @@ def make_run_bash(
     async def run_bash(command: str, timeout_seconds: int | float | None = None) -> str:
         timeout = float(timeout_seconds) if timeout_seconds is not None else default_timeout
         cwd = str(root.resolve())
-        rc, stdout, stderr = await run(["bash", "-lc", command], cwd, timeout)
+        # ``-c`` (no ``-l``) so login-profile files don't run and leak state.
+        rc, stdout, stderr = await run(["bash", "-c", command], cwd, timeout)
         body = stdout + (b"\n" + stderr if stderr else b"")
         truncated = False
         if len(body) > max_output_bytes:

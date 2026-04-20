@@ -110,6 +110,10 @@ class TestRunBash:
         async def runner(cmd: list[str], cwd: str, timeout: float) -> tuple[int, bytes, bytes]:
             assert cwd == str(tmp_path)
             assert cmd[-1] == "echo hi"
+            # Must invoke ``bash -c`` (not ``-lc``) so login-profile files
+            # (``~/.bash_profile`` etc.) do not run — they can mutate PATH and
+            # inject arbitrary environment the operator did not opt into.
+            assert cmd[:2] == ["bash", "-c"]
             return 0, b"hi\n", b""
 
         bash = make_run_bash(tmp_path, runner=runner)
@@ -151,6 +155,26 @@ class TestRunBash:
         bash = make_run_bash(tmp_path, runner=runner, max_output_bytes=100)
         out = await bash(command="yes")
         assert "truncated" in out.lower()
+
+    async def test_default_runner_strips_unexpected_env_vars(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Unexpected env vars set in the parent process must not leak to the child."""
+        monkeypatch.setenv("SECRET_KEY", "hunter2")
+        bash = make_run_bash(tmp_path)
+        out = await bash(command="env | grep SECRET_KEY || true")
+        assert "SECRET_KEY" not in out
+        assert "hunter2" not in out
+
+    async def test_default_runner_honours_allowlist_env_var(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """MAXWELL_ALLOW_ENV names env vars that *may* pass through."""
+        monkeypatch.setenv("SECRET_KEY", "hunter2")
+        monkeypatch.setenv("MAXWELL_ALLOW_ENV", "SECRET_KEY")
+        bash = make_run_bash(tmp_path)
+        out = await bash(command="echo value=$SECRET_KEY")
+        assert "value=hunter2" in out
 
 
 # ── glob_files ───────────────────────────────────────────────────────────────
