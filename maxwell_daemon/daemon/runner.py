@@ -116,10 +116,14 @@ class Daemon:
         self._tasks: dict[str, Task] = {}
         # ``_tasks`` is touched from async workers *and* from synchronous
         # callers like :meth:`submit` (typically a FastAPI request thread).
-        # A plain :class:`threading.Lock` is the right primitive: writers are
-        # sync, readers (``state()``) are sync, and the lock acquisition is
-        # uncontended in the common case. We deliberately do *not* use
-        # :class:`asyncio.Lock` here — ``submit`` is not async.
+        # Single-key operations (``dict[k] = v`` and ``dict.get(k)``) are
+        # GIL-atomic in CPython, so we don't lock hot-path reads/writes.
+        # We only lock the *iteration* sites (:meth:`state`, :meth:`recover`)
+        # and check-then-act sites (:meth:`cancel_task`) where a plain
+        # dict snapshot or read-then-mutate can race a concurrent writer.
+        # Plain :class:`threading.Lock` (not asyncio.Lock) because callers
+        # are a mix of sync and async — acquisition is uncontended under
+        # normal load and a lock-free async path doesn't win us anything.
         self._tasks_lock = threading.Lock()
         self._queue: asyncio.Queue[Task] = asyncio.Queue()
         self._workers: list[asyncio.Task[None]] = []
@@ -201,8 +205,8 @@ class Daemon:
             backend=backend,
             model=model,
         )
-        with self._tasks_lock:
-            self._tasks[task.id] = task
+        # dict[k] = v is GIL-atomic — no lock needed for a single-key write.
+        self._tasks[task.id] = task
         self._task_store.save(task)
         self._queue.put_nowait(task)
         # Fire-and-forget: if there's no running loop yet (e.g. sync test
@@ -241,8 +245,8 @@ class Daemon:
             issue_number=issue_number,
             issue_mode=mode,
         )
-        with self._tasks_lock:
-            self._tasks[task.id] = task
+        # dict[k] = v is GIL-atomic — no lock needed for a single-key write.
+        self._tasks[task.id] = task
         self._task_store.save(task)
         self._queue.put_nowait(task)
         with contextlib.suppress(RuntimeError):
@@ -307,21 +311,27 @@ class Daemon:
         self._issue_executor_factory = executor_factory
 
     def get_task(self, task_id: str) -> Task | None:
-        with self._tasks_lock:
-            return self._tasks.get(task_id)
+        # dict.get is GIL-atomic; no lock needed on hot-path reads.
+        return self._tasks.get(task_id)
 
     def cancel_task(self, task_id: str) -> Task:
         """Cancel a queued task. Raises ValueError if not found or not cancellable."""
+        # Check-then-act: lock so status transition is observed atomically
+        # relative to a concurrent writer.
         with self._tasks_lock:
             task = self._tasks.get(task_id)
+            if task is not None and task.status is TaskStatus.QUEUED:
+                task.status = TaskStatus.CANCELLED
+                task.finished_at = datetime.now(timezone.utc)
         if task is None:
             raise KeyError(task_id)
-        if task.status is not TaskStatus.QUEUED:
+        if task.status is not TaskStatus.CANCELLED:
+            # Under the lock we only flipped QUEUED → CANCELLED; any other
+            # status at read time means the task is already running/done and
+            # cannot be cancelled from here.
             raise ValueError(
                 f"task {task_id} is {task.status.value}; only queued tasks can be cancelled"
             )
-        task.status = TaskStatus.CANCELLED
-        task.finished_at = datetime.now(timezone.utc)
         self._task_store.update_status(task.id, TaskStatus.CANCELLED, finished_at=task.finished_at)
         with contextlib.suppress(RuntimeError):
             loop = asyncio.get_running_loop()
