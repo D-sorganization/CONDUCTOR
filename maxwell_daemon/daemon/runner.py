@@ -11,6 +11,7 @@ import asyncio
 import contextlib
 import logging
 import signal
+import threading
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -113,6 +114,17 @@ class Daemon:
             episodes=EpisodicStore(default_memory),
         )
         self._tasks: dict[str, Task] = {}
+        # ``_tasks`` is touched from async workers *and* from synchronous
+        # callers like :meth:`submit` (typically a FastAPI request thread).
+        # Single-key operations (``dict[k] = v`` and ``dict.get(k)``) are
+        # GIL-atomic in CPython, so we don't lock hot-path reads/writes.
+        # We only lock the *iteration* sites (:meth:`state`, :meth:`recover`)
+        # and check-then-act sites (:meth:`cancel_task`) where a plain
+        # dict snapshot or read-then-mutate can race a concurrent writer.
+        # Plain :class:`threading.Lock` (not asyncio.Lock) because callers
+        # are a mix of sync and async — acquisition is uncontended under
+        # normal load and a lock-free async path doesn't win us anything.
+        self._tasks_lock = threading.Lock()
         self._queue: asyncio.Queue[Task] = asyncio.Queue()
         self._workers: list[asyncio.Task[None]] = []
         self._bg_tasks: set[asyncio.Task[None]] = set()
@@ -144,9 +156,10 @@ class Daemon:
     def recover(self) -> list[Task]:
         """Re-queue tasks from a prior daemon run. Called automatically from start()."""
         recovered = self._task_store.recover_pending()
-        for task in recovered:
-            self._tasks[task.id] = task
-            self._queue.put_nowait(task)
+        with self._tasks_lock:
+            for task in recovered:
+                self._tasks[task.id] = task
+                self._queue.put_nowait(task)
         if recovered:
             log.info("recovered %d pending task(s) from previous run", len(recovered))
         return recovered
@@ -192,6 +205,7 @@ class Daemon:
             backend=backend,
             model=model,
         )
+        # dict[k] = v is GIL-atomic — no lock needed for a single-key write.
         self._tasks[task.id] = task
         self._task_store.save(task)
         self._queue.put_nowait(task)
@@ -231,6 +245,7 @@ class Daemon:
             issue_number=issue_number,
             issue_mode=mode,
         )
+        # dict[k] = v is GIL-atomic — no lock needed for a single-key write.
         self._tasks[task.id] = task
         self._task_store.save(task)
         self._queue.put_nowait(task)
@@ -296,19 +311,27 @@ class Daemon:
         self._issue_executor_factory = executor_factory
 
     def get_task(self, task_id: str) -> Task | None:
+        # dict.get is GIL-atomic; no lock needed on hot-path reads.
         return self._tasks.get(task_id)
 
     def cancel_task(self, task_id: str) -> Task:
         """Cancel a queued task. Raises ValueError if not found or not cancellable."""
-        task = self._tasks.get(task_id)
+        # Check-then-act: lock so status transition is observed atomically
+        # relative to a concurrent writer.
+        with self._tasks_lock:
+            task = self._tasks.get(task_id)
+            if task is not None and task.status is TaskStatus.QUEUED:
+                task.status = TaskStatus.CANCELLED
+                task.finished_at = datetime.now(timezone.utc)
         if task is None:
             raise KeyError(task_id)
-        if task.status is not TaskStatus.QUEUED:
+        if task.status is not TaskStatus.CANCELLED:
+            # Under the lock we only flipped QUEUED → CANCELLED; any other
+            # status at read time means the task is already running/done and
+            # cannot be cancelled from here.
             raise ValueError(
                 f"task {task_id} is {task.status.value}; only queued tasks can be cancelled"
             )
-        task.status = TaskStatus.CANCELLED
-        task.finished_at = datetime.now(timezone.utc)
         self._task_store.update_status(task.id, TaskStatus.CANCELLED, finished_at=task.finished_at)
         with contextlib.suppress(RuntimeError):
             loop = asyncio.get_running_loop()
@@ -324,10 +347,12 @@ class Daemon:
         return task
 
     def state(self) -> DaemonState:
+        with self._tasks_lock:
+            tasks_snapshot = dict(self._tasks)
         return DaemonState(
             version="0.1.0",
             config_path=None,
-            tasks=dict(self._tasks),
+            tasks=tasks_snapshot,
             started_at=self._started_at,
             backends_available=self._router.available_backends(),
         )
@@ -347,8 +372,13 @@ class Daemon:
     async def _execute(self, task: Task) -> None:
         task.status = TaskStatus.RUNNING
         task.started_at = datetime.now(timezone.utc)
-        with contextlib.suppress(Exception):
+        try:
             self._task_store.update_status(task.id, TaskStatus.RUNNING, started_at=task.started_at)
+        except Exception:
+            # Don't silently swallow — a failing task_store is an operational
+            # signal operators need to see in Loki/Grafana. The task itself
+            # still proceeds (status lives on ``task`` in memory).
+            log.exception("task store write failed for task=%s", task.id)
         await self._events.publish(
             Event(kind=EventKind.TASK_STARTED, payload={"id": task.id, "prompt": task.prompt})
         )
@@ -427,8 +457,10 @@ class Daemon:
             # Persist the final task state so restarts see exactly what the
             # daemon saw. Save rather than update_status because status may
             # have flipped more than once through the try/except chain.
-            with contextlib.suppress(Exception):
+            try:
                 self._task_store.save(task)
+            except Exception:
+                log.exception("task store write failed for task=%s", task.id)
 
     async def _execute_issue(self, task: Task, decision: Any) -> None:
         """Run the issue → PR flow. Called with status already RUNNING."""
