@@ -112,6 +112,9 @@ class _Subscription:
     def __del__(self) -> None:
         # Safety net: if the subscription is GC'd without explicit close,
         # still deregister from the bus so subscriber_count() stays accurate.
-        if not self._closed:
-            self._bus._unsubscribe(self._queue)
+        if getattr(self, "_closed", False) is False:
+            try:
+                self._bus._unsubscribe(self._queue)
+            except Exception:
+                pass
             self._closed = True

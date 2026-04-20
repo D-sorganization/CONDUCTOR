@@ -90,6 +90,7 @@ async def discover_issues(
             continue
         task = daemon.submit_issue(repo=repo, issue_number=issue.number, mode=mode)
         dispatched.append(task.id)
+        seen.add(issue.number)
 
     return DiscoveryResult(
         repo=repo,
