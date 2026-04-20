@@ -103,6 +103,10 @@ module = ["prometheus_client", "prometheus_client.*", "opentelemetry.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = ["tomli"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = ["anthropic", "anthropic.*", "openai", "openai.*"]
 ignore_missing_imports = false
 
