@@ -467,6 +467,8 @@ class Daemon:
             )
         finally:
             task.finished_at = datetime.now(timezone.utc)
+            with contextlib.suppress(Exception):
+                self._memory.scratchpad.clear(task.id)
             # Persist the final task state so restarts see exactly what the
             # daemon saw. Save rather than update_status because status may
             # have flipped more than once through the try/except chain.
