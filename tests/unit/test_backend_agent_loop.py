@@ -96,9 +96,7 @@ class TestReadFile:
 
     def test_traversal_rejected(self, tmp_path: Path) -> None:
         backend = _make_backend()
-        result = backend._execute_tool(
-            "read_file", {"path": "../../etc/passwd"}, str(tmp_path)
-        )
+        result = backend._execute_tool("read_file", {"path": "../../etc/passwd"}, str(tmp_path))
         assert "ERROR" in result
         assert "traversal" in result.lower() or "escapes" in result.lower()
 
@@ -164,16 +162,12 @@ class TestEditFile:
 class TestRunBash:
     def test_runs_simple_command(self, tmp_path: Path) -> None:
         backend = _make_backend()
-        result = backend._execute_tool(
-            "run_bash", {"command": "echo hello"}, str(tmp_path)
-        )
+        result = backend._execute_tool("run_bash", {"command": "echo hello"}, str(tmp_path))
         assert "hello" in result
 
     def test_nonzero_exit_includes_output(self, tmp_path: Path) -> None:
         backend = _make_backend()
-        result = backend._execute_tool(
-            "run_bash", {"command": "exit 42"}, str(tmp_path)
-        )
+        result = backend._execute_tool("run_bash", {"command": "exit 42"}, str(tmp_path))
         assert "42" in result
 
     def test_runs_in_workspace_dir(self, tmp_path: Path) -> None:
@@ -182,7 +176,7 @@ class TestRunBash:
         result = backend._execute_tool(
             "run_bash",
             {
-                "command": f'{sys.executable} -c "from pathlib import Path; print(Path(\'marker.txt\').read_text())"',
+                "command": f"{sys.executable} -c \"from pathlib import Path; print(Path('marker.txt').read_text())\"",
             },
             str(tmp_path),
         )
@@ -195,18 +189,14 @@ class TestGlobFiles:
         (tmp_path / "b.py").write_text("")
         (tmp_path / "c.txt").write_text("")
         backend = _make_backend()
-        result = backend._execute_tool(
-            "glob_files", {"pattern": "*.py"}, str(tmp_path)
-        )
+        result = backend._execute_tool("glob_files", {"pattern": "*.py"}, str(tmp_path))
         assert "a.py" in result
         assert "b.py" in result
         assert "c.txt" not in result
 
     def test_no_matches(self, tmp_path: Path) -> None:
         backend = _make_backend()
-        result = backend._execute_tool(
-            "glob_files", {"pattern": "*.xyz"}, str(tmp_path)
-        )
+        result = backend._execute_tool("glob_files", {"pattern": "*.xyz"}, str(tmp_path))
         assert "no matches" in result.lower()
 
     def test_recursive_glob(self, tmp_path: Path) -> None:
@@ -214,9 +204,7 @@ class TestGlobFiles:
         sub.mkdir()
         (sub / "deep.py").write_text("")
         backend = _make_backend()
-        result = backend._execute_tool(
-            "glob_files", {"pattern": "**/*.py"}, str(tmp_path)
-        )
+        result = backend._execute_tool("glob_files", {"pattern": "**/*.py"}, str(tmp_path))
         assert "deep.py" in result
 
 
@@ -224,17 +212,13 @@ class TestGrepFiles:
     def test_finds_pattern(self, tmp_path: Path) -> None:
         (tmp_path / "code.py").write_text("def my_func():\n    pass\n")
         backend = _make_backend()
-        result = backend._execute_tool(
-            "grep_files", {"pattern": "my_func"}, str(tmp_path)
-        )
+        result = backend._execute_tool("grep_files", {"pattern": "my_func"}, str(tmp_path))
         assert "my_func" in result
 
     def test_no_match_returns_no_matches(self, tmp_path: Path) -> None:
         (tmp_path / "code.py").write_text("hello world")
         backend = _make_backend()
-        result = backend._execute_tool(
-            "grep_files", {"pattern": "XXXX_NOTHERE"}, str(tmp_path)
-        )
+        result = backend._execute_tool("grep_files", {"pattern": "XXXX_NOTHERE"}, str(tmp_path))
         assert "no matches" in result.lower()
 
     def test_traversal_in_search_path_rejected(self, tmp_path: Path) -> None:
@@ -262,9 +246,7 @@ class TestPathTraversal:
     )
     def test_read_rejects_escaping_paths(self, bad_path: str, tmp_path: Path) -> None:
         backend = _make_backend()
-        result = backend._execute_tool(
-            "read_file", {"path": bad_path}, str(tmp_path)
-        )
+        result = backend._execute_tool("read_file", {"path": bad_path}, str(tmp_path))
         assert "ERROR" in result
 
     @pytest.mark.parametrize(
@@ -305,8 +287,9 @@ class TestTurnLimit:
             ],
         )
 
-        with patch.object(backend._client.messages, "create", return_value=tool_response), pytest.raises(
-            RuntimeError, match="max_turns=3"
+        with (
+            patch.object(backend._client.messages, "create", return_value=tool_response),
+            pytest.raises(RuntimeError, match="max_turns=3"),
         ):
             asyncio.run(
                 backend.complete(
@@ -328,8 +311,9 @@ class TestTurnLimit:
                 }
             ],
         )
-        with patch.object(backend._client.messages, "create", return_value=tool_response), pytest.raises(
-            RuntimeError, match="max_turns=2"
+        with (
+            patch.object(backend._client.messages, "create", return_value=tool_response),
+            pytest.raises(RuntimeError, match="max_turns=2"),
         ):
             asyncio.run(
                 backend.complete(
@@ -434,9 +418,7 @@ class TestInitialization:
 
 
 class TestPromptAndCosts:
-    def test_system_messages_are_folded_into_system_prompt(
-        self, tmp_path: Path
-    ) -> None:
+    def test_system_messages_are_folded_into_system_prompt(self, tmp_path: Path) -> None:
         backend = _make_backend()
         response = _make_response(stop_reason="end_turn", text="ok")
         captured: dict[str, Any] = {}
@@ -512,8 +494,9 @@ class TestToolAndStopReasonBranches:
                 raise ValueError("force fallback")
             return original_relative_to(self, *other)
 
-        with patch.object(Path, "read_text", new=_read_text), patch.object(
-            Path, "relative_to", new=_relative_to
+        with (
+            patch.object(Path, "read_text", new=_read_text),
+            patch.object(Path, "relative_to", new=_relative_to),
         ):
             result = backend._execute_tool(
                 "grep_files", {"pattern": "needle", "path": "sub"}, str(tmp_path)
@@ -540,9 +523,7 @@ class TestToolAndStopReasonBranches:
 
 
 class TestStreamAndHealthCheck:
-    async def _collect_stream(
-        self, backend: AgentLoopBackend, tmp_path: Path
-    ) -> list[str]:
+    async def _collect_stream(self, backend: AgentLoopBackend, tmp_path: Path) -> list[str]:
         return [chunk async for chunk in backend.stream([], workspace_dir=str(tmp_path))]
 
     def test_stream_yields_final_content(self, tmp_path: Path) -> None:
@@ -572,9 +553,7 @@ class TestStreamAndHealthCheck:
 
     def test_health_check_reports_failure(self) -> None:
         backend = _make_backend()
-        with patch.object(
-            backend._client.messages, "create", side_effect=RuntimeError("boom")
-        ):
+        with patch.object(backend._client.messages, "create", side_effect=RuntimeError("boom")):
             assert asyncio.run(backend.health_check()) is False
 
 

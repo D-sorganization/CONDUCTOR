@@ -16,6 +16,7 @@ import glob as _glob
 import os
 import subprocess
 from collections.abc import AsyncIterator
+from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -230,9 +231,7 @@ class AgentLoopBackend(ILLMBackend):
     # Tool execution
     # ------------------------------------------------------------------
 
-    def _execute_tool(
-        self, name: str, inputs: dict[str, Any], workspace_dir: str
-    ) -> str:
+    def _execute_tool(self, name: str, inputs: dict[str, Any], workspace_dir: str) -> str:
         """Dispatch a single tool call and return the string result.
 
         All exceptions are caught and returned as error strings so the loop
@@ -243,9 +242,7 @@ class AgentLoopBackend(ILLMBackend):
         except Exception as exc:
             return f"ERROR: {exc}"
 
-    def _dispatch_tool(
-        self, name: str, inputs: dict[str, Any], workspace_dir: str
-    ) -> str:
+    def _dispatch_tool(self, name: str, inputs: dict[str, Any], workspace_dir: str) -> str:
         if name == "read_file":
             path = self._safe_path(workspace_dir, inputs["path"])
             return path.read_text(errors="replace")
@@ -276,7 +273,7 @@ class AgentLoopBackend(ILLMBackend):
             timeout: int = int(inputs.get("timeout") or 30)
             result = subprocess.run(
                 command,
-                shell=True,
+                shell=True,  # nosec B602
                 cwd=workspace_dir,
                 capture_output=True,
                 text=True,
@@ -341,7 +338,7 @@ class AgentLoopBackend(ILLMBackend):
     ) -> None:
         if self._ledger is None:
             return
-        try:
+        with suppress(Exception):
             from conductor.core.ledger import CostRecord
 
             price_in, price_out = _MODEL_PRICING.get(model, (3.0, 15.0))
@@ -365,8 +362,6 @@ class AgentLoopBackend(ILLMBackend):
                 agent_id=agent_id,
             )
             self._ledger.record(rec)
-        except Exception:
-            pass  # Cost recording must never crash the agent loop
 
     # ------------------------------------------------------------------
     # ILLMBackend interface
@@ -464,9 +459,7 @@ class AgentLoopBackend(ILLMBackend):
             # If tool_use, execute tools and continue loop.
             if response.stop_reason == "tool_use":
                 # Append the assistant turn with all content blocks.
-                sdk_messages.append(
-                    {"role": "assistant", "content": response.content}
-                )
+                sdk_messages.append({"role": "assistant", "content": response.content})
 
                 # Build tool results.
                 tool_results: list[dict[str, Any]] = []
@@ -497,9 +490,7 @@ class AgentLoopBackend(ILLMBackend):
                 raw={"turns": turn + 1},
             )
 
-        raise RuntimeError(
-            f"Agent loop exceeded max_turns={effective_max_turns} without end_turn"
-        )
+        raise RuntimeError(f"Agent loop exceeded max_turns={effective_max_turns} without end_turn")
 
     async def stream(
         self,
