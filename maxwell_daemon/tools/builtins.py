@@ -296,7 +296,9 @@ def make_glob_files(root: Path) -> Callable[..., str]:
     def glob_files(pattern: str) -> str:
         root_resolved = root.resolve()
         matches = sorted(
-            str(p.relative_to(root_resolved)) for p in root_resolved.glob(pattern) if p.is_file()
+            p.relative_to(root_resolved).as_posix()
+            for p in root_resolved.glob(pattern)
+            if p.is_file()
         )
         if not matches:
             return f"no matches for pattern {pattern!r}"
@@ -337,7 +339,7 @@ def make_grep_files(root: Path) -> Callable[..., str]:
                 continue
             for lineno, line in enumerate(text.splitlines(), start=1):
                 if regex.search(line):
-                    rel = path.relative_to(root_resolved)
+                    rel = path.relative_to(root_resolved).as_posix()
                     hits.append(f"{rel}:{lineno}:{line}")
         if not hits:
             return f"no match for {pattern!r}"
