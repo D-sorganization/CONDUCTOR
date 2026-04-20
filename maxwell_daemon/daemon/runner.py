@@ -375,6 +375,7 @@ class Daemon:
 
     async def _worker_loop(self, worker_id: int) -> None:
         from maxwell_daemon.logging import bind_context
+
         log.info("worker %d ready", worker_id)
         while self._running or not self._queue.empty():
             try:
