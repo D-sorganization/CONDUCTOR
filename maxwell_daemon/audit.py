@@ -362,7 +362,7 @@ def verify_chain(path: Path) -> list[dict[str, Any]]:
             expected_hash = hashlib.sha256(payload.encode()).hexdigest()
             if stored_hash != expected_hash:
                 violations.append({"line": lineno, "error": "entry_hash mismatch", "entry": obj})
-            if stored_prev != prev_hash and lineno > 1:
+            if stored_prev != prev_hash:
                 violations.append(
                     {
                         "line": lineno,
