@@ -10,10 +10,17 @@ Routing rules (in priority order):
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 from maxwell_daemon.backends import ILLMBackend, registry
 from maxwell_daemon.config import BackendConfig, MaxwellDaemonConfig
+
+if TYPE_CHECKING:
+    pass
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -25,8 +32,9 @@ class RouteDecision:
 
 
 class BackendRouter:
-    def __init__(self, config: MaxwellDaemonConfig) -> None:
+    def __init__(self, config: MaxwellDaemonConfig, budget: Any = None) -> None:
         self._config = config
+        self._budget = budget
         self._instances: dict[str, ILLMBackend] = {}
 
     def _get_or_create(self, name: str, cfg: BackendConfig) -> ILLMBackend:

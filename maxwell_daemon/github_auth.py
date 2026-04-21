@@ -151,7 +151,8 @@ class GitHubAuth:
 
         now = int(time.time())
         payload = {"iat": now - 60, "exp": now + 600, "iss": str(self._app_id)}
-        assert self._private_key_pem is not None
+        if self._private_key_pem is None:
+            raise RuntimeError("GitHub App private key is not configured.")
         jwt_token = _jwt.encode(payload, self._private_key_pem, algorithm="RS256")
 
         resp = _httpx.post(

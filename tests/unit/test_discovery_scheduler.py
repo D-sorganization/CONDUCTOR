@@ -226,7 +226,7 @@ class TestRunOnce:
 
 class TestLifecycle:
     async def test_startup_jitter_elapsed_runs_first_tick(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         gh = _FakeGitHub({"a/b": [_issue(1, labels=["deliver"])]})
         daemon = _FakeDaemon()
@@ -236,19 +236,20 @@ class TestLifecycle:
             repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],
             interval_seconds=60.0,
             jitter=True,
+            dedup_path=tmp_path / "dedup.json",
         )
         monkeypatch.setattr(
             "maxwell_daemon.daemon.scheduler.secrets.randbelow",
             lambda _: 0,
         )
         await sched.start()
-        await asyncio.sleep(0.02)
+        await asyncio.sleep(0.05)
         await sched.stop()
         assert daemon.submitted
         assert daemon.submitted[0]["issue_number"] == 1
 
     async def test_stop_during_startup_jitter_exits_without_tick(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         gh = _FakeGitHub({"a/b": [_issue(1, labels=["deliver"])]})
         daemon = _FakeDaemon()
@@ -258,6 +259,7 @@ class TestLifecycle:
             repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],
             interval_seconds=60.0,
             jitter=True,
+            dedup_path=tmp_path / "dedup.json",
         )
         monkeypatch.setattr(
             "maxwell_daemon.daemon.scheduler.secrets.randbelow",
