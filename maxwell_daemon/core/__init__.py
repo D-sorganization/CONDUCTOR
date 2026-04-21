@@ -2,6 +2,7 @@
 
 from maxwell_daemon.core.budget import BudgetCheck, BudgetEnforcer, BudgetExceededError
 from maxwell_daemon.core.ledger import CostLedger, CostRecord
+from maxwell_daemon.core.pruner import RetentionPruner, prune_once
 from maxwell_daemon.core.repo_overrides import RepoOverrides, resolve_overrides
 from maxwell_daemon.core.router import BackendRouter
 
@@ -13,5 +14,7 @@ __all__ = [
     "CostLedger",
     "CostRecord",
     "RepoOverrides",
+    "RetentionPruner",
+    "prune_once",
     "resolve_overrides",
 ]

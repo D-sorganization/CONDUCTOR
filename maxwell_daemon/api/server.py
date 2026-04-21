@@ -263,8 +263,16 @@ def create_app(
             return _make_rbac_dep(Role.admin, auth_token, jwt_config)
         return auth
 
+    # Pass retention policy to the audit logger so its internal rotate/prune
+    # calls honour the same TTL + row-cap policy as the SQLite stores (#148).
+    _retention = daemon._config.retention
     _audit: AuditLogger | None = (
-        AuditLogger(audit_log_path, retention_days=daemon._config.agent.task_retention_days)
+        AuditLogger(
+            audit_log_path,
+            retention_days=_retention.retention_days,
+            max_entries=_retention.max_audit_rows,
+            min_age_seconds=_retention.min_age_seconds,
+        )
         if audit_log_path is not None
         else None
     )

@@ -142,10 +142,6 @@ class CostLedger:
     def by_backend(self, since: datetime) -> dict[str, float]:
         return self._by_backend_sync(since)
 
-    def prune(self, older_than_days: int, *, now: datetime | None = None) -> int:
-        """Delete ledger records older than the retention cutoff."""
-        return self._prune_sync(older_than_days, now=now)
-
     # ── Async public API (used by the agent loop and request handlers) ────────
 
     async def arecord(self, rec: CostRecord) -> None:
@@ -197,6 +193,82 @@ class CostLedger:
         min_elapsed = 60.0
         fraction = max(elapsed_seconds, min_elapsed) / month_total_seconds
         return spent / fraction
+
+    # ── Pruning ───────────────────────────────────────────────────────────────
+
+    def prune(
+        self,
+        older_than_days: int | None = None,
+        *,
+        retention_days: int | None = None,
+        max_rows: int | None = None,
+        min_age_seconds: int = 3600,
+        now: datetime | None = None,
+    ) -> int:
+        """Drop cost records older than TTL and optionally cap total rows.
+
+        Two calling conventions are supported for backward compatibility:
+
+        * ``prune(older_than_days)`` — simple TTL-only pruning (from PR #225).
+          Honoured by the admin ``/api/v1/admin/prune`` endpoint and legacy
+          callers in :mod:`maxwell_daemon.daemon.runner`.
+        * ``prune(retention_days=..., max_rows=..., min_age_seconds=...)`` —
+          full retention policy (from PR #148). Used by
+          :class:`maxwell_daemon.core.pruner.RetentionPruner`.
+
+        When ``max_rows`` is provided, rows younger than ``min_age_seconds``
+        are never deleted regardless of the cap — a safety floor that prevents
+        a misconfigured ``max_rows=1`` from wiping out fresh spend data.
+        """
+        # Normalise: accept either ``older_than_days`` (positional) or
+        # ``retention_days`` (kwarg). They mean the same thing.
+        ttl_days = older_than_days if older_than_days is not None else retention_days
+        if ttl_days is None:
+            raise TypeError(
+                "CostLedger.prune: either 'older_than_days' or 'retention_days' is required"
+            )
+        if ttl_days < 0:
+            raise ValueError(f"retention_days must be >= 0, got {ttl_days}")
+
+        now_ts = now or datetime.now(timezone.utc)
+        ttl_cutoff = (now_ts - timedelta(days=ttl_days)).isoformat()
+
+        removed = 0
+        with self._lock:
+            if max_rows is None:
+                # Legacy simple TTL-only path (PR #225).
+                cur = self._conn.execute(
+                    "DELETE FROM cost_records WHERE ts < ?",
+                    (ttl_cutoff,),
+                )
+                removed += cur.rowcount or 0
+            else:
+                # Full policy path (PR #148): TTL + safety floor + row cap.
+                safety_cutoff = (now_ts - timedelta(seconds=min_age_seconds)).isoformat()
+                cur = self._conn.execute(
+                    "DELETE FROM cost_records WHERE ts < ? AND ts < ?",
+                    (ttl_cutoff, safety_cutoff),
+                )
+                removed += cur.rowcount or 0
+
+                total_row = self._conn.execute("SELECT COUNT(*) FROM cost_records").fetchone()
+                total = int(total_row[0])
+                if total > max_rows:
+                    excess = total - max_rows
+                    # Delete the oldest rows that are also past the safety floor.
+                    victim_rows = self._conn.execute(
+                        "SELECT id FROM cost_records WHERE ts < ? ORDER BY ts ASC LIMIT ?",
+                        (safety_cutoff, excess),
+                    ).fetchall()
+                    if victim_rows:
+                        ids = [r[0] for r in victim_rows]
+                        placeholders = ",".join("?" * len(ids))
+                        cur = self._conn.execute(
+                            f"DELETE FROM cost_records WHERE id IN ({placeholders})",  # nosec B608
+                            ids,
+                        )
+                        removed += cur.rowcount or 0
+        return removed
 
     def close(self) -> None:
         """Close the persistent connection. Call on daemon shutdown."""

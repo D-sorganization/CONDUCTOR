@@ -357,9 +357,101 @@ class TaskStore:
         """Mark stale RUNNING tasks as FAILED; return anything still QUEUED."""
         return self._recover_sync()
 
-    def prune(self, older_than_days: int, *, now: datetime | None = None) -> int:
-        """Delete terminal tasks completed before the retention cutoff."""
-        return self._prune_sync(older_than_days, now=now)
+    # ── Pruning ───────────────────────────────────────────────────────────────
+
+    def prune(
+        self,
+        older_than_days: int | None = None,
+        *,
+        retention_days: int | None = None,
+        max_tasks: int | None = None,
+        min_age_seconds: int = 3600,
+        now: datetime | None = None,
+    ) -> int:
+        """Drop terminal tasks older than TTL and optionally cap total rows.
+
+        Two calling conventions are supported for backward compatibility:
+
+        * ``prune(older_than_days)`` — simple TTL-only pruning (from PR #225).
+          Delegates to :meth:`_prune_sync`. Used by the legacy
+          ``Daemon.prune_retained_history`` helper and the admin endpoint.
+        * ``prune(retention_days=..., max_tasks=..., min_age_seconds=...)`` —
+          full retention policy (from PR #148). Used by
+          :class:`maxwell_daemon.core.pruner.RetentionPruner`.
+
+        Only tasks whose ``status`` is one of ``COMPLETED``, ``FAILED``, or
+        ``CANCELLED`` are eligible for deletion — in-flight work (``QUEUED``,
+        ``DISPATCHED``, ``RUNNING``) is preserved regardless of age.
+
+        When ``max_tasks`` is provided, rows younger than ``min_age_seconds``
+        are never deleted regardless of the cap — a safety floor that prevents
+        a misconfigured ``max_tasks=1`` from wiping out fresh data.
+
+        Returns the number of rows deleted.
+        """
+        # Legacy path: positional ``older_than_days`` without row cap.
+        if max_tasks is None and retention_days is None:
+            if older_than_days is None:
+                raise TypeError(
+                    "TaskStore.prune: either 'older_than_days' or 'retention_days' is required"
+                )
+            return self._prune_sync(older_than_days, now=now)
+
+        # Full policy path (PR #148): TTL + safety floor + row cap.
+        from maxwell_daemon.daemon.runner import TaskStatus as _TaskStatus
+
+        ttl_days = retention_days if retention_days is not None else older_than_days
+        if ttl_days is None:
+            raise TypeError("TaskStore.prune: 'retention_days' is required when 'max_tasks' is set")
+
+        terminal = (
+            _TaskStatus.COMPLETED.value,
+            _TaskStatus.FAILED.value,
+            _TaskStatus.CANCELLED.value,
+        )
+        now_ts = now or datetime.now(timezone.utc)
+        ttl_cutoff = (now_ts - timedelta(days=ttl_days)).isoformat()
+        safety_cutoff = (now_ts - timedelta(seconds=min_age_seconds)).isoformat()
+
+        removed = 0
+        with self._lock, self._connect() as conn:
+            # TTL: drop terminal tasks older than retention_days AND older than the safety floor.
+            cur = conn.execute(
+                f"""
+                DELETE FROM tasks
+                WHERE status IN ({",".join("?" * len(terminal))})
+                  AND COALESCE(finished_at, updated_at, created_at) < ?
+                  AND COALESCE(finished_at, updated_at, created_at) < ?
+                """,  # nosec B608 — status values are hard-coded enum members
+                (*terminal, ttl_cutoff, safety_cutoff),
+            )
+            removed += cur.rowcount or 0
+
+            # Row cap: drop oldest terminal tasks that exceed max_tasks, respecting safety floor.
+            total_row = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()
+            total = int(total_row[0])
+            if total > max_tasks:
+                excess = total - max_tasks
+                # Pick the oldest terminal tasks that are past the safety floor.
+                victim_rows = conn.execute(
+                    f"""
+                    SELECT id FROM tasks
+                    WHERE status IN ({",".join("?" * len(terminal))})
+                      AND COALESCE(finished_at, updated_at, created_at) < ?
+                    ORDER BY COALESCE(finished_at, updated_at, created_at) ASC
+                    LIMIT ?
+                    """,  # nosec B608 — status values are hard-coded enum members
+                    (*terminal, safety_cutoff, excess),
+                ).fetchall()
+                if victim_rows:
+                    ids = [r[0] for r in victim_rows]
+                    placeholders = ",".join("?" * len(ids))
+                    cur = conn.execute(
+                        f"DELETE FROM tasks WHERE id IN ({placeholders})",  # nosec B608
+                        ids,
+                    )
+                    removed += cur.rowcount or 0
+        return removed
 
     # ── Async public API ───────────────────────────────────────────────────────
 

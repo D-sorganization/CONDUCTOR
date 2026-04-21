@@ -29,6 +29,7 @@ from maxwell_daemon.core import (
     BudgetExceededError,
     CostLedger,
     CostRecord,
+    RetentionPruner,
     resolve_overrides,
 )
 from maxwell_daemon.core.task_store import TaskStore
@@ -168,6 +169,15 @@ class Daemon:
         # Fleet coordination: track last-seen time per worker machine for heartbeat.
         # Keys are machine names; values are the UTC datetime of last contact.
         self._worker_last_seen: dict[str, datetime] = {}
+        # Retention pruner — started in :meth:`start`, stopped in :meth:`stop`.
+        # Audit logger is owned by the API layer, so the pruner only covers
+        # task store + cost ledger here; API server starts its own audit-only
+        # pruner when ``audit_log_path`` is configured.
+        self._pruner = RetentionPruner(
+            config=config.retention,
+            task_store=self._task_store,
+            ledger=self._ledger,
+        )
 
     @property
     def events(self) -> EventBus:
@@ -242,10 +252,11 @@ class Daemon:
         except (AttributeError, NotImplementedError, OSError):
             # Windows or unsupported platform — skip signal handler.
             pass
-        if self._config.agent.task_retention_days > 0:
-            prune_task = asyncio.create_task(self._retention_loop(), name="retention-pruner")
-            self._bg_tasks.add(prune_task)
-            prune_task.add_done_callback(self._bg_tasks.discard)
+        # Start retention pruner (no-op if disabled in config).
+        # The RetentionPruner (PR #148) replaces the simpler _retention_loop
+        # from PR #225: it honours the full RetentionConfig (TTL + row caps +
+        # safety floor + enabled switch) rather than just task_retention_days.
+        await self._pruner.start()
         log.info("daemon started with %d workers", self._worker_count)
 
     def recover(self) -> list[Task]:
@@ -268,6 +279,8 @@ class Daemon:
         :param timeout: max seconds to wait for in-flight work when drain=True.
         """
         self._running = False
+        # Stop the pruner first so it doesn't kick a new tick during shutdown.
+        await self._pruner.stop()
         if drain:
             # Let workers finish whatever they've pulled off the queue.
             try:
@@ -319,19 +332,6 @@ class Daemon:
         pruned_tasks = self._task_store.prune(days)
         pruned_ledger = self._ledger.prune(days)
         return {"tasks": pruned_tasks, "ledger_records": pruned_ledger}
-
-    async def _retention_loop(self) -> None:
-        interval = self._config.agent.task_prune_interval_seconds
-        while self._running:
-            try:
-                result = self.prune_retained_history()
-                if result["tasks"] or result["ledger_records"]:
-                    log.info("retention prune completed: %s", result)
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                log.warning("retention prune failed", exc_info=True)
-            await asyncio.sleep(interval)
 
     def submit(
         self,

@@ -104,9 +104,18 @@ class AuditLogger:
         from a scheduler; not automatic so tests stay deterministic).
     """
 
-    def __init__(self, path: Path, *, retention_days: int = 0) -> None:
+    def __init__(
+        self,
+        path: Path,
+        *,
+        retention_days: int = 0,
+        max_entries: int = 0,
+        min_age_seconds: int = 3600,
+    ) -> None:
         self._path = path
         self._retention_days = retention_days
+        self._max_entries = max_entries
+        self._min_age_seconds = min_age_seconds
         self._last_hash: str | None = None  # cached tail hash; None = unread
 
     # ── public API ──────────────────────────────────────────────────────────
@@ -240,6 +249,74 @@ class AuditLogger:
         # Update the cached tail hash to the last rechained entry.
         self._last_hash = rechained[-1]["entry_hash"] if rechained else None
         return removed
+
+    def prune(self) -> int:
+        """Apply retention policy: TTL rotation + row cap.
+
+        Combines :meth:`rotate` (TTL-based deletion) with a row-cap step that
+        drops the oldest entries when the file exceeds ``max_entries``.  The
+        ``min_age_seconds`` floor protects recent entries from the row cap
+        even when the cap is exceeded by recent-only traffic.
+
+        Returns the total number of entries removed.
+        """
+        from datetime import timedelta
+
+        removed = self.rotate() if self._retention_days > 0 else 0
+
+        if self._max_entries <= 0 or not self._path.is_file():
+            return removed
+
+        lines = self._path.read_text(encoding="utf-8").splitlines()
+        entries: list[dict[str, Any]] = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            with contextlib.suppress(json.JSONDecodeError):
+                entries.append(json.loads(line))
+
+        if len(entries) <= self._max_entries:
+            return removed
+
+        safety_cutoff = datetime.now(timezone.utc) - timedelta(seconds=self._min_age_seconds)
+        excess = len(entries) - self._max_entries
+
+        # Walk forward, dropping oldest entries that are past the safety floor
+        # until either excess is satisfied or we hit a too-young entry.
+        drop_indices: set[int] = set()
+        for idx, entry in enumerate(entries):
+            if len(drop_indices) >= excess:
+                break
+            try:
+                ts = datetime.fromisoformat(entry.get("timestamp", ""))
+            except (TypeError, ValueError):
+                # Undated entries are treated as old — safe to drop.
+                drop_indices.add(idx)
+                continue
+            if ts < safety_cutoff:
+                drop_indices.add(idx)
+
+        if not drop_indices:
+            return removed
+
+        cap_removed = len(drop_indices)
+        kept = [e for i, e in enumerate(entries) if i not in drop_indices]
+
+        # Record the cap-based prune so observers see why entries disappeared.
+        # The log entry is appended to the file; we include it in the kept set
+        # below so the rotation event itself survives the rewrite.
+        rotation_entry = self.log_agent_operation(
+            operation="log_cap_prune",
+            details={"removed": cap_removed, "max_entries": self._max_entries},
+        )
+        kept.append(rotation_entry.as_dict())
+
+        rechained = _rechain(kept)
+        kept_lines = [json.dumps(e, separators=(",", ":")) for e in rechained]
+        self._write_lines(kept_lines)
+        self._last_hash = rechained[-1]["entry_hash"] if rechained else None
+        return removed + cap_removed
 
     # ── internals ───────────────────────────────────────────────────────────
 

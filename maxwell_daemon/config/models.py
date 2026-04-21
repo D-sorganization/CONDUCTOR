@@ -186,6 +186,54 @@ class APIConfig(BaseModel):
     rate_limit_groups: dict[str, RateLimitConfig] = Field(default_factory=dict)
 
 
+class RetentionConfig(BaseModel):
+    """Pruning / TTL policy for tasks, cost ledger, and audit log.
+
+    Defaults are conservative: 30-day TTL, generous row caps, daily prune, and
+    a one-hour safety floor so recent data is never deleted regardless of caps.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    retention_days: int = Field(
+        30,
+        ge=1,
+        description="Drop records older than this many days. Only terminal "
+        "(completed/failed/cancelled) tasks are eligible.",
+    )
+    max_tasks: int = Field(
+        10_000,
+        ge=1,
+        description="Cap on total rows in the tasks table. Oldest terminal "
+        "tasks are pruned first when the cap is exceeded.",
+    )
+    max_ledger_rows: int = Field(
+        100_000,
+        ge=1,
+        description="Cap on total rows in the cost ledger.",
+    )
+    max_audit_rows: int = Field(
+        100_000,
+        ge=1,
+        description="Cap on total rows in the audit log.",
+    )
+    prune_interval_seconds: int = Field(
+        86_400,
+        ge=60,
+        description="How often the background pruner runs. Default: 1 day.",
+    )
+    min_age_seconds: int = Field(
+        3_600,
+        ge=0,
+        description="Safety floor: never prune rows younger than this many "
+        "seconds, regardless of row caps. Default: 1 hour.",
+    )
+    enabled: bool = Field(
+        True,
+        description="Master switch. Set to False to disable pruning entirely.",
+    )
+
+
 class MaxwellDaemonConfig(BaseModel):
     """Root configuration object."""
 
@@ -201,6 +249,7 @@ class MaxwellDaemonConfig(BaseModel):
     api: APIConfig = Field(default_factory=lambda: APIConfig())
     budget: BudgetConfig = Field(default_factory=lambda: BudgetConfig())
     github: GithubConfig = Field(default_factory=lambda: GithubConfig())
+    retention: RetentionConfig = Field(default_factory=lambda: RetentionConfig())
 
     @field_validator("backends")
     @classmethod
