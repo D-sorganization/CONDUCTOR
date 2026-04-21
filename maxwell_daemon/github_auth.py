@@ -126,54 +126,6 @@ class GitHubAuth:
             return self._static_token
         return await self._async_installation_token()
 
-    async def _async_installation_token(self) -> str:
-        """Return a valid installation token, refreshing asynchronously if needed."""
-        if self._cache is not None and self._cache.expires_at - time.monotonic() > 300:
-            return self._cache.token
-
-        token, expires_at = await self._async_fetch_installation_token()
-        self._cache = _AppTokenCache(token=token, expires_at=expires_at)
-        return token
-
-    async def _async_fetch_installation_token(self) -> tuple[str, float]:
-        """Call GitHub asynchronously to get a fresh installation token."""
-        try:
-            import jwt as _jwt
-        except ImportError as exc:
-            raise ImportError(
-                "PyJWT is required for GitHub App auth — it is included in maxwell-daemon's default deps."
-            ) from exc
-
-        try:
-            import httpx as _httpx
-        except ImportError as exc:
-            raise ImportError("httpx is required for GitHub App auth.") from exc
-
-        now = int(time.time())
-        payload = {"iat": now - 60, "exp": now + 600, "iss": str(self._app_id)}
-        jwt_token = _jwt.encode(payload, self._private_key_pem, algorithm="RS256")
-
-        async with _httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"https://api.github.com/app/installations/{self._installation_id}/access_tokens",
-                headers={
-                    "Authorization": f"Bearer {jwt_token}",
-                    "Accept": "application/vnd.github+json",
-                    "X-GitHub-Api-Version": "2022-11-28",
-                },
-                timeout=15,
-            )
-        resp.raise_for_status()
-        data = resp.json()
-        token: str = data["token"]
-        import datetime as _dt
-
-        expires_iso: str = data["expires_at"]
-        expires_utc = _dt.datetime.fromisoformat(expires_iso.replace("Z", "+00:00"))
-        seconds_until = (expires_utc - _dt.datetime.now(_dt.timezone.utc)).total_seconds()
-        expires_mono = time.monotonic() + seconds_until
-        return token, expires_mono
-
     # ------------------------------------------------------------------ #
     # Internal: App token lifecycle (synchronous — legacy)
     # ------------------------------------------------------------------ #
