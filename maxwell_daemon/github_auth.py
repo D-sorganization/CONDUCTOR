@@ -93,7 +93,8 @@ class GitHubAuth:
     @property
     def token(self) -> str:
         if self._mode == "token":
-            assert self._static_token is not None
+            if self._static_token is None:  # pragma: no cover — invariant: set by from_token
+                raise RuntimeError("GitHubAuth in token mode but _static_token is None")
             return self._static_token
         return self._installation_token()
 

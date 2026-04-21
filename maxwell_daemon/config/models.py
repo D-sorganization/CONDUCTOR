@@ -82,7 +82,8 @@ class RepoConfig(BaseModel):
     def _expand_path(cls, v: Any) -> Path:
         if isinstance(v, str):
             return Path(v).expanduser()
-        assert isinstance(v, Path)
+        if not isinstance(v, Path):  # pragma: no cover — pydantic only calls with str or Path
+            raise TypeError(f"Expected str or Path, got {type(v).__name__}")
         return v
 
 

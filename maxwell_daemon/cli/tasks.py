@@ -68,7 +68,8 @@ def list_tasks(
         p = _preset_store().get(preset)
         if p is None:
             _fail(f"preset {preset!r} not found — try `maxwell-daemon tasks preset list`")
-        assert p is not None
+        if p is None:  # pragma: no cover — guarded by _fail() above which raises SystemExit
+            return
         status = status or p.status
         kind = kind or p.kind
         repo = repo or p.repo

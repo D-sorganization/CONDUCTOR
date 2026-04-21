@@ -157,7 +157,8 @@ class DiscoveryScheduler:
         self._stop_event = None
 
     async def _loop(self) -> None:
-        assert self._stop_event is not None
+        if self._stop_event is None:  # pragma: no cover — only reachable if start() wasn't called
+            raise RuntimeError("DiscoveryScheduler._loop() called before start()")
         # Startup jitter: spread first-tick firing across the interval to
         # prevent thundering herd when multiple daemons start together.
         if self._jitter:

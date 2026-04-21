@@ -91,7 +91,8 @@ class CostAlerter:
         )
 
     async def send(self, dispatch: AlertDispatch) -> None:
-        assert self._webhook_url is not None
+        if self._webhook_url is None:
+            raise RuntimeError("CostAlerter.send() called but no webhook_url is configured")
         payload = format_slack_payload(dispatch)
         async with httpx.AsyncClient() as client:
             r = await client.post(self._webhook_url, json=payload, timeout=10.0)

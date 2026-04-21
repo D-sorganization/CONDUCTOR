@@ -501,8 +501,8 @@ class Daemon:
         from maxwell_daemon.gh.executor import IssueExecutor
         from maxwell_daemon.gh.workspace import Workspace
 
-        assert task.issue_repo is not None
-        assert task.issue_number is not None
+        if task.issue_repo is None or task.issue_number is None:
+            raise ValueError(f"Task {task.id} is missing issue_repo or issue_number")
 
         github = self._github_client or GitHubClient()
         workspace = self._workspace or Workspace(root=self._workspace_root)
