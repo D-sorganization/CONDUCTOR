@@ -132,6 +132,7 @@ class AgentLoopBackend(ILLMBackend):
     """
 
     name = "agent-loop"
+    supports_streaming: bool = True
 
     def __init__(
         self,
@@ -449,22 +450,124 @@ class AgentLoopBackend(ILLMBackend):
         temperature: float = 1.0,
         max_tokens: int | None = None,
         tools: list[dict[str, Any]] | None = None,
+        workspace_dir: str | None = None,
+        repo: str | None = None,
+        agent_id: str | None = None,
+        issue_title: str = "",
+        issue_body: str = "",
         **kwargs: Any,
     ) -> AsyncIterator[str]:
-        """Run the loop and yield the final text as a single chunk.
+        """Yield tokens in real time using the Anthropic SDK streaming context manager.
 
-        True token-stream passthrough for a multi-turn agent is tricky (we'd
-        have to surface tool-call deltas) and isn't needed yet. This simple
-        adapter keeps the ILLMBackend contract honest.
+        For the final turn of the agent loop (``stop_reason == "end_turn"``)
+        tokens are emitted as they arrive from the API, so the caller sees the
+        first token without waiting for the whole response to buffer.
+
+        Tool-use turns are executed normally (non-streaming) because there is
+        nothing useful for callers to consume mid-tool-call. When the model
+        eventually produces the final text response, that last turn streams
+        token-by-token.
+
+        Falls back to a single buffered yield if the installed Anthropic SDK
+        does not expose ``messages.stream`` (pre-0.7 versions).
         """
-        resp = await self.complete(
-            messages,
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            **kwargs,
+        effective_model = model or self._default_model
+        workspace_raw = workspace_dir or self._default_workspace
+        if not workspace_raw:
+            raise ValueError("No workspace specified")
+        effective_workspace = Path(workspace_raw).resolve()
+
+        # Check whether true streaming is available on this SDK version.
+        stream_cm = getattr(self._client.messages, "stream", None)
+        if stream_cm is None:
+            # Graceful fallback: buffer the whole response and yield once.
+            resp = await self.complete(
+                messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                workspace_dir=workspace_dir,
+                repo=repo,
+                agent_id=agent_id,
+                issue_title=issue_title,
+                issue_body=issue_body,
+                **kwargs,
+            )
+            yield resp.content
+            return
+
+        tool_registry = self._registry_factory(effective_workspace)
+        tool_defs = tool_registry.to_anthropic()
+
+        system_prompt = self._build_system_blocks(
+            system_texts=[m.content for m in messages if m.role is MessageRole.SYSTEM],
+            workspace=effective_workspace,
+            repo=repo,
+            issue_title=issue_title,
+            issue_body=issue_body,
+            agent_id=agent_id,
         )
-        yield resp.content
+        sdk_messages: list[dict[str, Any]] = [
+            {"role": m.role.value, "content": m.content}
+            for m in messages
+            if m.role is not MessageRole.SYSTEM
+        ]
+
+        effective_max_turns = self._max_turns
+
+        for turn in range(effective_max_turns):
+            # Condense if needed (same guard as complete()).
+            if self._condenser is not None and self._condenser.should_condense(0):
+                sdk_messages = await self._condenser.condense(sdk_messages)
+
+            async with stream_cm(
+                model=effective_model,
+                max_tokens=max_tokens or 8096,
+                system=system_prompt,  # type: ignore[arg-type]
+                tools=tool_defs,  # type: ignore[arg-type]
+                messages=sdk_messages,  # type: ignore[arg-type]
+            ) as s:
+                # Collect streamed text chunks for this turn.
+                turn_text_parts: list[str] = []
+                async for text in s.text_stream:
+                    turn_text_parts.append(text)
+                    yield text
+
+                final_message = await s.get_final_message()
+
+            stop_reason = final_message.stop_reason
+
+            if stop_reason == "end_turn":
+                return
+
+            if stop_reason == "tool_use":
+                # Append the assistant message (with tool_use blocks) and
+                # dispatch tool calls, then loop for the next turn.
+                sdk_messages.append({"role": "assistant", "content": final_message.content})
+                tool_results: list[dict[str, Any]] = []
+                for block in final_message.content:
+                    if getattr(block, "type", None) != "tool_use":
+                        continue
+                    tool_use: Any = block
+                    result = await tool_registry.invoke(tool_use.name, tool_use.input)
+                    content = f"ERROR: {result.content}" if result.is_error else result.content
+                    tool_results.append(
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": tool_use.id,
+                            "content": content,
+                            **({"is_error": True} if result.is_error else {}),
+                        }
+                    )
+                sdk_messages.append({"role": "user", "content": tool_results})
+                continue
+
+            # Any other stop reason — treat as terminal.
+            return
+
+        raise RuntimeError(
+            f"agent loop (stream) exceeded max_turns={effective_max_turns} without end_turn"
+        )
 
     async def health_check(self) -> bool:
         try:
@@ -480,7 +583,7 @@ class AgentLoopBackend(ILLMBackend):
     def capabilities(self, model: str) -> BackendCapabilities:
         price_in, price_out = _MODEL_PRICING.get(model, (3.0, 15.0))
         return BackendCapabilities(
-            supports_streaming=False,
+            supports_streaming=True,
             supports_tool_use=True,
             supports_vision=True,
             supports_system_prompt=True,

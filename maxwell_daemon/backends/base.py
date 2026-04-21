@@ -88,6 +88,10 @@ class ILLMBackend(ABC):
     #: Unique identifier used in config (`backend: "claude"`).
     name: str = ""
 
+    #: Whether this backend supports true token-level streaming via ``stream()``.
+    #: Subclasses that implement real streaming should override this to ``True``.
+    supports_streaming: bool = False
+
     @abstractmethod
     async def complete(
         self,
