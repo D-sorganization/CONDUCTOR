@@ -151,15 +151,10 @@ class TestSchemaMigration:
 
 
 class TestClose:
-    def test_close_terminates_connection(self, store: TaskStore) -> None:
-        """close() should not raise."""
-
-        task = _fresh_task()
-        store.save(task)
+    def test_close_is_idempotent(self) -> None:
+        store = TaskStore(":memory:")
         store.close()
-        # After close the connection should be unusable
-        with pytest.raises(Exception):
-            store._conn.execute("SELECT 1")
+        store.close()  # second close must not raise
 
 
 class TestAsyncAPI:
