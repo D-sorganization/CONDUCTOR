@@ -757,7 +757,7 @@ def create_app(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
 
-    @app.get("/api/v1/ssh/sessions", dependencies=[Depends(_rbac_admin)])
+    @app.get("/api/v1/ssh/sessions", dependencies=[Depends(_require_admin())])
     async def ssh_sessions() -> Any:
         """List active SSH sessions."""
         pool = _ssh_pool()
@@ -765,7 +765,7 @@ def create_app(
             return _ssh_unavailable()
         return {"sessions": pool.sessions()}
 
-    @app.get("/api/v1/ssh/keys", dependencies=[Depends(_rbac_admin)])
+    @app.get("/api/v1/ssh/keys", dependencies=[Depends(_require_admin())])
     async def ssh_list_keys() -> Any:
         """List machines that have stored SSH keys."""
         try:
@@ -775,7 +775,7 @@ def create_app(
         store = SSHKeyStore()
         return {"machines": store.list_machines()}
 
-    @app.get("/api/v1/ssh/keys/{machine}", dependencies=[Depends(_rbac_admin)])
+    @app.get("/api/v1/ssh/keys/{machine}", dependencies=[Depends(_require_admin())])
     async def ssh_get_key(machine: str) -> Any:
         """Return the public key for *machine*, generating it if absent."""
         try:
@@ -786,7 +786,7 @@ def create_app(
         _, pub = store.get_or_generate(machine)
         return {"machine": machine, "public_key": pub}
 
-    @app.delete("/api/v1/ssh/keys/{machine}", dependencies=[Depends(_rbac_admin)])
+    @app.delete("/api/v1/ssh/keys/{machine}", dependencies=[Depends(_require_admin())])
     async def ssh_delete_key(machine: str) -> Any:
         """Remove stored SSH keys for *machine*."""
         try:
@@ -842,7 +842,7 @@ def create_app(
             "exit_code": result.exit_code,
         }
 
-    @app.get("/api/v1/ssh/files", dependencies=[Depends(_rbac_admin)])
+    @app.get("/api/v1/ssh/files", dependencies=[Depends(_require_admin())])
     async def ssh_list_files(
         host: str = Query(...),
         user: str = Query(...),
