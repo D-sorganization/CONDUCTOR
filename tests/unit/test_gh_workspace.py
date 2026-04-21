@@ -6,6 +6,7 @@ Tested by substituting the subprocess runner. No actual git invoked here.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from pathlib import Path
 
 import pytest
@@ -166,22 +167,22 @@ class TestPathFor:
                 mock_re2.match.return_value = True
                 # The target path will be outside root after .resolve() if we
                 # pre-create a symlink. Use a known-safe approach: mock resolve.
-                with patch.object(
-                    type(tmp_path / "repo" / "t1"),
-                    "resolve",
-                    return_value=Path("/tmp/outside_root"),
+                with (
+                    patch.object(
+                        type(tmp_path / "repo" / "t1"),
+                        "resolve",
+                        return_value=Path("/tmp/outside_root"),
+                    ),
+                    contextlib.suppress(WorkspaceError, Exception),
                 ):
-                    try:
-                        ws.path_for("owner/repo", task_id="t1")
-                    except (WorkspaceError, Exception):
-                        pass  # either error is acceptable
+                    ws.path_for("owner/repo", task_id="t1")
 
 
 class TestCleanupOld:
     def test_cleanup_removes_old_dirs(self, tmp_path: Path) -> None:
-        from datetime import timedelta
         import os
         import time as _time
+        from datetime import timedelta
 
         ws = Workspace(root=tmp_path)
         repo_dir = tmp_path / "repo"
