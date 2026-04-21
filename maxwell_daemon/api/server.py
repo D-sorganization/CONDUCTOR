@@ -36,7 +36,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from maxwell_daemon import __version__
 from maxwell_daemon.audit import AuditLogger
-from maxwell_daemon.auth import JWTConfig, Role, require_role
+from maxwell_daemon.auth import JWTConfig, Role
 from maxwell_daemon.daemon import Daemon
 from maxwell_daemon.daemon.runner import Task
 from maxwell_daemon.logging import bind_context
@@ -169,6 +169,53 @@ def _auth_dep(token: str | None) -> Any:
     return _check
 
 
+def _make_rbac_dep(
+    minimum: Role,
+    static_token: str | None,
+    jwt_config: JWTConfig | None,
+) -> Any:
+    """Return a FastAPI dependency that enforces *minimum* role.
+
+    Accepts EITHER:
+    - A valid static admin bearer token (treated as Role.admin), OR
+    - A valid JWT bearer token whose role is >= *minimum*.
+
+    When neither JWT config nor static token is configured, all requests pass
+    (open/dev mode — same behaviour as the existing ``_auth_dep(None)``).
+    """
+
+    async def _dep(authorization: Annotated[str | None, Header()] = None) -> None:
+        # Open mode — nothing to enforce.
+        if static_token is None and jwt_config is None:
+            return
+
+        if authorization is None or not authorization.startswith("Bearer "):
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "bearer token required")
+
+        raw = authorization.removeprefix("Bearer ").strip()
+
+        # Fast path: static admin token — always grants admin-level access.
+        if static_token is not None and hmac.compare_digest(raw.encode(), static_token.encode()):
+            return  # admitted as admin
+
+        # JWT path.
+        if jwt_config is None:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid token")
+
+        try:
+            claims = jwt_config.decode_token(raw)
+        except Exception as exc:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, f"invalid token: {exc}") from exc
+
+        if not claims.has_role(minimum):
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                f"role {claims.role.value!r} lacks {minimum.value!r} privileges",
+            )
+
+    return _dep
+
+
 def create_app(
     daemon: Daemon,
     *,
@@ -189,19 +236,27 @@ def create_app(
     )
     mount_metrics_endpoint(app)
     _mount_web_ui(app)
-    auth = _auth_dep(auth_token)
+    # When jwt_config is provided, RBAC deps handle all auth (both static and JWT).
+    # The `auth` dep becomes a pass-through so endpoints with Depends(auth) still
+    # work with JWT tokens without double-checking the static token.
+    auth = _auth_dep(None if jwt_config is not None else auth_token)
 
     # RBAC dependency factories — only active when jwt_config is provided.
     # When jwt_config is None the daemon falls back to static bearer-token auth
     # (``auth`` dep above) and role enforcement is skipped.
+    def _require_viewer() -> Any:
+        if jwt_config is not None:
+            return _make_rbac_dep(Role.viewer, auth_token, jwt_config)
+        return auth
+
     def _require_operator() -> Any:
         if jwt_config is not None:
-            return require_role(Role.operator, jwt_config)
+            return _make_rbac_dep(Role.operator, auth_token, jwt_config)
         return auth
 
     def _require_admin() -> Any:
         if jwt_config is not None:
-            return require_role(Role.admin, jwt_config)
+            return _make_rbac_dep(Role.admin, auth_token, jwt_config)
         return auth
 
     _audit: AuditLogger | None = AuditLogger(audit_log_path) if audit_log_path is not None else None
@@ -313,7 +368,7 @@ def create_app(
             raise HTTPException(status_code=503, detail="no backends available")
         return {"status": "ready"}
 
-    @app.get("/api/v1/backends", dependencies=[Depends(auth)])
+    @app.get("/api/v1/backends", dependencies=[Depends(_require_viewer())])
     async def list_backends() -> dict[str, Any]:
         return {"backends": daemon.state().backends_available}
 
@@ -331,7 +386,7 @@ def create_app(
         )
         return TaskView.from_task(task)
 
-    @app.get("/api/v1/tasks", dependencies=[Depends(auth)])
+    @app.get("/api/v1/tasks", dependencies=[Depends(_require_viewer())])
     async def list_tasks(
         status: Annotated[str | None, Query()] = None,
         kind: Annotated[str | None, Query()] = None,
@@ -348,7 +403,7 @@ def create_app(
         tasks.sort(key=lambda t: t.created_at, reverse=True)
         return [TaskView.from_task(t) for t in tasks[:limit]]
 
-    @app.get("/api/v1/tasks/{task_id}", dependencies=[Depends(auth)])
+    @app.get("/api/v1/tasks/{task_id}", dependencies=[Depends(_require_viewer())])
     async def get_task(task_id: str) -> TaskView:
         t = daemon.get_task(task_id)
         if t is None:
@@ -401,7 +456,7 @@ def create_app(
 
     @app.post(
         "/api/v1/issues/dispatch",
-        dependencies=[Depends(auth), Depends(_require_operator())],
+        dependencies=[Depends(auth), Depends(_require_admin())],
         status_code=status.HTTP_202_ACCEPTED,
     )
     async def dispatch_issue(payload: IssueDispatch) -> TaskView:
@@ -476,7 +531,7 @@ def create_app(
             "failures": failures,
         }
 
-    @app.get("/api/v1/issues/{owner}/{name}", dependencies=[Depends(auth)])
+    @app.get("/api/v1/issues/{owner}/{name}", dependencies=[Depends(_require_viewer())])
     async def list_repo_issues(
         owner: str, name: str, state: str = "open", limit: int = 25
     ) -> list[dict[str, Any]]:
@@ -493,7 +548,7 @@ def create_app(
             for i in issues
         ]
 
-    @app.get("/api/v1/fleet", dependencies=[Depends(auth)])
+    @app.get("/api/v1/fleet", dependencies=[Depends(_require_viewer())])
     async def fleet_overview() -> dict[str, Any]:
         """Return fleet manifest data merged with live task counts per repo."""
         import os
@@ -560,7 +615,7 @@ def create_app(
             "repos": repos,
         }
 
-    @app.get("/api/v1/audit", dependencies=[Depends(auth)])
+    @app.get("/api/v1/audit", dependencies=[Depends(_require_viewer())])
     async def audit_log(
         limit: int = Query(default=200, ge=1, le=10_000),
         offset: int = Query(default=0, ge=0),
@@ -573,7 +628,7 @@ def create_app(
             "audit_enabled": True,
         }
 
-    @app.get("/api/v1/audit/verify", dependencies=[Depends(auth)])
+    @app.get("/api/v1/audit/verify", dependencies=[Depends(_require_viewer())])
     async def audit_verify() -> dict[str, Any]:
         """Verify the audit log hash chain.  Returns violations (empty = clean)."""
         from maxwell_daemon.audit import verify_chain
@@ -615,7 +670,25 @@ def create_app(
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
-    @app.get("/api/v1/cost", dependencies=[Depends(auth)])
+    @app.get("/api/v1/workers", dependencies=[Depends(_require_viewer())])
+    async def workers_status() -> dict[str, Any]:
+        """Return current worker count and queue depth."""
+        state = daemon.state()
+        return {
+            "worker_count": state.worker_count,
+            "queue_depth": state.queue_depth,
+        }
+
+    @app.put("/api/v1/workers", dependencies=[Depends(_require_viewer())])
+    async def set_workers(count: int) -> dict[str, Any]:
+        """Rescale the worker pool to *count* workers."""
+        try:
+            await daemon.set_worker_count(count)
+        except ValueError as e:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from None
+        return {"worker_count": count}
+
+    @app.get("/api/v1/cost", dependencies=[Depends(_require_viewer())])
     async def cost_summary() -> CostSummary:
         now = datetime.now(timezone.utc)
         start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -718,7 +791,7 @@ def create_app(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
 
-    @app.get("/api/v1/ssh/sessions", dependencies=[Depends(auth)])
+    @app.get("/api/v1/ssh/sessions", dependencies=[Depends(_require_admin())])
     async def ssh_sessions() -> Any:
         """List active SSH sessions."""
         pool = _ssh_pool()
@@ -726,7 +799,7 @@ def create_app(
             return _ssh_unavailable()
         return {"sessions": pool.sessions()}
 
-    @app.get("/api/v1/ssh/keys", dependencies=[Depends(auth)])
+    @app.get("/api/v1/ssh/keys", dependencies=[Depends(_require_admin())])
     async def ssh_list_keys() -> Any:
         """List machines that have stored SSH keys."""
         try:
@@ -736,7 +809,7 @@ def create_app(
         store = SSHKeyStore()
         return {"machines": store.list_machines()}
 
-    @app.get("/api/v1/ssh/keys/{machine}", dependencies=[Depends(auth)])
+    @app.get("/api/v1/ssh/keys/{machine}", dependencies=[Depends(_require_admin())])
     async def ssh_get_key(machine: str) -> Any:
         """Return the public key for *machine*, generating it if absent."""
         try:
@@ -747,7 +820,7 @@ def create_app(
         _, pub = store.get_or_generate(machine)
         return {"machine": machine, "public_key": pub}
 
-    @app.delete("/api/v1/ssh/keys/{machine}", dependencies=[Depends(auth)])
+    @app.delete("/api/v1/ssh/keys/{machine}", dependencies=[Depends(_require_admin())])
     async def ssh_delete_key(machine: str) -> Any:
         """Remove stored SSH keys for *machine*."""
         try:
@@ -803,7 +876,7 @@ def create_app(
             "exit_code": result.exit_code,
         }
 
-    @app.get("/api/v1/ssh/files", dependencies=[Depends(auth)])
+    @app.get("/api/v1/ssh/files", dependencies=[Depends(_require_admin())])
     async def ssh_list_files(
         host: str = Query(...),
         user: str = Query(...),
@@ -856,7 +929,19 @@ def create_app(
 
         if auth_token is not None:
             presented = ws.query_params.get("token") or ""
-            if not hmac.compare_digest(presented.encode(), auth_token.encode()):
+            authenticated = False
+            if auth_token is not None and hmac.compare_digest(
+                presented.encode(), auth_token.encode()
+            ):
+                authenticated = True
+            elif jwt_config is not None and presented:
+                try:
+                    _ws_claims = jwt_config.decode_token(presented)
+                    if _ws_claims.has_role(Role.admin):
+                        authenticated = True
+                except Exception:  # nosec B110 — invalid JWT, fall through
+                    pass
+            if not authenticated:
                 await ws.close(code=1008)
                 return
 
