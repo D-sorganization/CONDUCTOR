@@ -203,3 +203,77 @@ class TestInvariantClassDecorator:
 class TestContractsEnabled:
     def test_reports_state(self) -> None:
         assert contracts_enabled() in (True, False)
+
+
+class TestPostconditionDecoratorAsync:
+    def test_async_violation_raises(self) -> None:
+        import asyncio
+
+        @postcondition(lambda result: result > 100, "result > 100")
+        async def too_small_async() -> int:
+            return 5
+
+        with pytest.raises(PostconditionError, match="result > 100"):
+            asyncio.run(too_small_async())
+
+    def test_async_passes_when_ok(self) -> None:
+        import asyncio
+
+        @postcondition(lambda result: result > 0, "must be positive")
+        async def positive() -> int:
+            return 42
+
+        assert asyncio.run(positive()) == 42
+
+    def test_async_skipped_when_contracts_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import asyncio
+
+        monkeypatch.setenv("MAXWELL_CONTRACTS", "off")
+
+        @postcondition(lambda result: result > 100, "result > 100")
+        async def always_small() -> int:
+            return 1
+
+        # Contract is off — should not raise
+        assert asyncio.run(always_small()) == 1
+
+
+class TestInvariantAsyncMethods:
+    def test_async_method_invariant_checked(self) -> None:
+        import asyncio
+
+        @invariant(lambda self: self.value >= 0, "value must be non-negative")
+        class AsyncCounter:
+            def __init__(self) -> None:
+                self.value = 0
+
+            async def increment(self) -> None:
+                self.value += 1
+
+            async def break_invariant(self) -> None:
+                self.value = -1
+
+        c = AsyncCounter()
+        asyncio.run(c.increment())
+        assert c.value == 1
+
+        with pytest.raises(ContractViolation, match="non-negative"):
+            asyncio.run(c.break_invariant())
+
+    def test_async_invariant_skipped_when_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import asyncio
+
+        monkeypatch.setenv("MAXWELL_CONTRACTS", "off")
+
+        @invariant(lambda self: self.value >= 0, "value must be non-negative")
+        class AsyncCounter:
+            def __init__(self) -> None:
+                self.value = 0
+
+            async def break_invariant(self) -> None:
+                self.value = -1
+
+        c = AsyncCounter()
+        # Contracts off — should not raise
+        asyncio.run(c.break_invariant())
+        assert c.value == -1

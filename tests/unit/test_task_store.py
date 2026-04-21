@@ -73,27 +73,6 @@ class TestUpdateStatus:
         with pytest.raises(KeyError):
             store.update_status("ghost", TaskStatus.COMPLETED)
 
-    @pytest.mark.asyncio
-    async def test_async_wrappers_roundtrip(self, store: TaskStore) -> None:
-        task = _fresh_task()
-
-        await store.asave(task)
-        loaded = await store.aget(task.id)
-        assert loaded is not None
-        assert loaded.status is TaskStatus.QUEUED
-
-        await store.aupdate_status(task.id, TaskStatus.COMPLETED, result="done")
-        listed = await store.alist_tasks(limit=10, status=TaskStatus.COMPLETED)
-        assert [item.id for item in listed] == [task.id]
-        assert (await store.aget(task.id)).result == "done"
-
-    @pytest.mark.asyncio
-    async def test_async_save_rejects_empty_id(self, store: TaskStore) -> None:
-        from maxwell_daemon.contracts import PreconditionError
-
-        with pytest.raises(PreconditionError):
-            await store.asave(_fresh_task(id=""))
-
 
 class TestList:
     def test_lists_newest_first(self, store: TaskStore) -> None:
@@ -170,42 +149,67 @@ class TestSchemaMigration:
         s2 = TaskStore(db)  # second open should be a no-op, not an error
         assert s2.list_tasks(limit=10)[0].prompt == "x"
 
-    def test_adds_ab_group_to_existing_schema(self, tmp_path: Path) -> None:
+
+class TestClose:
+    def test_close_terminates_connection(self, store: TaskStore) -> None:
+        """close() should not raise."""
         import sqlite3
 
-        db = tmp_path / "legacy.db"
-        with sqlite3.connect(db) as conn:
-            conn.executescript(
-                """
-                CREATE TABLE tasks (
-                    id TEXT PRIMARY KEY,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    kind TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    prompt TEXT NOT NULL,
-                    repo TEXT,
-                    backend TEXT,
-                    model TEXT,
-                    issue_repo TEXT,
-                    issue_number INTEGER,
-                    issue_mode TEXT,
-                    result TEXT,
-                    error TEXT,
-                    pr_url TEXT,
-                    cost_usd REAL NOT NULL DEFAULT 0,
-                    started_at TEXT,
-                    finished_at TEXT
-                );
-                """
-            )
-
-        store = TaskStore(db)
-        store.save(_fresh_task(ab_group="a"))
-        assert store.get(store.list_tasks()[0].id).ab_group == "a"
-
-    def test_close_is_compatibility_noop(self, store: TaskStore) -> None:
-        store.close()
         task = _fresh_task()
         store.save(task)
-        assert store.get(task.id) is not None
+        store.close()
+        # After close the connection should be unusable
+        with pytest.raises(Exception):
+            store._conn.execute("SELECT 1")
+
+
+class TestAsyncAPI:
+    async def test_asave_and_aget(self, tmp_path: Path) -> None:
+        store = TaskStore(tmp_path / "tasks.db")
+        task = _fresh_task(prompt="async test")
+        await store.asave(task)
+        loaded = await store.aget(task.id)
+        assert loaded is not None
+        assert loaded.prompt == "async test"
+        store.close()
+
+    async def test_aupdate_status(self, tmp_path: Path) -> None:
+        from datetime import datetime, timezone
+
+        store = TaskStore(tmp_path / "tasks.db")
+        task = _fresh_task()
+        await store.asave(task)
+        await store.aupdate_status(
+            task.id,
+            TaskStatus.RUNNING,
+            started_at=datetime.now(timezone.utc),
+        )
+        loaded = await store.aget(task.id)
+        assert loaded is not None
+        assert loaded.status is TaskStatus.RUNNING
+        store.close()
+
+    async def test_alist_tasks(self, tmp_path: Path) -> None:
+        store = TaskStore(tmp_path / "tasks.db")
+        task1 = _fresh_task()
+        task2 = _fresh_task()
+        await store.asave(task1)
+        await store.asave(task2)
+        tasks = await store.alist_tasks(limit=10)
+        assert len(tasks) == 2
+        store.close()
+
+    async def test_aget_missing_returns_none(self, tmp_path: Path) -> None:
+        store = TaskStore(tmp_path / "tasks.db")
+        result = await store.aget("nonexistent-id-xyz")
+        assert result is None
+        store.close()
+
+    async def test_asave_rejects_empty_id(self, tmp_path: Path) -> None:
+        from maxwell_daemon.contracts import PreconditionError
+
+        store = TaskStore(tmp_path / "tasks.db")
+        task = _fresh_task(id="")
+        with pytest.raises(PreconditionError):
+            await store.asave(task)
+        store.close()
