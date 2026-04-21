@@ -392,9 +392,7 @@ class AgentLoopBackend(ILLMBackend):
 
             # Per-task limit from BudgetConfig (injected via budget_enforcer).
             if self._budget_enforcer is not None:
-                per_task_limit = getattr(
-                    self._budget_enforcer._config, "per_task_limit_usd", None
-                )
+                per_task_limit = getattr(self._budget_enforcer._config, "per_task_limit_usd", None)
                 if per_task_limit is not None and cumulative_cost > per_task_limit:
                     raise BudgetExceededError(
                         f"agent loop exceeded per-task budget limit "
