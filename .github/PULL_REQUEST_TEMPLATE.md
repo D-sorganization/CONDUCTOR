@@ -1,6 +1,6 @@
 ## Summary
 
-- 
+-
 
 ## Related Issue
 
@@ -29,5 +29,3 @@ Closes #
 - [ ] Backward compatibility impact is described
 
 ## Notes for Reviewers
-
- 
