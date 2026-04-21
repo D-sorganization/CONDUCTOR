@@ -276,7 +276,7 @@ def create_app(
             try:
                 claims = jwt_config.decode_token(raw)
                 return {"sub": claims.sub, "role": claims.role.value, "exp": claims.exp.isoformat()}
-            except Exception:
+            except Exception:  # nosec B110 — invalid/expired JWT, fall through to token check
                 pass
         if auth_token is not None and authorization:
             raw = authorization.removeprefix("Bearer ").strip()
