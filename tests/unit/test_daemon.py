@@ -295,11 +295,13 @@ class TestRunningStatusResilience:
 
         # Run inline with a fixture-free caplog substitute
         import io
+
         handler = logging.StreamHandler(io.StringIO())
         handler.setLevel(logging.ERROR)
         logger = logging.getLogger("maxwell_daemon.daemon")
         logger.addHandler(handler)
         try:
+
             async def run() -> None:
                 d = Daemon(minimal_config, ledger_path=isolated_ledger_path)
                 d._task_store = store  # type: ignore[assignment]
