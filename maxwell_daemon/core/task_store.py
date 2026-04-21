@@ -206,6 +206,47 @@ class TaskStore:
             rows = conn.execute(query, args).fetchall()
         return [_row_to_task(r) for r in rows]
 
+    def dispatched_issue_numbers(self, repo: str, *, within_days: int = 7) -> set[int]:
+        """Return issue numbers dispatched for *repo* within the last *within_days* days.
+
+        Used by the discovery scheduler to seed its dedup set on startup so a
+        restart doesn't re-dispatch every open issue.
+        """
+        from datetime import timezone, timedelta
+
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=within_days)).isoformat()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT issue_number FROM tasks
+                WHERE issue_repo = ?
+                  AND issue_number IS NOT NULL
+                  AND status NOT IN ('failed')
+                  AND created_at >= ?
+                """,
+                (repo, cutoff),
+            ).fetchall()
+        return {int(r["issue_number"]) for r in rows}
+
+    def prune(self, *, older_than_days: int) -> int:
+        """Delete COMPLETED and FAILED tasks older than *older_than_days*.
+
+        Returns the number of rows deleted.
+        """
+        from datetime import timezone, timedelta
+
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=older_than_days)).isoformat()
+        with self._lock, self._connect() as conn:
+            cur = conn.execute(
+                """
+                DELETE FROM tasks
+                WHERE status IN ('completed', 'failed')
+                  AND created_at < ?
+                """,
+                (cutoff,),
+            )
+            return cur.rowcount
+
     def recover_pending(self) -> list[Task]:
         """Mark stale RUNNING tasks as FAILED; return anything still QUEUED."""
         from maxwell_daemon.daemon.runner import TaskStatus as _TaskStatus

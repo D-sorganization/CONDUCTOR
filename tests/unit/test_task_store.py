@@ -148,3 +148,78 @@ class TestSchemaMigration:
         s1.save(_fresh_task(prompt="x"))
         s2 = TaskStore(db)  # second open should be a no-op, not an error
         assert s2.list_tasks(limit=10)[0].prompt == "x"
+
+
+class TestPrune:
+    def test_prune_deletes_old_completed(self, store: TaskStore) -> None:
+        old_task = _fresh_task(
+            kind=TaskKind.ISSUE,
+        )
+        store.save(old_task)
+        store.update_status(old_task.id, TaskStatus.COMPLETED)
+        # Backdating created_at requires direct DB update.
+        from datetime import timezone, timedelta
+        old_ts = (datetime.now(timezone.utc) - timedelta(days=40)).isoformat()
+        import sqlite3
+        with sqlite3.connect(store._path) as conn:  # type: ignore[attr-defined]
+            conn.execute("UPDATE tasks SET created_at = ? WHERE id = ?", (old_ts, old_task.id))
+        deleted = store.prune(older_than_days=30)
+        assert deleted == 1
+        assert store.get(old_task.id) is None
+
+    def test_prune_keeps_recent_tasks(self, store: TaskStore) -> None:
+        recent = _fresh_task(status=TaskStatus.COMPLETED)
+        store.save(recent)
+        store.update_status(recent.id, TaskStatus.COMPLETED)
+        deleted = store.prune(older_than_days=30)
+        assert deleted == 0
+        assert store.get(recent.id) is not None
+
+    def test_prune_keeps_queued_tasks(self, store: TaskStore) -> None:
+        task = _fresh_task(status=TaskStatus.QUEUED)
+        store.save(task)
+        import sqlite3
+        from datetime import timezone, timedelta
+        old_ts = (datetime.now(timezone.utc) - timedelta(days=40)).isoformat()
+        with sqlite3.connect(store._path) as conn:  # type: ignore[attr-defined]
+            conn.execute("UPDATE tasks SET created_at = ? WHERE id = ?", (old_ts, task.id))
+        deleted = store.prune(older_than_days=30)
+        assert deleted == 0  # QUEUED tasks are never pruned
+        assert store.get(task.id) is not None
+
+
+class TestDispatchedIssueNumbers:
+    def test_returns_dispatched_numbers(self, store: TaskStore) -> None:
+        task = _fresh_task(
+            kind=TaskKind.ISSUE,
+            issue_repo="owner/repo",
+            issue_number=42,
+            status=TaskStatus.COMPLETED,
+        )
+        store.save(task)
+        store.update_status(task.id, TaskStatus.COMPLETED)
+        nums = store.dispatched_issue_numbers("owner/repo")
+        assert 42 in nums
+
+    def test_excludes_failed_tasks(self, store: TaskStore) -> None:
+        task = _fresh_task(
+            kind=TaskKind.ISSUE,
+            issue_repo="owner/repo",
+            issue_number=99,
+            status=TaskStatus.FAILED,
+        )
+        store.save(task)
+        store.update_status(task.id, TaskStatus.FAILED)
+        nums = store.dispatched_issue_numbers("owner/repo")
+        assert 99 not in nums
+
+    def test_excludes_other_repos(self, store: TaskStore) -> None:
+        task = _fresh_task(
+            kind=TaskKind.ISSUE,
+            issue_repo="other/repo",
+            issue_number=7,
+            status=TaskStatus.COMPLETED,
+        )
+        store.save(task)
+        store.update_status(task.id, TaskStatus.COMPLETED)
+        assert 7 not in store.dispatched_issue_numbers("owner/repo")

@@ -240,3 +240,75 @@ class TestPreconditions:
                 repos=[],
                 interval_seconds=-1,
             )
+
+
+# ── Dedup seeding from task_store ────────────────────────────────────────────
+
+
+class TestDeduplicationSeeding:
+    def test_seeds_dispatched_from_task_store(self) -> None:
+        class _FakeStore:
+            def dispatched_issue_numbers(self, repo: str) -> set[int]:
+                return {10, 20, 30} if repo == "owner/repo" else set()
+
+        sched = DiscoveryScheduler(
+            github=_FakeGitHub({}),
+            daemon=_FakeDaemon(),
+            repos=[DiscoveryRepoSpec(repo="owner/repo")],
+            task_store=_FakeStore(),
+        )
+        assert sched._dispatched.get("owner/repo") == {10, 20, 30}
+
+    def test_no_task_store_starts_empty(self) -> None:
+        sched = DiscoveryScheduler(
+            github=_FakeGitHub({}),
+            daemon=_FakeDaemon(),
+            repos=[DiscoveryRepoSpec(repo="owner/repo")],
+        )
+        assert sched._dispatched.get("owner/repo") is None
+
+
+class TestMaybePrune:
+    def test_prune_called_after_interval(self) -> None:
+        pruned: list[int] = []
+
+        class _FakeStore:
+            def dispatched_issue_numbers(self, repo: str) -> set[int]:
+                return set()
+
+            def prune(self, *, older_than_days: int) -> int:
+                pruned.append(older_than_days)
+                return 0
+
+        sched = DiscoveryScheduler(
+            github=_FakeGitHub({}),
+            daemon=_FakeDaemon(),
+            repos=[],
+            task_store=_FakeStore(),
+        )
+        # First call should prune (last_pruned starts at 0).
+        sched._maybe_prune(interval_seconds=0)
+        assert pruned == [30]
+
+    def test_prune_skipped_within_interval(self) -> None:
+        import time
+
+        pruned: list[int] = []
+
+        class _FakeStore:
+            def dispatched_issue_numbers(self, repo: str) -> set[int]:
+                return set()
+
+            def prune(self, *, older_than_days: int) -> int:
+                pruned.append(older_than_days)
+                return 0
+
+        sched = DiscoveryScheduler(
+            github=_FakeGitHub({}),
+            daemon=_FakeDaemon(),
+            repos=[],
+            task_store=_FakeStore(),
+        )
+        sched._last_pruned = time.monotonic()
+        sched._maybe_prune(interval_seconds=3600)
+        assert pruned == []

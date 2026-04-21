@@ -247,7 +247,7 @@ class TestLLMResponseParsing:
 
 
 class TestBranchNaming:
-    def test_derives_branch_from_issue_number(self) -> None:
+    def test_branch_includes_issue_number(self) -> None:
         gh = FakeGitHub(issue=_issue())
         ws = FakeWorkspace()
         backend = ScriptedBackend(payload={"plan": "ok", "diff": ""})
@@ -256,4 +256,34 @@ class TestBranchNaming:
         asyncio.run(
             executor.execute_issue(repo="owner/repo", issue_number=42, model="m", mode="plan")
         )
-        assert gh.pr_calls[0]["head"] == "maxwell-daemon/issue-42"
+        branch = gh.pr_calls[0]["head"]
+        assert branch.startswith("maxwell-daemon/issue-42-")
+
+    def test_branch_uses_task_id_suffix(self) -> None:
+        gh = FakeGitHub(issue=_issue())
+        ws = FakeWorkspace()
+        backend = ScriptedBackend(payload={"plan": "ok", "diff": ""})
+        executor = IssueExecutor(github=gh, workspace=ws, backend=backend)
+
+        asyncio.run(
+            executor.execute_issue(
+                repo="owner/repo", issue_number=7, model="m", mode="plan", task_id="abc12345def"
+            )
+        )
+        branch = gh.pr_calls[0]["head"]
+        assert branch == "maxwell-daemon/issue-7-abc12345"
+
+    def test_two_runs_get_different_branches(self) -> None:
+        gh = FakeGitHub(issue=_issue())
+        ws = FakeWorkspace()
+        backend = ScriptedBackend(payload={"plan": "ok", "diff": ""})
+        executor = IssueExecutor(github=gh, workspace=ws, backend=backend)
+
+        asyncio.run(
+            executor.execute_issue(repo="owner/repo", issue_number=5, model="m", mode="plan")
+        )
+        asyncio.run(
+            executor.execute_issue(repo="owner/repo", issue_number=5, model="m", mode="plan")
+        )
+        branches = [c["head"] for c in gh.pr_calls]
+        assert branches[0] != branches[1]

@@ -144,10 +144,12 @@ class IssueExecutor:
             {"repo": repo, "issue": issue_number},
         ):
             issue = await self._gh.get_issue(repo, issue_number)
-        branch = f"maxwell-daemon/issue-{issue_number}"
         # Fall back to a derived id when the caller didn't supply one so the
         # executor stays usable in non-Daemon contexts (one-off scripts, tests).
-        effective_task_id = task_id or f"issue-{issue_number}"
+        import uuid as _uuid
+
+        effective_task_id = task_id or _uuid.uuid4().hex
+        branch = f"maxwell-daemon/issue-{issue_number}-{effective_task_id[:8]}"
 
         # Resolve per-call settings: overrides first, executor defaults second.
         ctx_max = self._pick(overrides, "context_max_chars", self._context_max_chars)

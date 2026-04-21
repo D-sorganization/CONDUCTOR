@@ -24,6 +24,7 @@ import asyncio
 import contextlib
 import logging
 import random
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -62,8 +63,8 @@ class DiscoveryScheduler:
     """Runs :func:`discover_issues` across every repo on an interval.
 
     Deduplication persists *in-memory* across ticks within one scheduler
-    lifetime. Restart loses the set; the daemon's durable task store is
-    the second line of defence (already-active tasks won't re-enqueue).
+    lifetime. When a ``task_store`` is supplied, the dedup set is seeded from
+    the DB on startup so a restart doesn't re-dispatch all open issues.
 
     The ``start()``/``stop()`` pair wraps the background task. Exceptions
     from any one tick are logged and swallowed so a transient outage
@@ -78,6 +79,7 @@ class DiscoveryScheduler:
         repos: list[DiscoveryRepoSpec],
         interval_seconds: float = 300.0,
         jitter: bool = True,
+        task_store: Any = None,
     ) -> None:
         require(
             interval_seconds > 0,
@@ -88,10 +90,15 @@ class DiscoveryScheduler:
         self._repos = list(repos)
         self._interval = float(interval_seconds)
         self._jitter = jitter
-        # Per-repo set of issue numbers we've seen in any prior tick.
+        # Seed dedup from DB so a restart doesn't re-dispatch all open issues.
         self._dispatched: dict[str, set[int]] = {}
+        if task_store is not None:
+            for spec in repos:
+                self._dispatched[spec.repo] = task_store.dispatched_issue_numbers(spec.repo)
+        self._task_store = task_store
         self._task: asyncio.Task[None] | None = None
         self._stop_event: asyncio.Event | None = None
+        self._last_pruned: float = 0.0
 
     async def run_once(self) -> DiscoveryTick:
         """Poll every configured repo exactly once and submit new issues."""
@@ -173,11 +180,29 @@ class DiscoveryScheduler:
                 await self.run_once()
             except Exception:
                 log.warning("discovery tick raised; continuing", exc_info=True)
+            self._maybe_prune()
             try:
                 await asyncio.wait_for(self._stop_event.wait(), timeout=self._interval)
                 return  # stop signalled during the wait
             except (TimeoutError, asyncio.TimeoutError):
                 continue  # interval elapsed; next tick
+
+
+    def _maybe_prune(self, *, retention_days: int = 30, interval_seconds: float = 86400.0) -> None:
+        """Prune old COMPLETED/FAILED tasks at most once per *interval_seconds*."""
+        if self._task_store is None:
+            return
+        now = time.monotonic()
+        if now - self._last_pruned < interval_seconds:
+            return
+        try:
+            deleted = self._task_store.prune(older_than_days=retention_days)
+            if deleted:
+                log.info("pruned %d old tasks (retention=%d days)", deleted, retention_days)
+        except Exception:
+            log.warning("task prune failed", exc_info=True)
+        finally:
+            self._last_pruned = now
 
 
 class _SnapshotLister:
