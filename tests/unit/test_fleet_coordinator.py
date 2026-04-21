@@ -560,9 +560,8 @@ class TestReloadConfig:
             daemon._config_path = cfg_path
             await daemon.start(worker_count=1)
             try:
-                # Reload same config — no changes expected.
-                changed = await daemon.reload_config()
-                assert isinstance(changed, dict)
+                reloaded_path = daemon.reload_config()
+                assert reloaded_path == cfg_path
             finally:
                 await daemon.stop()
 

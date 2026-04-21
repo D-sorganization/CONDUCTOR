@@ -22,6 +22,7 @@ from typing import Any
 from maxwell_daemon import __version__
 from maxwell_daemon.backends import Message, MessageRole
 from maxwell_daemon.config import MaxwellDaemonConfig, load_config
+from maxwell_daemon.config.loader import default_config_path
 from maxwell_daemon.core import (
     BackendRouter,
     BudgetEnforcer,
@@ -101,11 +102,16 @@ class Daemon:
         self,
         config: MaxwellDaemonConfig,
         *,
+        config_path: Path | None = None,
         ledger_path: Path | None = None,
         workspace_root: Path | None = None,
         task_store_path: Path | None = None,
     ) -> None:
         self._config = config
+        # Path used for hot-reload; populated by from_config_path.
+        self._config_path: Path | None = config_path
+        # Protects atomic swap of _config and _router during reload.
+        self._config_lock = threading.Lock()
         self._router = BackendRouter(config)
         self._ledger = CostLedger(
             ledger_path or Path.home() / ".local/share/maxwell-daemon/ledger.db"
@@ -152,7 +158,6 @@ class Daemon:
         self._bg_tasks: set[asyncio.Task[None]] = set()
         self._started_at = datetime.now(timezone.utc)
         self._running = False
-        self._config_path: Path | None = None
         # Captured in :meth:`start`; used by :meth:`submit_threadsafe` to
         # schedule cross-thread queue puts via the running event loop.
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -170,10 +175,32 @@ class Daemon:
 
     @classmethod
     def from_config_path(cls, path: Path | str | None = None) -> Daemon:
-        daemon = cls(load_config(path))
-        if path is not None:
-            daemon._config_path = Path(path).expanduser()
-        return daemon
+        resolved = Path(path).expanduser() if path else default_config_path()
+        return cls(load_config(resolved), config_path=resolved)
+
+    def reload_config(self) -> Path:
+        """Reload configuration from disk and swap atomically.
+
+        Thread-safe: acquires ``_config_lock`` before updating ``_config`` and
+        ``_router`` so in-flight workers always see a consistent pair. Running
+        workers are *not* interrupted — they complete with the old config and
+        new tasks pick up the new config automatically.
+
+        Returns the path that was reloaded.
+
+        Raises ``FileNotFoundError`` if the config file cannot be found and
+        ``pydantic.ValidationError`` if the new config is invalid — the existing
+        config is left untouched in both cases.
+        """
+        path = self._config_path or default_config_path()
+        # Validate first (outside the lock) so we never swap in a bad config.
+        new_config = load_config(path)
+        new_router = BackendRouter(new_config)
+        with self._config_lock:
+            self._config = new_config
+            self._router = new_router
+        log.info("config reloaded from %s", path)
+        return path
 
     async def start(self, *, worker_count: int = 2, recover: bool = True) -> None:
         if self._running:
@@ -521,54 +548,6 @@ class Daemon:
         log.info("reprioritized task=%s old=%d new=%d", task_id, old_priority, new_priority)
         return task
 
-    async def reload_config(self, path: Path | None = None) -> dict[str, object]:
-        """Re-read and apply hot-reloadable config settings without restarting.
-
-        Hot-reloadable: worker_count, discovery_interval, budget_limits.
-        NOT hot-reloadable (require restart): database path, API host/port.
-
-        Returns a dict of {field: (old_value, new_value)} for changed fields.
-        """
-        config_path = path or self._config_path
-        if config_path is None:
-            from maxwell_daemon.config.loader import default_config_path
-
-            config_path = default_config_path()
-        new_config = load_config(config_path)
-        changed: dict[str, object] = {}
-
-        # Worker count
-        old_worker_count = self._worker_count
-        new_worker_count = getattr(new_config.agent, "worker_count", old_worker_count)
-        # worker_count is not in the config model today — skip if absent.
-        if hasattr(new_config.agent, "worker_count") and new_worker_count != old_worker_count:
-            await self.set_worker_count(new_worker_count)
-            changed["worker_count"] = (old_worker_count, new_worker_count)
-
-        # Discovery interval
-        old_interval = self._config.agent.discovery_interval_seconds
-        new_interval = new_config.agent.discovery_interval_seconds
-        if new_interval != old_interval:
-            changed["discovery_interval_seconds"] = (old_interval, new_interval)
-
-        # Budget limits
-        old_budget = self._config.budget.monthly_limit_usd
-        new_budget = new_config.budget.monthly_limit_usd
-        if new_budget != old_budget:
-            changed["budget.monthly_limit_usd"] = (old_budget, new_budget)
-
-        # Repo list (names only, for logging)
-        old_repos = sorted(r.name for r in self._config.repos)
-        new_repos = sorted(r.name for r in new_config.repos)
-        if new_repos != old_repos:
-            changed["repos"] = (old_repos, new_repos)
-
-        self._config = new_config
-        self._budget = BudgetEnforcer(new_config.budget, self._ledger)
-        self._config_path = config_path
-        log.info("config reloaded from %s; changed=%s", config_path, list(changed.keys()))
-        return changed
-
     # -- coordinator loop ----------------------------------------------------
 
     async def _coordinator_loop(self) -> None:
@@ -723,7 +702,7 @@ class Daemon:
     async def _reload_config_signal(self) -> None:
         """Signal handler wrapper — logs errors rather than crashing the event loop."""
         try:
-            await self.reload_config()
+            self.reload_config()
         except Exception:
             log.exception("config reload via SIGUSR1 failed")
 
@@ -1002,6 +981,15 @@ def main() -> None:
         loop = asyncio.get_event_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, stop.set)
+
+        def _sighup_handler() -> None:
+            """Reload config in-place on SIGHUP without stopping workers."""
+            try:
+                daemon.reload_config()
+            except Exception:
+                log.exception("config reload failed; keeping existing config")
+
+        loop.add_signal_handler(signal.SIGHUP, _sighup_handler)
         await stop.wait()
         await daemon.stop()
 
