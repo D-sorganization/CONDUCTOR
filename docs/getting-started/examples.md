@@ -29,23 +29,22 @@ repos:
     model: llama3.1
 ```
 
-Then run:
+Confirm the override is loaded, then smoke-test the local backend directly:
 
 ```bash
-maxwell-daemon ask "Find stale links in docs/" --repo docs-scratch
+maxwell-daemon status
+maxwell-daemon ask "Find stale links in docs/" --backend local --model llama3.1
 ```
 
 ## Queue GitHub Issue Work
 
-Use the tasks CLI when you want issue-driven implementation instead of a one-shot
-prompt.
+Use the issue CLI when you want issue-driven implementation against a running
+daemon instead of a one-shot prompt.
 
 ```bash
-maxwell-daemon tasks enqueue \
-  --repo my-service \
-  --issue https://github.com/example/my-service/issues/42
-
-maxwell-daemon tasks list
+maxwell-daemon serve
+maxwell-daemon issue dispatch example/my-service 42 --mode implement
+maxwell-daemon tasks list --kind issue --repo example/my-service
 maxwell-daemon-runner
 ```
 
