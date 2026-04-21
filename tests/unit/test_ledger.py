@@ -1,9 +1,8 @@
-import sqlite3
-
 """Cost ledger — persistence and aggregation."""
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
