@@ -20,7 +20,14 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-__all__ = ["GhCliError", "GitHubClient", "GitHubRateLimitError", "Issue", "PullRequest"]
+__all__ = [
+    "GhCliError",
+    "GitHubClient",
+    "GitHubRateLimitError",
+    "Issue",
+    "PullRequest",
+    "RateLimitError",
+]
 
 log = logging.getLogger(__name__)
 
@@ -54,6 +61,10 @@ class GitHubRateLimitError(GhCliError):
     def __init__(self, message: str, *, reset_at: float | None = None) -> None:
         super().__init__(message)
         self.reset_at = reset_at  # Unix timestamp when the limit resets, if known
+
+
+# Backward-compatible name used by other modules/tests.
+RateLimitError = GitHubRateLimitError
 
 
 # Exit codes emitted by `gh` when GitHub returns 403 or 429 (rate-limited).
@@ -220,6 +231,10 @@ class GitHubClient:
                 f"gh {' '.join(argv)} failed (rc={rc}): {err.decode(errors='replace').strip()}"
             )
         return out
+
+    async def _request_with_retry(self, *argv: str, cwd: str | None = None) -> bytes:
+        """Compatibility wrapper retained for call sites using the older name."""
+        return await self._gh(*argv, cwd=cwd)
 
     async def _fetch_rate_limit_reset(self) -> float | None:
         """Ask GitHub for the rate-limit reset timestamp.

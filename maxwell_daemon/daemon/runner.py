@@ -486,7 +486,11 @@ class Daemon:
                 status="success",
                 tokens=resp.usage.total_tokens,
                 cost_usd=task.cost_usd,
-                duration_seconds=(datetime.now(timezone.utc) - task.started_at).total_seconds(),
+                duration_seconds=(
+                    (datetime.now(timezone.utc) - task.started_at).total_seconds()
+                    if task.started_at is not None
+                    else 0.0
+                ),
             )
             await self._events.publish(
                 Event(
