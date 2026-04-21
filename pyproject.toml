@@ -38,6 +38,7 @@ dependencies = [
     "structlog>=24.4.0",
     "tenacity>=9.0.0",
     "tomli>=2.0.0; python_version < '3.11'",
+    "PyJWT>=2.8.0",
 ]
 
 [project.optional-dependencies]
@@ -110,6 +111,10 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["anthropic", "anthropic.*", "openai", "openai.*"]
 ignore_missing_imports = false
+
+[[tool.mypy.overrides]]
+module = ["jwt", "jwt.*"]
+ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["asyncssh", "asyncssh.*"]
