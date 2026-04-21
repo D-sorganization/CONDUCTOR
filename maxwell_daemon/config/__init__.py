@@ -11,6 +11,7 @@ from maxwell_daemon.config.models import (
     MachineConfig,
     MaxwellDaemonConfig,
     RepoConfig,
+    RetentionConfig,
     WebhookRouteConfig,
 )
 
@@ -24,6 +25,7 @@ __all__ = [
     "MachineConfig",
     "MaxwellDaemonConfig",
     "RepoConfig",
+    "RetentionConfig",
     "WebhookRouteConfig",
     "load_config",
     "save_config",

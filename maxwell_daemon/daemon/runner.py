@@ -29,6 +29,7 @@ from maxwell_daemon.core import (
     BudgetExceededError,
     CostLedger,
     CostRecord,
+    RetentionPruner,
     resolve_overrides,
 )
 from maxwell_daemon.core.task_store import TaskStore
@@ -168,6 +169,15 @@ class Daemon:
         # Fleet coordination: track last-seen time per worker machine for heartbeat.
         # Keys are machine names; values are the UTC datetime of last contact.
         self._worker_last_seen: dict[str, datetime] = {}
+        # Retention pruner — started in :meth:`start`, stopped in :meth:`stop`.
+        # Audit logger is owned by the API layer, so the pruner only covers
+        # task store + cost ledger here; API server starts its own audit-only
+        # pruner when ``audit_log_path`` is configured.
+        self._pruner = RetentionPruner(
+            config=config.retention,
+            task_store=self._task_store,
+            ledger=self._ledger,
+        )
 
     @property
     def events(self) -> EventBus:
@@ -242,6 +252,8 @@ class Daemon:
         except (AttributeError, NotImplementedError, OSError):
             # Windows or unsupported platform — skip signal handler.
             pass
+        # Start retention pruner (no-op if disabled in config).
+        await self._pruner.start()
         log.info("daemon started with %d workers", self._worker_count)
 
     def recover(self) -> list[Task]:
@@ -264,6 +276,8 @@ class Daemon:
         :param timeout: max seconds to wait for in-flight work when drain=True.
         """
         self._running = False
+        # Stop the pruner first so it doesn't kick a new tick during shutdown.
+        await self._pruner.stop()
         if drain:
             # Let workers finish whatever they've pulled off the queue.
             try:

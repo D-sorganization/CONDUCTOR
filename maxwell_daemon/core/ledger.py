@@ -178,6 +178,56 @@ class CostLedger:
         fraction = max(elapsed_seconds, min_elapsed) / month_total_seconds
         return spent / fraction
 
+    # ── Pruning ───────────────────────────────────────────────────────────────
+
+    def prune(
+        self,
+        *,
+        retention_days: int,
+        max_rows: int,
+        min_age_seconds: int = 3600,
+    ) -> int:
+        """Drop cost records older than TTL and cap total rows.
+
+        Never deletes rows younger than ``min_age_seconds``, regardless of
+        ``max_rows`` — that guard protects against accidentally wiping fresh
+        spend data when a cap is misconfigured.
+
+        Returns the number of rows deleted.
+        """
+        from datetime import timedelta
+
+        now = datetime.now(timezone.utc)
+        ttl_cutoff = (now - timedelta(days=retention_days)).isoformat()
+        safety_cutoff = (now - timedelta(seconds=min_age_seconds)).isoformat()
+
+        removed = 0
+        with self._lock:
+            cur = self._conn.execute(
+                "DELETE FROM cost_records WHERE ts < ? AND ts < ?",
+                (ttl_cutoff, safety_cutoff),
+            )
+            removed += cur.rowcount or 0
+
+            total_row = self._conn.execute("SELECT COUNT(*) FROM cost_records").fetchone()
+            total = int(total_row[0])
+            if total > max_rows:
+                excess = total - max_rows
+                # Delete the oldest rows that are also past the safety floor.
+                victim_rows = self._conn.execute(
+                    "SELECT id FROM cost_records WHERE ts < ? ORDER BY ts ASC LIMIT ?",
+                    (safety_cutoff, excess),
+                ).fetchall()
+                if victim_rows:
+                    ids = [r[0] for r in victim_rows]
+                    placeholders = ",".join("?" * len(ids))
+                    cur = self._conn.execute(
+                        f"DELETE FROM cost_records WHERE id IN ({placeholders})",  # nosec B608
+                        ids,
+                    )
+                    removed += cur.rowcount or 0
+        return removed
+
     def close(self) -> None:
         """Close the persistent connection. Call on daemon shutdown."""
         with self._lock:
