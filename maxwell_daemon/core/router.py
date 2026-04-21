@@ -18,7 +18,7 @@ from maxwell_daemon.backends import ILLMBackend, registry
 from maxwell_daemon.config import BackendConfig, MaxwellDaemonConfig
 
 if TYPE_CHECKING:
-    from maxwell_daemon.core.budget import BudgetEnforcer
+    pass
 
 log = logging.getLogger(__name__)
 
