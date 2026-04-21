@@ -135,3 +135,41 @@ class TestDefaultConfigPath:
         result = default_config_path()
         assert str(tmp_path) in str(result)
         assert "maxwell-daemon" in str(result)
+
+
+class TestAPIConfigJWT:
+    """Issue #230 — jwt_secret must be wired from config into JWTConfig."""
+
+    def _base_cfg(self) -> dict:
+        return {"backends": {"claude": {"type": "claude", "model": "claude-sonnet-4-6"}}}
+
+    def test_jwt_secret_defaults_to_none(self) -> None:
+        cfg = MaxwellDaemonConfig.model_validate(self._base_cfg())
+        assert cfg.api.jwt_secret is None
+        assert cfg.api.jwt_secret_value() is None
+
+    def test_jwt_secret_value_unwraps_secret_str(self) -> None:
+        raw = self._base_cfg()
+        raw["api"] = {"jwt_secret": "mysecret"}
+        cfg = MaxwellDaemonConfig.model_validate(raw)
+        assert cfg.api.jwt_secret_value() == "mysecret"
+        # Must not leak in repr
+        assert "mysecret" not in repr(cfg.api)
+
+    def test_jwt_expiry_seconds_configurable(self) -> None:
+        raw = self._base_cfg()
+        raw["api"] = {"jwt_secret": "s", "jwt_expiry_seconds": 7200}
+        cfg = MaxwellDaemonConfig.model_validate(raw)
+        assert cfg.api.jwt_expiry_seconds == 7200
+
+    def test_jwt_config_constructed_when_secret_set(self) -> None:
+        """JWTConfig can be built from the config values without error."""
+        from maxwell_daemon.auth import JWTConfig
+
+        raw = self._base_cfg()
+        raw["api"] = {"jwt_secret": "testsecret123", "jwt_expiry_seconds": 1800}
+        cfg = MaxwellDaemonConfig.model_validate(raw)
+        secret = cfg.api.jwt_secret_value()
+        assert secret is not None
+        jwt_cfg = JWTConfig(secret, expiry_seconds=cfg.api.jwt_expiry_seconds)
+        assert jwt_cfg.expiry_seconds == 1800
