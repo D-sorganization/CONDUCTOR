@@ -92,9 +92,17 @@ class GitHubAuth:
 
     @property
     def token(self) -> str:
+        """Return a usable GitHub API token.
+
+        In ``app`` mode the token is refreshed automatically when fewer than
+        5 minutes remain before expiry.  This property is safe to call from
+        synchronous code; async callers should ``await auth.ensure_fresh()``
+        first to avoid blocking the event loop during a network round-trip.
+        """
         if self._mode == "token":
-            assert self._static_token is not None
-            return self._static_token
+            from maxwell_daemon.contracts import require
+            require(self._static_token is not None, "GitHubAuth: _static_token must be non-None in token mode")
+            return self._static_token  # type: ignore[return-value]
         return self._installation_token()
 
     @property
@@ -104,6 +112,18 @@ class GitHubAuth:
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
         }
+
+    async def ensure_fresh(self) -> None:
+        """Call before accessing .token in async contexts to avoid blocking the event loop.
+
+        In ``app`` mode this runs :meth:`_installation_token` in a thread-pool
+        executor so the network round-trip does not stall the running event loop.
+        In ``token`` mode this is a no-op.
+        """
+        import asyncio
+        if self._mode == "app":
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, self._installation_token)
 
     # ------------------------------------------------------------------ #
     # Internal: App token lifecycle
@@ -136,15 +156,16 @@ class GitHubAuth:
         payload = {"iat": now - 60, "exp": now + 600, "iss": str(self._app_id)}
         jwt_token = _jwt.encode(payload, self._private_key_pem, algorithm="RS256")
 
-        resp = _httpx.post(
-            f"https://api.github.com/app/installations/{self._installation_id}/access_tokens",
-            headers={
-                "Authorization": f"Bearer {jwt_token}",
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-            },
-            timeout=15,
-        )
+        with _httpx.Client() as client:
+            resp = client.post(
+                f"https://api.github.com/app/installations/{self._installation_id}/access_tokens",
+                headers={
+                    "Authorization": f"Bearer {jwt_token}",
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+                timeout=15,
+            )
         resp.raise_for_status()
         data = resp.json()
         token: str = data["token"]
