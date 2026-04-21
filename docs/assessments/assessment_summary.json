@@ -1,11 +1,11 @@
 {
-  "repository": "CONDUCTOR",
-  "assessment_date": "2026-04-19",
-  "run_at_utc": "2026-04-19T08:02:24.4668879Z",
+  "repository": "Maxwell-Daemon",
+  "assessment_date": "2026-04-21",
+  "run_at_utc": "2026-04-21T08:03:32.6174140Z",
   "sync_status": "pull-blocked",
-  "sync_notes": "ff-only pull failed: fatal: couldn't find remote ref dependabot/github_actions/actions/setup-python-6",
+  "sync_notes": "ff-only pull failed: From https://github.com/D-sorganization/Maxwell-Daemon\n * branch            fix/issue-152-github-rate-limit -> FETCH_HEAD\nhint: Diverging branches can't be fast-forwarded, you need to either:\nhint:\nhint: \tgit merge --no-ff\nhint:\nhint: or:\nhint:\nhint: \tgit rebase\nhint:\nhint: Disable this message with \"git config set advice.diverging false\"\nfatal: Not possible to fast-forward, aborting.",
   "overall_grade": "C",
-  "overall_score": 73,
+  "overall_score": 72,
   "category_grades": [
     {
       "id": "A",
@@ -13,7 +13,7 @@
       "grade": "B",
       "score": 82,
       "evidence": [
-        "97 tracked first-party files",
+        "278 tracked first-party files",
         "5 files under source-like directories"
       ],
       "notes": "Assesses source organization and boundary clarity from tracked first-party layout."
@@ -44,16 +44,16 @@
       "grade": "B",
       "score": 82,
       "evidence": [
-        "conductor/api/server.py",
-        "conductor/backends/azure.py",
-        "conductor/backends/base.py",
-        "conductor/backends/claude.py",
-        "conductor/backends/ollama.py",
-        "conductor/backends/openai.py",
-        "conductor/backends/registry.py",
-        "conductor/config/loader.py",
-        "conductor/config/models.py",
-        "conductor/contracts.py"
+        "maxwell_daemon/api/rate_limit.py",
+        "maxwell_daemon/api/server.py",
+        "maxwell_daemon/audit.py",
+        "maxwell_daemon/auth.py",
+        "maxwell_daemon/backends/agent_loop.py",
+        "maxwell_daemon/backends/azure.py",
+        "maxwell_daemon/backends/base.py",
+        "maxwell_daemon/backends/claude.py",
+        "maxwell_daemon/backends/claude_code.py",
+        "maxwell_daemon/backends/codex_cli.py"
       ],
       "notes": "Design by Contract evidence includes validation, assertions, typed models, explicit raised errors, and invariants."
     },
@@ -63,27 +63,35 @@
       "grade": "C",
       "score": 76,
       "evidence": [
+        "maxwell_daemon/gh/test_runner.py",
         "tests/__init__.py",
+        "tests/bdd/test_login.py",
         "tests/conftest.py",
         "tests/integration/__init__.py",
-        "tests/integration/test_end_to_end.py",
-        "tests/integration/test_issue_workflow.py",
-        "conductor/api/server.py",
-        "conductor/backends/azure.py",
-        "conductor/backends/base.py",
-        "conductor/backends/claude.py",
-        "conductor/backends/ollama.py"
+        "maxwell_daemon/api/rate_limit.py",
+        "maxwell_daemon/api/server.py",
+        "maxwell_daemon/audit.py",
+        "maxwell_daemon/auth.py",
+        "maxwell_daemon/backends/agent_loop.py"
       ],
       "notes": "Reliability is graded from test presence plus explicit validation/error-handling signals."
     },
     {
       "id": "F",
       "name": "Function, Module Size, and SRP",
-      "grade": "C",
-      "score": 70,
+      "grade": "F",
+      "score": 55,
       "evidence": [
-        "conductor/backends/openai.py (coarse avg 81 lines/definition)",
-        "conductor/gh/executor.py (coarse avg 87 lines/definition)"
+        "maxwell_daemon/api/server.py (919 lines)",
+        "maxwell_daemon/api/ui/app.js (672 lines)",
+        "maxwell_daemon/backends/agent_loop.py (633 lines)",
+        "maxwell_daemon/daemon/runner.py (670 lines)",
+        "maxwell_daemon/gh/executor.py (574 lines)",
+        "maxwell_daemon/gh/repo_map.py (584 lines)",
+        "tests/unit/test_recipes.py (568 lines)",
+        "maxwell_daemon/api/server.py (coarse avg 92 lines/definition)",
+        "maxwell_daemon/backends/agent_loop.py (coarse avg 106 lines/definition)",
+        "maxwell_daemon/backends/openai.py (coarse avg 81 lines/definition)"
       ],
       "notes": "Evaluates function size, script/module size, and single responsibility using static size signals."
     },
@@ -93,18 +101,18 @@
       "grade": "B",
       "score": 82,
       "evidence": [
+        "maxwell_daemon/gh/test_runner.py",
         "tests/__init__.py",
+        "tests/bdd/test_login.py",
         "tests/conftest.py",
         "tests/integration/__init__.py",
         "tests/integration/test_end_to_end.py",
         "tests/integration/test_issue_workflow.py",
         "tests/unit/__init__.py",
+        "tests/unit/test_ab_dispatch.py",
+        "tests/unit/test_agent_loop_condensation.py",
         "tests/unit/test_api.py",
-        "tests/unit/test_api_events.py",
-        "tests/unit/test_api_issues.py",
-        "tests/unit/test_backend_azure.py",
-        "tests/unit/test_backend_claude.py",
-        "tests/unit/test_backend_ollama.py"
+        "tests/unit/test_api_cancel.py"
       ],
       "notes": "TDD history cannot be confirmed statically; grade reflects committed automated test posture."
     },
@@ -117,6 +125,7 @@
         ".github/workflows/ci.yml",
         ".github/workflows/codeql.yml",
         ".github/workflows/docs.yml",
+        ".github/workflows/maxwell-daemon-fleet-dispatch.yml",
         ".github/workflows/release.yml"
       ],
       "notes": "Checks for tracked CI/CD workflow files."
@@ -128,7 +137,8 @@
       "score": 35,
       "evidence": [
         "tests/unit/test_api.py",
-        "tests/unit/test_backend_claude.py"
+        "tests/unit/test_backend_claude.py",
+        "tests/unit/test_github_auth.py"
       ],
       "notes": "Secret scan is regex-based; findings require manual confirmation."
     },
@@ -140,16 +150,16 @@
       "evidence": [
         ".github/ISSUE_TEMPLATE/bug_report.md",
         ".github/ISSUE_TEMPLATE/feature_request.md",
+        ".github/PULL_REQUEST_TEMPLATE.md",
         ".github/workflows/docs.yml",
+        "AGENTS.md",
+        "CODE_OF_CONDUCT.md",
         "CONTRIBUTING.md",
         "LICENSE",
         "README.md",
         "docs/architecture/backends.md",
         "docs/architecture/contracts.md",
-        "docs/architecture/overview.md",
-        "docs/contributing.md",
-        "docs/getting-started/autonomous-workflow.md",
-        "docs/getting-started/configuration.md"
+        "docs/architecture/overview.md"
       ],
       "notes": "Checks docs, README, onboarding, and release documents."
     },
@@ -159,7 +169,9 @@
       "grade": "B",
       "score": 80,
       "evidence": [
-        "scripts/check_todo_fixme.py"
+        "maxwell_daemon/gh/quality_gates.py",
+        "scripts/check_todo_fixme.py",
+        "tests/unit/test_quality_gates.py"
       ],
       "notes": "DRY is assessed through duplicate filename clusters and TODO/FIXME density as static heuristics."
     },
@@ -169,16 +181,16 @@
       "grade": "F",
       "score": 58,
       "evidence": [
-        "conductor/backends/claude.py",
-        "conductor/backends/openai.py",
-        "conductor/cli/issues.py",
-        "conductor/cli/main.py",
-        "conductor/config/models.py",
-        "conductor/core/ledger.py",
-        "conductor/core/router.py",
-        "conductor/gh/workspace.py",
-        "tests/unit/test_api_issues.py",
-        "tests/unit/test_backend_azure.py"
+        "maxwell_daemon/api/server.py",
+        "maxwell_daemon/api/ui/app.js",
+        "maxwell_daemon/audit.py",
+        "maxwell_daemon/backends/agent_loop.py",
+        "maxwell_daemon/backends/claude.py",
+        "maxwell_daemon/backends/openai.py",
+        "maxwell_daemon/backends/pricing.py",
+        "maxwell_daemon/cli/issues.py",
+        "maxwell_daemon/cli/main.py",
+        "maxwell_daemon/cli/tasks.py"
       ],
       "notes": "Law of Demeter is approximated with deep member-chain hints; confirmed violations require semantic review."
     },
@@ -188,9 +200,9 @@
       "grade": "C",
       "score": 74,
       "evidence": [
-        "conductor/logging.py",
-        "conductor/metrics.py",
         "docs/operations/observability.md",
+        "maxwell_daemon/logging.py",
+        "maxwell_daemon/metrics.py",
         "tests/unit/test_logging.py",
         "tests/unit/test_metrics.py"
       ],
@@ -210,17 +222,29 @@
     }
   ],
   "key_risks": [
+    "Large modules/scripts reduce maintainability and SRP clarity.",
     "Potential hard-coded secret patterns require manual security review.",
     "Deep member-chain usage may indicate Law of Demeter pressure points."
   ],
   "recommendations": [
+    "Split the largest modules by responsibility and add characterization tests before refactoring.",
     "Review deep member chains and introduce boundary methods where object graph traversal leaks across modules."
   ],
   "issue_candidates": [
     {
+      "title": "Split oversized modules by responsibility",
+      "severity": "medium",
+      "problem": "Oversized files found: maxwell_daemon/api/server.py (919 lines); maxwell_daemon/api/ui/app.js (672 lines); maxwell_daemon/backends/agent_loop.py (633 lines); maxwell_daemon/daemon/runner.py (670 lines); maxwell_daemon/gh/executor.py (574 lines); maxwell_daemon/gh/repo_map.py (584 lines); tests/unit/test_recipes.py (568 lines); tests/unit/test_repo_map.py (521 lines)",
+      "evidence": "Category F lists files over 500 lines or coarse long-definition signals.",
+      "impact": "Large modules obscure ownership, complicate review, and weaken SRP.",
+      "fix": "Add characterization tests, then split cohesive responsibilities into smaller modules.",
+      "acceptance": "Largest files are reduced or justified; extracted modules have focused tests.",
+      "refs": "SRP, function size, module size, maintainability"
+    },
+    {
       "title": "Investigate potential hard-coded secret patterns",
       "severity": "high",
-      "problem": "Potential secret-like assignments found in: tests/unit/test_api.py; tests/unit/test_backend_claude.py",
+      "problem": "Potential secret-like assignments found in: tests/unit/test_api.py; tests/unit/test_backend_claude.py; tests/unit/test_github_auth.py",
       "evidence": "Category I regex scan matched secret-like assignments.",
       "impact": "Hard-coded secrets can expose credentials and create security incidents.",
       "fix": "Manually verify findings, rotate any exposed credentials, and move secrets to environment or secret management.",
@@ -230,7 +254,7 @@
     {
       "title": "Review deep object traversal hotspots",
       "severity": "medium",
-      "problem": "Deep member-chain hints found in: conductor/backends/claude.py; conductor/backends/openai.py; conductor/cli/issues.py; conductor/cli/main.py; conductor/config/models.py; conductor/core/ledger.py; conductor/core/router.py; conductor/gh/workspace.py",
+      "problem": "Deep member-chain hints found in: maxwell_daemon/api/server.py; maxwell_daemon/api/ui/app.js; maxwell_daemon/audit.py; maxwell_daemon/backends/agent_loop.py; maxwell_daemon/backends/claude.py; maxwell_daemon/backends/openai.py; maxwell_daemon/backends/pricing.py; maxwell_daemon/cli/issues.py",
       "evidence": "Category L found repeated chains with three or more member hops.",
       "impact": "Law of Demeter pressure can make APIs brittle and increase coupling.",
       "fix": "Review hotspots and introduce boundary methods or DTOs where callers traverse object graphs.",
@@ -239,12 +263,12 @@
     }
   ],
   "coverage": {
-    "tracked_files": 97,
-    "code_files": 65,
-    "test_files": 32,
-    "ci_files": 4,
+    "tracked_files": 278,
+    "code_files": 209,
+    "test_files": 109,
+    "ci_files": 5,
     "config_files": 1,
-    "docs_files": 19,
+    "docs_files": 34,
     "exclusions": "cache/build/vendor/virtualenv/temp/generated output directories excluded",
     "static_limits": "TDD workflow history and confirmed Law of Demeter semantics require deeper review."
   }
