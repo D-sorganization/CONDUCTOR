@@ -3,15 +3,17 @@ from pytest_bdd import given, scenarios, then, when
 
 scenarios("/tmp/pytest-of-dieterolson/pytest-1137/test_writes_scaffold_to_defaul0/login.feature")
 
+
 @given("a user")
 def _given_a_user():
     raise NotImplementedError
+
 
 @when("they log in")
 def _when_they_log_in():
     raise NotImplementedError
 
+
 @then("they see the dashboard")
 def _then_they_see_the_dashboard():
     raise NotImplementedError
-
