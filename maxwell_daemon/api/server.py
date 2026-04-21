@@ -36,7 +36,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from maxwell_daemon import __version__
 from maxwell_daemon.audit import AuditLogger
-from maxwell_daemon.auth import JWTConfig, Role, require_role
+from maxwell_daemon.auth import JWTConfig, Role
 from maxwell_daemon.daemon import Daemon
 from maxwell_daemon.daemon.runner import Task
 from maxwell_daemon.logging import bind_context
