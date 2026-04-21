@@ -296,7 +296,6 @@ class Daemon:
             bg.add_done_callback(self._bg_tasks.discard)
         return task
 
-
     def submit_threadsafe(
         self,
         prompt: str,
