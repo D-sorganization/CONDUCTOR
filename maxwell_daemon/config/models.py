@@ -31,6 +31,16 @@ class BackendConfig(BaseModel):
         description="Maps ModelTier names (simple/moderate/complex) → model id. "
         "When set, the router picks by tier; otherwise `model` is used.",
     )
+    fallback_backend: str | None = Field(
+        None,
+        description="Backend name to use when budget utilisation exceeds fallback_threshold.",
+    )
+    fallback_threshold: float = Field(
+        0.8,
+        ge=0.0,
+        le=1.0,
+        description="Budget utilisation (0.0-1.0) at which to switch to fallback_backend.",
+    )
 
     def api_key_value(self) -> str | None:
         """Unwrap the SecretStr for passing to adapter constructors."""
@@ -76,6 +86,14 @@ class RepoConfig(BaseModel):
     context_max_chars: int | None = Field(None, ge=0)
     max_test_retries: int | None = Field(None, ge=0)
     max_diff_retries: int | None = Field(None, ge=0)
+    system_prompt_prefix: str | None = Field(
+        None,
+        description="Prepended to the default system prompt for this repo's agents.",
+    )
+    system_prompt_file: Path | None = Field(
+        None,
+        description="Path to a markdown file whose content is prepended to the system prompt.",
+    )
 
     @field_validator("path", mode="before")
     @classmethod

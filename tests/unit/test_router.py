@@ -122,3 +122,113 @@ class TestRouter:
         a = router.route().backend
         b = router.route().backend
         assert a is b
+
+
+def _make_budget_mock(utilisation: float):
+    """Return a mock BudgetEnforcer with given utilisation."""
+    from unittest.mock import MagicMock
+    from maxwell_daemon.core.budget import BudgetCheck
+    mock = MagicMock()
+    mock.check.return_value = BudgetCheck(
+        status="ok",
+        spent_usd=utilisation * 100.0,
+        limit_usd=100.0,
+        utilisation=utilisation,
+    )
+    return mock
+
+
+@pytest.fixture
+def config_with_fallback() -> MaxwellDaemonConfig:
+    return MaxwellDaemonConfig.model_validate(
+        {
+            "backends": {
+                "primary": {
+                    "type": "fake_a",
+                    "model": "model-a",
+                    "fallback_backend": "local",
+                    "fallback_threshold": 0.8,
+                },
+                "local": {"type": "fake_b", "model": "model-b"},
+            },
+            "agent": {"default_backend": "primary"},
+            "repos": [],
+        }
+    )
+
+
+class TestBudgetAwareFallback:
+    def test_fallback_triggers_when_over_threshold(
+        self, config_with_fallback: MaxwellDaemonConfig
+    ) -> None:
+        budget = _make_budget_mock(utilisation=0.85)
+        router = BackendRouter(config_with_fallback, budget=budget)
+        decision = router.route()
+        assert decision.backend_name == "local"
+        assert "fallback" in decision.reason
+
+    def test_fallback_triggers_at_exact_threshold(
+        self, config_with_fallback: MaxwellDaemonConfig
+    ) -> None:
+        budget = _make_budget_mock(utilisation=0.8)
+        router = BackendRouter(config_with_fallback, budget=budget)
+        decision = router.route()
+        assert decision.backend_name == "local"
+
+    def test_fallback_does_not_trigger_below_threshold(
+        self, config_with_fallback: MaxwellDaemonConfig
+    ) -> None:
+        budget = _make_budget_mock(utilisation=0.79)
+        router = BackendRouter(config_with_fallback, budget=budget)
+        decision = router.route()
+        assert decision.backend_name == "primary"
+
+    def test_no_fallback_without_budget_enforcer(
+        self, config_with_fallback: MaxwellDaemonConfig
+    ) -> None:
+        router = BackendRouter(config_with_fallback)
+        decision = router.route()
+        assert decision.backend_name == "primary"
+
+    def test_missing_fallback_backend_name_is_ignored(self) -> None:
+        cfg = MaxwellDaemonConfig.model_validate(
+            {
+                "backends": {
+                    "primary": {
+                        "type": "fake_a",
+                        "model": "model-a",
+                        "fallback_backend": "does-not-exist",
+                        "fallback_threshold": 0.5,
+                    },
+                },
+                "agent": {"default_backend": "primary"},
+                "repos": [],
+            }
+        )
+        budget = _make_budget_mock(utilisation=0.9)
+        router = BackendRouter(cfg, budget=budget)
+        decision = router.route()
+        assert decision.backend_name == "primary"
+
+    def test_fallback_applies_to_repo_override(self) -> None:
+        cfg = MaxwellDaemonConfig.model_validate(
+            {
+                "backends": {
+                    "primary": {
+                        "type": "fake_a",
+                        "model": "model-a",
+                        "fallback_backend": "local",
+                        "fallback_threshold": 0.8,
+                    },
+                    "local": {"type": "fake_b", "model": "model-b"},
+                },
+                "agent": {"default_backend": "primary"},
+                "repos": [
+                    {"name": "my-repo", "path": "/tmp/repo", "backend": "primary"},
+                ],
+            }
+        )
+        budget = _make_budget_mock(utilisation=0.95)
+        router = BackendRouter(cfg, budget=budget)
+        decision = router.route(repo="my-repo")
+        assert decision.backend_name == "local"
