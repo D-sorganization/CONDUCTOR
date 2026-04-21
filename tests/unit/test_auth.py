@@ -106,7 +106,7 @@ class TestRequireRole:
 
         dep = require_role(Role.viewer, cfg)
         token = cfg.create_token("alice", Role.operator)
-        claims = asyncio.get_event_loop().run_until_complete(dep(authorization=f"Bearer {token}"))
+        claims = asyncio.run(dep(authorization=f"Bearer {token}"))
         assert claims.sub == "alice"
 
     def test_insufficient_role_raises_403(self, cfg: JWTConfig) -> None:
@@ -119,7 +119,7 @@ class TestRequireRole:
         dep = require_role(Role.admin, cfg)
         token = cfg.create_token("alice", Role.viewer)
         with pytest.raises(HTTPException) as exc_info:
-            asyncio.get_event_loop().run_until_complete(dep(authorization=f"Bearer {token}"))
+            asyncio.run(dep(authorization=f"Bearer {token}"))
         assert exc_info.value.status_code == 403
 
     def test_missing_token_raises_401(self, cfg: JWTConfig) -> None:
@@ -131,5 +131,5 @@ class TestRequireRole:
 
         dep = require_role(Role.viewer, cfg)
         with pytest.raises(HTTPException) as exc_info:
-            asyncio.get_event_loop().run_until_complete(dep(authorization=None))
+            asyncio.run(dep(authorization=None))
         assert exc_info.value.status_code == 401
