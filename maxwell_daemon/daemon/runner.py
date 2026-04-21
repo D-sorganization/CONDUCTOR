@@ -394,7 +394,16 @@ class Daemon:
         try:
             self._task_store.update_status(task.id, TaskStatus.RUNNING, started_at=task.started_at)
         except Exception:
-            log.exception("task store write failed for task=%s", task.id)
+            log.exception(
+                "task store write failed while setting RUNNING for task=%s; "
+                "rolling back to FAILED to avoid limbo state",
+                task.id,
+            )
+            task.status = TaskStatus.FAILED
+            task.error = "task store unavailable — could not persist RUNNING state"
+            task.finished_at = datetime.now(timezone.utc)
+            with contextlib.suppress(Exception):
+                self._task_store.save(task)
             raise
         await self._events.publish(
             Event(
@@ -403,6 +412,26 @@ class Daemon:
             )
         )
         decision_backend = decision_model = "unknown"
+
+        # Periodic budget watcher: fires every 30 s while the task is running.
+        # If the monthly hard-stop limit is crossed mid-execution the watcher
+        # cancels *this* coroutine so we don't overspend between turns.
+        _budget_exceeded_event: asyncio.Event = asyncio.Event()
+
+        async def _budget_watcher() -> None:
+            while not _budget_exceeded_event.is_set():
+                await asyncio.sleep(30)
+                try:
+                    self._budget.require_under_budget()
+                except BudgetExceededError as _exc:
+                    log.warning("mid-execution budget exceeded for task=%s: %s", task.id, _exc)
+                    _budget_exceeded_event.set()
+                    return
+
+        _watcher_task: asyncio.Task[None] = asyncio.create_task(
+            _budget_watcher(), name=f"budget-watcher-{task.id}"
+        )
+
         try:
             self._budget.require_under_budget()
             decision = self._router.route(
@@ -415,12 +444,26 @@ class Daemon:
 
             if task.kind is TaskKind.ISSUE:
                 await self._execute_issue(task, decision)
+                # Check whether the budget watcher fired during issue execution.
+                if _budget_exceeded_event.is_set():
+                    check = self._budget.check()
+                    raise BudgetExceededError(
+                        f"Monthly budget exceeded mid-execution: "
+                        f"${check.spent_usd:.2f} / ${check.limit_usd:.2f}"
+                    )
                 return
 
             resp = await decision.backend.complete(
                 [Message(role=MessageRole.USER, content=task.prompt)],
                 model=decision.model,
             )
+            # Check whether the budget watcher fired during the backend call.
+            if _budget_exceeded_event.is_set():
+                check = self._budget.check()
+                raise BudgetExceededError(
+                    f"Monthly budget exceeded mid-execution: "
+                    f"${check.spent_usd:.2f} / ${check.limit_usd:.2f}"
+                )
             task.result = resp.content
             task.cost_usd = decision.backend.estimate_cost(resp.usage, decision.model)
             task.status = TaskStatus.COMPLETED
@@ -477,6 +520,11 @@ class Daemon:
                 Event(kind=EventKind.TASK_FAILED, payload={"id": task.id, "error": str(e)})
             )
         finally:
+            # Stop the budget watcher — task is done, no more polling needed.
+            _budget_exceeded_event.set()
+            _watcher_task.cancel()
+            with contextlib.suppress(Exception):
+                await _watcher_task
             task.finished_at = datetime.now(timezone.utc)
             with contextlib.suppress(Exception):
                 self._memory.scratchpad.clear(task.id)
