@@ -155,6 +155,7 @@ class TestClose:
         store = TaskStore(":memory:")
         store.close()
         store.close()  # second close must not raise
+
     def test_close_terminates_connection(self, store: TaskStore) -> None:
         """close() is a compatibility no-op — must not raise."""
 
