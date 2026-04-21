@@ -88,10 +88,16 @@ class RemoteDaemonClient:
         http_client: HTTPClientProtocol | None = None,
         auth_token: str | None = None,
         timeout_seconds: float = 30.0,
+        tls_verify: bool = True,
     ) -> None:
-        self._http = http_client if http_client is not None else _make_default_http(timeout_seconds)
+        self._http = (
+            http_client
+            if http_client is not None
+            else _make_default_http(timeout_seconds, tls_verify=tls_verify)
+        )
         self._auth_token = auth_token
         self._timeout_seconds = timeout_seconds
+        self._tls_verify = tls_verify
 
     # ------------------------------------------------------------------ headers
     def _headers(self) -> dict[str, str]:
@@ -103,7 +109,8 @@ class RemoteDaemonClient:
     # ------------------------------------------------------------------ URLs
     @staticmethod
     def _base_url(machine: MachineState) -> str:
-        return f"http://{machine.host}:{machine.port}"
+        scheme = "https" if machine.tls else "http"
+        return f"{scheme}://{machine.host}:{machine.port}"
 
     # ------------------------------------------------------------------ submit
     async def submit_task(
@@ -168,6 +175,8 @@ class RemoteDaemonClient:
                 tags=m.tags,
                 active_tasks=m.active_tasks,
                 healthy=healthy,
+                tls=m.tls,
+                tls_verify=m.tls_verify,
             )
             for m, healthy in zip(machines, results, strict=True)
         )
@@ -194,7 +203,7 @@ def _extract_error_detail(response: HTTPResponseProtocol) -> str:
         return f"HTTP {status}"
 
 
-def _make_default_http(timeout_seconds: float) -> HTTPClientProtocol:
+def _make_default_http(timeout_seconds: float, *, tls_verify: bool = True) -> HTTPClientProtocol:
     """Create an httpx AsyncClient wrapped to match our protocol.
 
     Imported lazily so unit tests can run without httpx being functional in the
@@ -203,8 +212,8 @@ def _make_default_http(timeout_seconds: float) -> HTTPClientProtocol:
     import httpx
 
     class _HttpxAdapter:
-        def __init__(self, timeout: float) -> None:
-            self._client = httpx.AsyncClient(timeout=timeout)
+        def __init__(self, timeout: float, verify: bool) -> None:
+            self._client = httpx.AsyncClient(timeout=timeout, verify=verify)
 
         async def post(
             self, url: str, *, json: dict[str, Any], headers: dict[str, str]
@@ -214,4 +223,4 @@ def _make_default_http(timeout_seconds: float) -> HTTPClientProtocol:
         async def get(self, url: str, *, headers: dict[str, str]) -> HTTPResponseProtocol:
             return await self._client.get(url, headers=headers)
 
-    return _HttpxAdapter(timeout_seconds)
+    return _HttpxAdapter(timeout_seconds, verify=tls_verify)
