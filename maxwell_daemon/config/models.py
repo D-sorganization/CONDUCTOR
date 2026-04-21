@@ -9,13 +9,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 
 class BackendConfig(BaseModel):
     """One LLM backend (Claude, OpenAI, Ollama, ...)."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     type: str = Field(..., description="Backend type: claude, openai, ollama, google, azure")
     model: str = Field(..., description="Default model id for this backend")
@@ -30,6 +30,28 @@ class BackendConfig(BaseModel):
         default_factory=dict,
         description="Maps ModelTier names (simple/moderate/complex) → model id. "
         "When set, the router picks by tier; otherwise `model` is used.",
+    )
+    fallback_backend: str | None = Field(
+        None,
+        description="Name of a cheaper backend to use when monthly spend exceeds "
+        "fallback_threshold_percent of the budget limit.",
+    )
+    fallback_threshold_percent: float = Field(
+        80.0,
+        ge=0.0,
+        le=100.0,
+        description="Switch to fallback_backend when monthly spend reaches this "
+        "percentage of the budget limit.",
+    )
+    cost_per_million_input_tokens: float | None = Field(
+        None,
+        description="USD per 1M input tokens for cost tracking (e.g. 3.0 for $3/1M). "
+        "When set, overrides the built-in pricing table for this backend.",
+    )
+    cost_per_million_output_tokens: float | None = Field(
+        None,
+        description="USD per 1M output tokens for cost tracking (e.g. 15.0 for $15/1M). "
+        "When set, overrides the built-in pricing table for this backend.",
     )
 
     def api_key_value(self) -> str | None:
@@ -153,6 +175,35 @@ class MaxwellDaemonConfig(BaseModel):
         if not v:
             raise ValueError("At least one backend must be configured")
         return v
+
+    @model_validator(mode="after")
+    def _validate_backend_references(self) -> "MaxwellDaemonConfig":
+        known = set(self.backends)
+
+        # Validate agent.default_backend
+        default = self.agent.default_backend
+        if default and default not in known:
+            raise ValueError(
+                f"agent.default_backend '{default}' not found in backends: {sorted(known)}"
+            )
+
+        # Validate per-repo backend overrides
+        for repo in self.repos:
+            if repo.backend is not None and repo.backend not in known:
+                raise ValueError(
+                    f"repos['{repo.name}'].backend '{repo.backend}' not found in "
+                    f"backends: {sorted(known)}"
+                )
+
+        # Validate fallback_backend references within each BackendConfig
+        for backend_name, backend_cfg in self.backends.items():
+            if backend_cfg.fallback_backend is not None and backend_cfg.fallback_backend not in known:
+                raise ValueError(
+                    f"backends['{backend_name}'].fallback_backend "
+                    f"'{backend_cfg.fallback_backend}' not found in backends: {sorted(known)}"
+                )
+
+        return self
 
     def default_backend_config(self) -> BackendConfig:
         name = self.agent.default_backend
