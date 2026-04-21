@@ -153,13 +153,13 @@ class TestAuditLogger:
         paths = [e.get("path") for e in remaining]
         assert "/new" in paths
         rotation_entries = [
-            e for e in remaining
-            if e.get("details", {}).get("operation") == "log_rotation"
+            e for e in remaining if e.get("details", {}).get("operation") == "log_rotation"
         ]
         assert len(rotation_entries) == 1
         assert rotation_entries[0]["details"]["removed"] == 1
         # The chain must be clean after rotation.
         from maxwell_daemon.audit import verify_chain
+
         assert verify_chain(path) == []
 
     def test_new_logger_reads_tail_from_file(self, log_path: Path) -> None:
