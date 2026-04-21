@@ -164,11 +164,46 @@ class RateLimitConfig(BaseModel):
     burst: int = Field(50, ge=1, description="Bucket capacity (max burst)")
 
 
+class MaintenanceConfig(BaseModel):
+    """Scheduled housekeeping for long-running daemon instances."""
+
+    task_ttl_days: int = Field(
+        7,
+        ge=1,
+        description="Delete completed/failed tasks older than this many days from the task store.",
+    )
+    ledger_max_entries: int = Field(
+        10_000,
+        ge=100,
+        description=(
+            "Keep at most this many rows in the cost ledger; oldest rows are removed first. "
+            "Set to a large number to retain full history."
+        ),
+    )
+    audit_retention_days: int = Field(
+        30,
+        ge=1,
+        description="Rotate audit log lines older than this many days.",
+    )
+    prune_interval_seconds: int = Field(
+        3600,
+        ge=60,
+        description="How often (in seconds) the background pruning coroutine runs.",
+    )
+
+
 class APIConfig(BaseModel):
     enabled: bool = True
     host: str = "127.0.0.1"
     port: int = Field(8080, ge=1, le=65535)
-    auth_token: str | None = None
+    auth_token: SecretStr | None = Field(
+        None,
+        description=(
+            "Bearer token for API authentication.  Wrapped in SecretStr so it "
+            "will not leak via repr() or model_dump(). "
+            "Use .get_secret_value() to retrieve the raw string. (issue #222)"
+        ),
+    )
     tls_cert: Path | None = None
     tls_key: Path | None = None
     # Rate limiting. Absent = disabled entirely.
@@ -191,6 +226,10 @@ class MaxwellDaemonConfig(BaseModel):
     api: APIConfig = Field(default_factory=lambda: APIConfig())
     budget: BudgetConfig = Field(default_factory=lambda: BudgetConfig())
     github: GithubConfig = Field(default_factory=lambda: GithubConfig())
+    maintenance: MaintenanceConfig = Field(
+        default_factory=lambda: MaintenanceConfig(),
+        description="Scheduled housekeeping: task TTL, ledger truncation, audit log rotation.",
+    )
 
     @field_validator("backends")
     @classmethod

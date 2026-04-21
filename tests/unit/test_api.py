@@ -38,7 +38,7 @@ def client(daemon: Daemon) -> Iterator[TestClient]:
 
 @pytest.fixture
 def auth_client(daemon: Daemon) -> Iterator[TestClient]:
-    with TestClient(create_app(daemon, auth_token="secret-abc")) as c:
+    with TestClient(create_app(daemon, auth_token="secret-abc")) as c:  # nosec B106 — test-only fake token
         yield c
 
 

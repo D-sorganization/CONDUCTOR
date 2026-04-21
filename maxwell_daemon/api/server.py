@@ -266,7 +266,7 @@ def create_app(
     _audit: AuditLogger | None = AuditLogger(audit_log_path) if audit_log_path is not None else None
 
     # Rate-limit middleware — installs only when config declares a default group.
-    api_cfg = daemon._config.api
+    api_cfg = daemon.config.api
     if api_cfg.rate_limit_default is not None:
         from maxwell_daemon.api.rate_limit import install_rate_limiter
 
@@ -614,7 +614,7 @@ def create_app(
 
         # In coordinator mode, include per-machine health summary from the fleet config.
         machines_summary: list[dict[str, Any]] = []
-        if daemon._config.role == "coordinator" and daemon._config.fleet.machines:
+        if daemon.config.role == "coordinator" and daemon.config.fleet.machines:
             from maxwell_daemon.fleet.client import RemoteDaemonClient
             from maxwell_daemon.fleet.dispatcher import MachineState
 
@@ -626,9 +626,12 @@ def create_app(
                     capacity=m.capacity,
                     tags=tuple(m.tags),
                 )
-                for m in daemon._config.fleet.machines
+                for m in daemon.config.fleet.machines
             )
-            fleet_client = RemoteDaemonClient(auth_token=daemon._config.api.auth_token)
+            _api_tok = daemon.config.api.auth_token
+            fleet_client = RemoteDaemonClient(
+                auth_token=_api_tok.get_secret_value() if _api_tok is not None else None
+            )
             try:
                 probed = await fleet_client.refresh_all(initial)
             except Exception:
@@ -677,7 +680,7 @@ def create_app(
             )
 
         result: dict[str, Any] = {
-            "role": daemon._config.role,
+            "role": daemon.config.role,
             "fleet": {
                 "name": fleet_section.get("name", ""),
                 "auto_promote_staging": fleet_section.get("auto_promote_staging", False),
@@ -794,8 +797,8 @@ def create_app(
         event_type = request.headers.get("x-github-event", "")
 
         config_secret = (
-            daemon._config.github.webhook_secret.get_secret_value()
-            if daemon._config.github.webhook_secret is not None
+            daemon.config.github.webhook_secret.get_secret_value()
+            if daemon.config.github.webhook_secret is not None
             else None
         )
         if config_secret is None:
@@ -825,12 +828,12 @@ def create_app(
                 label=r.label,
                 trigger=r.trigger,
             )
-            for r in daemon._config.github.routes
+            for r in daemon.config.github.routes
         ]
         router = WebhookRouter(
             WebhookConfig(
                 secret=config_secret,
-                allowed_repos=daemon._config.github.allowed_repos,
+                allowed_repos=daemon.config.github.allowed_repos,
                 routes=routes,
             ),
             daemon=daemon,

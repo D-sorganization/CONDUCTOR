@@ -319,7 +319,11 @@ def serve(
     asyncio.run(_boot())
 
     try:
-        fastapi_app = create_app(daemon, auth_token=cfg.api.auth_token)
+        _raw_api_token = cfg.api.auth_token
+        fastapi_app = create_app(
+            daemon,
+            auth_token=_raw_api_token.get_secret_value() if _raw_api_token is not None else None,
+        )
         console.print(f"[green]✓[/green] Maxwell-Daemon serving on http://{host}:{port}")
         uvicorn.run(fastapi_app, host=host, port=port, log_level="info")
     finally:

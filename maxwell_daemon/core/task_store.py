@@ -31,6 +31,7 @@ outside an event loop.
 from __future__ import annotations
 
 import asyncio
+import logging
 import sqlite3
 import threading
 from collections.abc import Iterator
@@ -40,6 +41,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from maxwell_daemon.contracts import require
+
+log = logging.getLogger("maxwell_daemon.core.task_store")
 
 if TYPE_CHECKING:
     from maxwell_daemon.daemon.runner import Task, TaskStatus
@@ -351,6 +354,36 @@ class TaskStore:
         """Non-blocking version of :meth:`list_tasks` for use in async code."""
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, lambda: self._list_sync(limit=limit, status=status))
+
+    def prune_old_tasks(self, *, ttl_days: int) -> int:
+        """Delete completed/failed tasks older than *ttl_days* days.
+
+        Only terminal tasks (COMPLETED, FAILED, CANCELLED) are eligible for
+        pruning.  Queued and running tasks are never deleted.
+
+        Returns the number of rows deleted.
+
+        Issue #148 — task TTL/pruning.
+        """
+        from datetime import timedelta
+
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=ttl_days)).isoformat()
+        terminal_statuses = ("completed", "failed", "cancelled")
+        placeholders = ",".join("?" * len(terminal_statuses))
+        with self._lock, self._connect() as conn:
+            cur = conn.execute(
+                f"DELETE FROM tasks WHERE status IN ({placeholders}) AND created_at < ?",
+                (*terminal_statuses, cutoff),
+            )
+            deleted: int = cur.rowcount
+        if deleted:
+            log.info("task pruning: removed %d task(s) older than %d day(s)", deleted, ttl_days)
+        return deleted
+
+    async def aprune_old_tasks(self, *, ttl_days: int) -> int:
+        """Non-blocking version of :meth:`prune_old_tasks` for use in async code."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, lambda: self.prune_old_tasks(ttl_days=ttl_days))
 
     def close(self) -> None:
         """Compatibility hook for stores that do not keep an open connection."""

@@ -28,7 +28,7 @@ class TestConfiguration:
             ClaudeBackend()
 
     def test_accepts_explicit_key(self) -> None:
-        backend = ClaudeBackend(api_key="sk-test-explicit")
+        backend = ClaudeBackend(api_key="sk-test-explicit")  # nosec B106 — test-only fake key
         assert backend is not None
 
 
@@ -150,7 +150,7 @@ class TestRequestPaths:
             lambda **_: fake_client,
         )
 
-        backend = ClaudeBackend(api_key="x")
+        backend = ClaudeBackend(api_key="x")  # nosec B106 — test-only fake key
         out = await backend.complete(
             [
                 Message(role=MessageRole.SYSTEM, content="policy"),
@@ -182,7 +182,7 @@ class TestRequestPaths:
             "maxwell_daemon.backends.claude.anthropic.AsyncAnthropic",
             lambda **_: fake_client,
         )
-        backend = ClaudeBackend(api_key="x")
+        backend = ClaudeBackend(api_key="x")  # nosec B106 — test-only fake key
 
         parts = [p async for p in backend.stream([], model="claude-haiku-4-5")]
         assert parts == ["part-1", "part-2"]

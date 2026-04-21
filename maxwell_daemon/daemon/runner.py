@@ -173,6 +173,17 @@ class Daemon:
     def events(self) -> EventBus:
         return self._events
 
+    @property
+    def config(self) -> MaxwellDaemonConfig:
+        """Return the active configuration (thread-safe read-only access).
+
+        Prefer this property over accessing ``_config`` directly from outside
+        the class — it avoids coupling callers to the private attribute name
+        and prevents deep traversal chains like ``daemon._config.github…``
+        (issue #223).
+        """
+        return self._config
+
     @classmethod
     def from_config_path(cls, path: Path | str | None = None) -> Daemon:
         resolved = Path(path).expanduser() if path else default_config_path()
@@ -231,6 +242,11 @@ class Daemon:
             for i in range(worker_count):
                 self._workers.append(asyncio.create_task(self._worker_loop(i), name=f"worker-{i}"))
             log.info("daemon started (standalone) with %d workers", worker_count)
+
+        # Start the background TTL/pruning coroutine (issue #148).
+        prune_task = asyncio.create_task(self._pruning_loop(), name="pruning-loop")
+        self._bg_tasks.add(prune_task)
+        prune_task.add_done_callback(self._bg_tasks.discard)
 
         # Install SIGUSR1 handler for config hot-reload (Unix only).
         try:
@@ -548,6 +564,85 @@ class Daemon:
         log.info("reprioritized task=%s old=%d new=%d", task_id, old_priority, new_priority)
         return task
 
+    # -- background pruning loop (issue #148) --------------------------------
+
+    async def _pruning_loop(self) -> None:
+        """Hourly housekeeping: prune old tasks, truncate ledger, rotate audit log.
+
+        Configured via ``MaxwellDaemonConfig.maintenance``:
+
+        * ``task_ttl_days``        — delete terminal tasks older than N days
+        * ``ledger_max_entries``   — keep at most N rows in the cost ledger
+        * ``audit_retention_days`` — remove audit log lines older than N days
+        * ``prune_interval_seconds`` — how often this loop wakes (default 3600)
+        """
+        cfg = self._config.maintenance
+        interval = cfg.prune_interval_seconds
+        log.info(
+            "pruning loop started (interval=%ds, task_ttl=%dd, ledger_max=%d, audit_days=%d)",
+            interval,
+            cfg.task_ttl_days,
+            cfg.ledger_max_entries,
+            cfg.audit_retention_days,
+        )
+        while self._running:
+            try:
+                await asyncio.sleep(interval)
+                if not self._running:
+                    break
+                await self._run_pruning()
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                log.exception("pruning loop error (will retry after %ds)", interval)
+
+    async def _run_pruning(self) -> None:
+        """Execute one pruning pass across task store, cost ledger, and audit log."""
+        cfg = self._config.maintenance
+
+        # 1. Prune old terminal tasks from the task store.
+        try:
+            deleted_tasks = await self._task_store.aprune_old_tasks(ttl_days=cfg.task_ttl_days)
+            if deleted_tasks:
+                # Evict pruned tasks from the in-memory dict so memory is freed.
+                pruned_ids = set()
+                with self._tasks_lock:
+                    for tid, task in list(self._tasks.items()):
+                        if task.status.value in ("completed", "failed", "cancelled"):
+                            from datetime import timedelta
+
+                            cutoff = datetime.now(timezone.utc) - timedelta(
+                                days=cfg.task_ttl_days
+                            )
+                            if task.created_at < cutoff:
+                                pruned_ids.add(tid)
+                    for tid in pruned_ids:
+                        self._tasks.pop(tid, None)
+        except Exception:
+            log.exception("task store pruning failed")
+
+        # 2. Truncate the cost ledger to the configured maximum.
+        try:
+            await self._ledger.atruncate(max_entries=cfg.ledger_max_entries)
+        except Exception:
+            log.exception("ledger truncation failed")
+
+        # 3. Rotate the audit log if an AuditLogger is attached to the daemon.
+        audit_logger = getattr(self, "_audit_logger", None)
+        if audit_logger is not None and hasattr(audit_logger, "rotate"):
+            try:
+                # Temporarily update retention_days from config, then rotate.
+                old_retention = getattr(audit_logger, "_retention_days", 0)
+                audit_logger._retention_days = cfg.audit_retention_days
+                removed = await asyncio.get_running_loop().run_in_executor(
+                    None, audit_logger.rotate
+                )
+                audit_logger._retention_days = old_retention
+                if removed:
+                    log.info("audit log rotation removed %d line(s)", removed)
+            except Exception:
+                log.exception("audit log rotation failed")
+
     # -- coordinator loop ----------------------------------------------------
 
     async def _coordinator_loop(self) -> None:
@@ -581,8 +676,9 @@ class Daemon:
             for m in fleet_cfg.machines
         )
 
+        _raw_token = self._config.api.auth_token
         client = RemoteDaemonClient(
-            auth_token=self._config.api.auth_token,
+            auth_token=_raw_token.get_secret_value() if _raw_token is not None else None,
         )
 
         # Probe all machines in parallel to get live health.

@@ -178,6 +178,53 @@ class CostLedger:
         fraction = max(elapsed_seconds, min_elapsed) / month_total_seconds
         return spent / fraction
 
+    def _truncate_sync(self, *, max_entries: int) -> int:
+        """Keep only the *max_entries* most recent rows; delete the rest.
+
+        Issue #148 — ledger truncation.
+        """
+        with self._lock:
+            row = self._conn.execute("SELECT COUNT(*) FROM cost_records").fetchone()
+            total: int = row[0]
+            if total <= max_entries:
+                return 0
+            to_delete = total - max_entries
+            self._conn.execute(
+                """
+                DELETE FROM cost_records
+                WHERE id IN (
+                    SELECT id FROM cost_records
+                    ORDER BY ts ASC
+                    LIMIT ?
+                )
+                """,
+                (to_delete,),
+            )
+        return to_delete
+
+    def truncate(self, *, max_entries: int) -> int:
+        """Keep only the most recent *max_entries* rows; delete oldest rows.
+
+        Returns the number of rows deleted.
+
+        Issue #148 — ledger truncation.
+        """
+        deleted = self._truncate_sync(max_entries=max_entries)
+        if deleted:
+            import logging
+
+            logging.getLogger("maxwell_daemon.core.ledger").info(
+                "ledger truncated: removed %d old cost record(s) (max_entries=%d)",
+                deleted,
+                max_entries,
+            )
+        return deleted
+
+    async def atruncate(self, *, max_entries: int) -> int:
+        """Non-blocking version of :meth:`truncate` for use in async code."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, lambda: self.truncate(max_entries=max_entries))
+
     def close(self) -> None:
         """Close the persistent connection. Call on daemon shutdown."""
         with self._lock:

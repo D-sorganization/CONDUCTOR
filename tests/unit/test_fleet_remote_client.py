@@ -119,7 +119,7 @@ class TestSubmitTaskRequestShape:
 
     async def test_bearer_header_when_token_set(self) -> None:
         http = FakeHTTPClient()
-        client = RemoteDaemonClient(http_client=http, auth_token="s3cret")
+        client = RemoteDaemonClient(http_client=http, auth_token="s3cret")  # nosec B106 — test-only fake token
         await client.submit_task(_machine(), task_payload={})
         assert http.posts[0].headers["Authorization"] == "Bearer s3cret"
 
@@ -206,7 +206,7 @@ class TestHealthCheck:
 
     async def test_sends_auth_header_when_configured(self) -> None:
         http = FakeHTTPClient()
-        client = RemoteDaemonClient(http_client=http, auth_token="t0k")
+        client = RemoteDaemonClient(http_client=http, auth_token="t0k")  # nosec B106 — test-only fake token
         await client.health_check(_machine())
         assert http.gets[0].headers["Authorization"] == "Bearer t0k"
 
