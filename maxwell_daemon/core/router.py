@@ -112,10 +112,7 @@ class BackendRouter:
         if cfg is None:
             return candidate, reason
 
-        if (
-            cfg.fallback_backend is not None
-            and budget_percent >= cfg.fallback_threshold_percent
-        ):
+        if cfg.fallback_backend is not None and budget_percent >= cfg.fallback_threshold_percent:
             fallback = cfg.fallback_backend
             fallback_reason = (
                 f"budget fallback from {candidate} to {fallback} "

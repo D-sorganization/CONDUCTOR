@@ -185,7 +185,7 @@ class MaxwellDaemonConfig(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def _validate_backend_references(self) -> "MaxwellDaemonConfig":
+    def _validate_backend_references(self) -> MaxwellDaemonConfig:
         known = set(self.backends)
 
         # Validate agent.default_backend
