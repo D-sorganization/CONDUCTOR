@@ -294,10 +294,9 @@ class HookRunner:
 
 
 def _matches(pattern: str, name: str) -> bool:
-    """Tool-name glob: ``"*"`` matches everything; otherwise exact match."""
-    if pattern == "*":
-        return True
-    return pattern == name
+    """Tool-name glob using fnmatch: supports ``*``, ``?``, and ``[seq]`` patterns."""
+    import fnmatch
+    return fnmatch.fnmatch(name, pattern)
 
 
 def _substitute(command: str, tool_input: dict[str, Any]) -> str:
