@@ -31,6 +31,18 @@ class BackendConfig(BaseModel):
         description="Maps ModelTier names (simple/moderate/complex) → model id. "
         "When set, the router picks by tier; otherwise `model` is used.",
     )
+    cost_per_million_input_tokens: float | None = Field(
+        None,
+        ge=0,
+        description="Override per-million input token cost in USD. "
+        "Used when model is not in the built-in pricing table.",
+    )
+    cost_per_million_output_tokens: float | None = Field(
+        None,
+        ge=0,
+        description="Override per-million output token cost in USD. "
+        "Used when model is not in the built-in pricing table.",
+    )
 
     def api_key_value(self) -> str | None:
         """Unwrap the SecretStr for passing to adapter constructors."""

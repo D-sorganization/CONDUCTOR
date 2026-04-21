@@ -148,6 +148,8 @@ class AgentLoopBackend(ILLMBackend):
         enable_prompt_caching: bool = True,
         registry_factory: Callable[[Path], ToolRegistry] | None = None,
         condenser: Condenser | None = None,
+        cost_per_million_input_tokens: float | None = None,
+        cost_per_million_output_tokens: float | None = None,
     ) -> None:
         key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         if not key:
@@ -165,6 +167,8 @@ class AgentLoopBackend(ILLMBackend):
         self._enable_cache = enable_prompt_caching
         self._registry_factory = registry_factory or build_default_registry
         self._condenser = condenser
+        self._cost_per_million_input = cost_per_million_input_tokens
+        self._cost_per_million_output = cost_per_million_output_tokens
 
     # ── System prompt assembly ───────────────────────────────────────────────
 
@@ -242,10 +246,26 @@ class AgentLoopBackend(ILLMBackend):
 
     # ── Cost math ────────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _cost_for(usage: TokenUsage, model: str) -> float:
-        """Compute USD cost for a turn's usage. Uses shared pricing table."""
-        price_in, price_out = _MODEL_PRICING.get(model, (3.0, 15.0))
+    def _cost_for(self, usage: TokenUsage, model: str) -> float:
+        """Compute USD cost for a turn's usage.
+
+        Lookup order:
+        1. Built-in _MODEL_PRICING table (Anthropic models).
+        2. cost_per_million_input/output_tokens from backend config.
+        3. Emit a warning and return 0.0 so callers never get silently wrong costs.
+        """
+        if model in _MODEL_PRICING:
+            price_in, price_out = _MODEL_PRICING[model]
+        elif self._cost_per_million_input is not None and self._cost_per_million_output is not None:
+            price_in, price_out = self._cost_per_million_input, self._cost_per_million_output
+        else:
+            log.warning(
+                "No pricing data for model %r — cost recorded as $0.00. "
+                "Set cost_per_million_input_tokens / cost_per_million_output_tokens "
+                "on the backend config to enable cost tracking.",
+                model,
+            )
+            return 0.0
         return (
             usage.prompt_tokens * price_in / 1_000_000
             + usage.completion_tokens * price_out / 1_000_000

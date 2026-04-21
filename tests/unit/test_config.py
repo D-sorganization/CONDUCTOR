@@ -102,3 +102,65 @@ class TestConfigLoad:
                     "bogus_key": True,
                 }
             )
+
+
+class TestDefaultConfigPath:
+    def test_maxwell_config_env_overrides_default(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from maxwell_daemon.config.loader import default_config_path
+
+        custom = tmp_path / "custom.yaml"
+        monkeypatch.setenv("MAXWELL_CONFIG", str(custom))
+        monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+        assert default_config_path() == custom
+
+    def test_xdg_config_home_respected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from maxwell_daemon.config.loader import default_config_path
+
+        monkeypatch.delenv("MAXWELL_CONFIG", raising=False)
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        result = default_config_path()
+        assert str(tmp_path) in str(result)
+        assert "maxwell-daemon" in str(result)
+
+
+class TestBackendConfigCostFields:
+    """BackendConfig optional cost fields roundtrip through model_validate."""
+
+    def test_cost_fields_default_none(self) -> None:
+        from maxwell_daemon.config.models import BackendConfig
+
+        cfg = BackendConfig.model_validate({"type": "openai", "model": "gpt-4o"})
+        assert cfg.cost_per_million_input_tokens is None
+        assert cfg.cost_per_million_output_tokens is None
+
+    def test_cost_fields_roundtrip(self) -> None:
+        from maxwell_daemon.config.models import BackendConfig
+
+        cfg = BackendConfig.model_validate(
+            {
+                "type": "openai",
+                "model": "gpt-4o",
+                "cost_per_million_input_tokens": 2.50,
+                "cost_per_million_output_tokens": 10.00,
+            }
+        )
+        assert cfg.cost_per_million_input_tokens == 2.50
+        assert cfg.cost_per_million_output_tokens == 10.00
+
+    def test_cost_fields_reject_negative(self) -> None:
+        from pydantic import ValidationError
+
+        from maxwell_daemon.config.models import BackendConfig
+
+        with pytest.raises(ValidationError):
+            BackendConfig.model_validate(
+                {
+                    "type": "openai",
+                    "model": "gpt-4o",
+                    "cost_per_million_input_tokens": -1.0,
+                }
+            )

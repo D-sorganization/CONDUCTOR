@@ -450,3 +450,50 @@ class TestAclose:
         backend._client = mock_client  # type: ignore[assignment]
         await backend.aclose()
         mock_client.aclose.assert_awaited_once()
+
+
+# ── Pricing / cost config ─────────────────────────────────────────────────────
+
+
+class TestPricing:
+    """_cost_for: built-in table → config override → warning+0.0."""
+
+    def test_known_model_uses_builtin_table(self, tmp_path: Path) -> None:
+        backend = AgentLoopBackend(workspace_dir=str(tmp_path))
+        from maxwell_daemon.backends.agent_loop import TokenUsage
+
+        usage = TokenUsage(
+            prompt_tokens=1_000_000, completion_tokens=1_000_000, total_tokens=2_000_000
+        )
+        # claude-sonnet-4-6: 3.0 input / 15.0 output per 1M tokens
+        cost = backend._cost_for(usage, "claude-sonnet-4-6")
+        assert abs(cost - 18.0) < 0.01  # 3.0 + 15.0
+
+    def test_config_cost_used_when_model_not_in_table(self, tmp_path: Path) -> None:
+        backend = AgentLoopBackend(
+            workspace_dir=str(tmp_path),
+            cost_per_million_input_tokens=5.0,
+            cost_per_million_output_tokens=20.0,
+        )
+        from maxwell_daemon.backends.agent_loop import TokenUsage
+
+        usage = TokenUsage(
+            prompt_tokens=1_000_000, completion_tokens=1_000_000, total_tokens=2_000_000
+        )
+        cost = backend._cost_for(usage, "gpt-4o")
+        assert abs(cost - 25.0) < 0.01  # 5.0 + 20.0
+
+    def test_unknown_model_no_config_warns_and_returns_zero(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        backend = AgentLoopBackend(workspace_dir=str(tmp_path))
+        from maxwell_daemon.backends.agent_loop import TokenUsage
+
+        usage = TokenUsage(prompt_tokens=100, completion_tokens=50, total_tokens=150)
+        with caplog.at_level(logging.WARNING, logger="maxwell_daemon.backends.agent_loop"):
+            cost = backend._cost_for(usage, "unknown-model-xyz")
+        assert cost == 0.0
+        assert "No pricing data" in caplog.text
+        assert "unknown-model-xyz" in caplog.text
