@@ -217,6 +217,33 @@ class Daemon:
             pass
         log.info("daemon started with %d workers", self._worker_count)
 
+    async def set_worker_count(self, n: int) -> None:
+        """Rescale the worker pool to exactly *n* workers at runtime.
+
+        :param n: desired number of workers (must be >= 1).
+        :raises PreconditionError: if *n* < 1.
+        """
+        from maxwell_daemon.contracts import require
+
+        require(n >= 1, "worker count must be at least 1")
+
+        current = len(self._workers)
+        if n > current:
+            # Spawn additional workers.
+            for i in range(current, n):
+                task = asyncio.create_task(self._worker_loop(i), name=f"worker-{i}")
+                self._workers.append(task)
+            log.info("set_worker_count: added %d worker(s); total=%d", n - current, n)
+        elif n < current:
+            # Cancel the excess workers from the end of the list.
+            to_cancel = self._workers[n:]
+            self._workers = self._workers[:n]
+            for worker in to_cancel:
+                worker.cancel()
+            if to_cancel:
+                await asyncio.gather(*to_cancel, return_exceptions=True)
+            log.info("set_worker_count: removed %d worker(s); total=%d", current - n, n)
+
     def recover(self) -> list[Task]:
         """Re-queue tasks from a prior daemon run. Called automatically from start()."""
         recovered = self._task_store.recover_pending()
