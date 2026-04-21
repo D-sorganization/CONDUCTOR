@@ -614,7 +614,7 @@ def create_app(
 
         # In coordinator mode, include per-machine health summary from the fleet config.
         machines_summary: list[dict[str, Any]] = []
-        if daemon._config.role == "coordinator" and daemon._config.fleet.machines:
+        if daemon._config.role == "coordinator" and daemon._config.fleet_machines:
             from maxwell_daemon.fleet.client import RemoteDaemonClient
             from maxwell_daemon.fleet.dispatcher import MachineState
 
@@ -626,9 +626,9 @@ def create_app(
                     capacity=m.capacity,
                     tags=tuple(m.tags),
                 )
-                for m in daemon._config.fleet.machines
+                for m in daemon._config.fleet_machines
             )
-            fleet_client = RemoteDaemonClient(auth_token=daemon._config.api.auth_token)
+            fleet_client = RemoteDaemonClient(auth_token=daemon._config.api_auth_token)
             try:
                 probed = await fleet_client.refresh_all(initial)
             except Exception:
@@ -793,11 +793,7 @@ def create_app(
         signature = request.headers.get("x-hub-signature-256", "")
         event_type = request.headers.get("x-github-event", "")
 
-        config_secret = (
-            daemon._config.github.webhook_secret.get_secret_value()
-            if daemon._config.github.webhook_secret is not None
-            else None
-        )
+        config_secret = daemon._config.github_webhook_secret_value()
         if config_secret is None:
             return JSONResponse(
                 {"detail": "webhooks disabled", "disabled": True},
@@ -825,12 +821,12 @@ def create_app(
                 label=r.label,
                 trigger=r.trigger,
             )
-            for r in daemon._config.github.routes
+            for r in daemon._config.github_routes
         ]
         router = WebhookRouter(
             WebhookConfig(
                 secret=config_secret,
-                allowed_repos=daemon._config.github.allowed_repos,
+                allowed_repos=daemon._config.github_allowed_repos,
                 routes=routes,
             ),
             daemon=daemon,

@@ -552,7 +552,7 @@ class Daemon:
 
     async def _coordinator_loop(self) -> None:
         """Periodically flush QUEUED tasks to remote workers via FleetDispatcher."""
-        poll_seconds = self._config.fleet.coordinator_poll_seconds
+        poll_seconds = self._config.fleet_coordinator_poll_seconds
         while self._running:
             try:
                 await self._dispatch_to_fleet()
@@ -565,8 +565,8 @@ class Daemon:
         from maxwell_daemon.fleet.client import RemoteDaemonClient, RemoteDaemonError
         from maxwell_daemon.fleet.dispatcher import FleetDispatcher, MachineState, TaskRequirement
 
-        fleet_cfg = self._config.fleet
-        if not fleet_cfg.machines:
+        fleet_machines = self._config.fleet_machines
+        if not fleet_machines:
             return
 
         # Build initial MachineState snapshots from config.
@@ -578,11 +578,11 @@ class Daemon:
                 capacity=m.capacity,
                 tags=tuple(m.tags),
             )
-            for m in fleet_cfg.machines
+            for m in fleet_machines
         )
 
         client = RemoteDaemonClient(
-            auth_token=self._config.api.auth_token,
+            auth_token=self._config.api_auth_token,
         )
 
         # Probe all machines in parallel to get live health.
@@ -590,7 +590,7 @@ class Daemon:
 
         # Requeue tasks dispatched to machines that have gone offline.
         now = datetime.now(timezone.utc)
-        stale_threshold = fleet_cfg.heartbeat_seconds * 3
+        stale_threshold = self._config.fleet_heartbeat_seconds * 3
         with self._tasks_lock:
             tasks_snapshot = dict(self._tasks)
 
@@ -895,7 +895,7 @@ class Daemon:
         # backend has a tier_map, pick by issue complexity. Otherwise fall back
         # to whatever the router resolved.
         effective_model = decision.model
-        backend_cfg = self._config.backends.get(decision.backend_name)
+        backend_cfg = self._router._backend_config(decision.backend_name)
         if not task.model and backend_cfg is not None and backend_cfg.tier_map:
             from maxwell_daemon.core.model_selector import pick_model_for_issue
 
