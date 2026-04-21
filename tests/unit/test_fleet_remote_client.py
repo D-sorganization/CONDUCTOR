@@ -320,3 +320,73 @@ class TestRemoteTaskResultFrozen:
         r = RemoteTaskResult(task_id="t1", machine_name="m1", status="submitted")
         with pytest.raises(dc.FrozenInstanceError):
             r.status = "error"  # type: ignore[misc]
+
+
+class TestAclose:
+    """Regression tests for issue #154 — ``RemoteDaemonClient`` must release
+    the underlying :class:`httpx.AsyncClient` on shutdown, otherwise the TCP
+    connection pool and SSL contexts leak until the OS fd limit is hit."""
+
+    async def test_aclose_awaits_underlying_http_client(self) -> None:
+        """When the injected HTTP client has an async ``aclose``, we await it."""
+
+        class ClosableHTTP(FakeHTTPClient):
+            def __init__(self) -> None:
+                super().__init__()
+                self.aclose_calls = 0
+
+            async def aclose(self) -> None:
+                self.aclose_calls += 1
+
+        http = ClosableHTTP()
+        client = RemoteDaemonClient(http_client=http)
+        await client.aclose()
+        assert http.aclose_calls == 1
+
+    async def test_aclose_tolerates_http_client_without_close(self) -> None:
+        """Injected fakes need not implement close; aclose is a no-op."""
+        http = FakeHTTPClient()
+        client = RemoteDaemonClient(http_client=http)
+        # Should not raise.
+        await client.aclose()
+
+    async def test_aclose_suppresses_underlying_close_errors(self) -> None:
+        """A misbehaving close shouldn't bubble up and abort shutdown."""
+
+        class ExplodingHTTP(FakeHTTPClient):
+            async def aclose(self) -> None:
+                raise RuntimeError("boom")
+
+        http = ExplodingHTTP()
+        client = RemoteDaemonClient(http_client=http)
+        await client.aclose()  # must not raise
+
+    async def test_async_context_manager_closes_on_exit(self) -> None:
+        """``async with RemoteDaemonClient(...)`` must close on exit."""
+
+        class ClosableHTTP(FakeHTTPClient):
+            def __init__(self) -> None:
+                super().__init__()
+                self.aclose_calls = 0
+
+            async def aclose(self) -> None:
+                self.aclose_calls += 1
+
+        http = ClosableHTTP()
+        async with RemoteDaemonClient(http_client=http) as client:
+            assert client is not None
+        assert http.aclose_calls == 1
+
+    async def test_default_httpx_adapter_exposes_aclose(self) -> None:
+        """The default adapter created by ``_make_default_http`` must be
+        closable so the built-in ``httpx.AsyncClient`` doesn't leak."""
+        from maxwell_daemon.fleet.client import _make_default_http
+
+        adapter = _make_default_http(timeout_seconds=1.0)
+        # The adapter's close should drain the underlying httpx.AsyncClient.
+        close = getattr(adapter, "aclose", None)
+        assert close is not None, "default adapter must expose aclose()"
+        await close()
+        # httpx marks the client as closed after aclose(); verify it.
+        underlying = adapter._client  # type: ignore[attr-defined]
+        assert underlying.is_closed is True

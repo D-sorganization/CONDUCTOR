@@ -19,6 +19,7 @@ See GitHub issue #104.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
@@ -80,6 +81,11 @@ class RemoteDaemonClient:
 
     The ``http_client`` is injected. Pass ``None`` to use a fresh
     :class:`httpx.AsyncClient` with the configured timeout.
+
+    The client owns a long-lived HTTP connection pool. Callers are
+    responsible for closing it via :meth:`aclose` (or the async
+    context-manager protocol) during shutdown to avoid leaking sockets
+    (see issue #154).
     """
 
     def __init__(
@@ -145,6 +151,34 @@ class RemoteDaemonClient:
         except Exception:
             return False
         return response.status_code == 200
+
+    async def aclose(self) -> None:
+        """Release the underlying HTTP client's connection pool.
+
+        Without an explicit close, the default :class:`httpx.AsyncClient`
+        created by :func:`_make_default_http` leaks its TCP connection pool
+        and SSL contexts — producing ``ResourceWarning: unclosed <ssl.SSLSocket>``
+        on shutdown and, under high task volume, accumulating connections
+        until OS file-descriptor limits are hit (see issue #154).
+
+        Callers that own a :class:`RemoteDaemonClient` should ``await`` this
+        during shutdown; an injected HTTP client that doesn't expose a close
+        method is tolerated silently so tests that hand in a fake don't have
+        to stub one.
+        """
+        close = getattr(self._http, "aclose", None) or getattr(self._http, "close", None)
+        if close is None:
+            return
+        with contextlib.suppress(Exception):
+            result = close()
+            if hasattr(result, "__await__"):
+                await result
+
+    async def __aenter__(self) -> RemoteDaemonClient:
+        return self
+
+    async def __aexit__(self, *exc_info: Any) -> None:
+        await self.aclose()
 
     async def refresh_all(self, machines: tuple[MachineState, ...]) -> tuple[MachineState, ...]:
         """Probe every machine in parallel, return snapshots with ``healthy`` updated.
@@ -213,5 +247,14 @@ def _make_default_http(timeout_seconds: float) -> HTTPClientProtocol:
 
         async def get(self, url: str, *, headers: dict[str, str]) -> HTTPResponseProtocol:
             return await self._client.get(url, headers=headers)
+
+        async def aclose(self) -> None:
+            """Close the underlying ``httpx.AsyncClient`` to release sockets.
+
+            Paired with :meth:`RemoteDaemonClient.aclose` so the default
+            adapter doesn't leak connection pools when the client is
+            long-lived (see issue #154).
+            """
+            await self._client.aclose()
 
     return _HttpxAdapter(timeout_seconds)
