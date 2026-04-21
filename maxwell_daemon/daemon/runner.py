@@ -217,33 +217,6 @@ class Daemon:
             pass
         log.info("daemon started with %d workers", self._worker_count)
 
-    async def set_worker_count(self, n: int) -> None:
-        """Rescale the worker pool to exactly *n* workers at runtime.
-
-        :param n: desired number of workers (must be >= 1).
-        :raises PreconditionError: if *n* < 1.
-        """
-        from maxwell_daemon.contracts import require
-
-        require(n >= 1, "worker count must be at least 1")
-
-        current = len(self._workers)
-        if n > current:
-            # Spawn additional workers.
-            for i in range(current, n):
-                task = asyncio.create_task(self._worker_loop(i), name=f"worker-{i}")
-                self._workers.append(task)
-            log.info("set_worker_count: added %d worker(s); total=%d", n - current, n)
-        elif n < current:
-            # Cancel the excess workers from the end of the list.
-            to_cancel = self._workers[n:]
-            self._workers = self._workers[:n]
-            for worker in to_cancel:
-                worker.cancel()
-            if to_cancel:
-                await asyncio.gather(*to_cancel, return_exceptions=True)
-            log.info("set_worker_count: removed %d worker(s); total=%d", current - n, n)
-
     def recover(self) -> list[Task]:
         """Re-queue tasks from a prior daemon run. Called automatically from start()."""
         recovered = self._task_store.recover_pending()
@@ -515,8 +488,9 @@ class Daemon:
             # exit cleanly after finishing their current task.
             for _ in range(current - n):
                 await self._queue.put((-1, None))
-            # Prune completed/cancelled worker tasks from the list.
-            self._workers = [w for w in self._workers if not w.done()]
+            # Remove excess workers from tracking immediately; sentinels will
+            # signal them to exit after finishing their current task.
+            self._workers = self._workers[:n]
             log.info("scaled down: sent %d stop sentinel(s) (target=%d)", current - n, n)
         self._worker_count = n
 

@@ -505,13 +505,12 @@ class TestWorkerRescaling:
     def test_set_worker_count_zero_raises(
         self, minimal_config: MaxwellDaemonConfig, isolated_ledger_path: Path
     ) -> None:
-        """set_worker_count(0) raises PreconditionError."""
-        from maxwell_daemon.contracts import PreconditionError
+        """set_worker_count(0) raises ValueError."""
 
         async def body(d: Daemon) -> None:
             import pytest
 
-            with pytest.raises(PreconditionError):
+            with pytest.raises(ValueError):
                 await d.set_worker_count(0)
 
         _run(_with_daemon(minimal_config, isolated_ledger_path, worker_count=2, body=body))
