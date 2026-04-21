@@ -83,14 +83,15 @@ class TestConfigLoad:
         assert "sk-test-123" not in repr(cfg.backends["claude"])
 
     def test_default_backend_must_exist(self) -> None:
-        cfg = MaxwellDaemonConfig.model_validate(
-            {
-                "backends": {"claude": {"type": "claude", "model": "claude-sonnet-4-6"}},
-                "agent": {"default_backend": "nonexistent"},
-            }
-        )
-        with pytest.raises(ValueError, match="not found in backends"):
-            cfg.default_backend_config()
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="not found in backends"):
+            MaxwellDaemonConfig.model_validate(
+                {
+                    "backends": {"claude": {"type": "claude", "model": "claude-sonnet-4-6"}},
+                    "agent": {"default_backend": "nonexistent"},
+                }
+            )
 
     def test_rejects_unknown_top_level_keys(self) -> None:
         from pydantic import ValidationError
@@ -100,5 +101,32 @@ class TestConfigLoad:
                 {
                     "backends": {"c": {"type": "claude", "model": "x"}},
                     "bogus_key": True,
+                }
+            )
+
+    def test_backend_config_rejects_unknown_fields(self) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            MaxwellDaemonConfig.model_validate(
+                {
+                    "backends": {
+                        "claude": {
+                            "type": "claude",
+                            "model": "claude-sonnet-4-6",
+                            "modle": "typo-field",  # should be rejected
+                        }
+                    }
+                }
+            )
+
+    def test_repo_backend_must_exist(self) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="not found in backends"):
+            MaxwellDaemonConfig.model_validate(
+                {
+                    "backends": {"claude": {"type": "claude", "model": "claude-sonnet-4-6"}},
+                    "repos": [{"name": "r", "path": "/tmp", "backend": "nonexistent"}],
                 }
             )

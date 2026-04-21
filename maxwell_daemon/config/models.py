@@ -9,13 +9,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 
 class BackendConfig(BaseModel):
     """One LLM backend (Claude, OpenAI, Ollama, ...)."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     type: str = Field(..., description="Backend type: claude, openai, ollama, google, azure")
     model: str = Field(..., description="Default model id for this backend")
@@ -149,10 +149,24 @@ class MaxwellDaemonConfig(BaseModel):
 
     @field_validator("backends")
     @classmethod
-    def _require_default_exists(cls, v: dict[str, BackendConfig]) -> dict[str, BackendConfig]:
+    def _require_at_least_one(cls, v: dict[str, BackendConfig]) -> dict[str, BackendConfig]:
         if not v:
             raise ValueError("At least one backend must be configured")
         return v
+
+    @model_validator(mode="after")
+    def _validate_backend_references(self) -> MaxwellDaemonConfig:
+        default = self.agent.default_backend
+        if self.backends and default not in self.backends:
+            raise ValueError(
+                f"agent.default_backend '{default}' not found in backends: {sorted(self.backends)}"
+            )
+        for repo in self.repos:
+            if repo.backend is not None and self.backends and repo.backend not in self.backends:
+                raise ValueError(
+                    f"repo '{repo.name}' backend '{repo.backend}' not found in backends: {sorted(self.backends)}"
+                )
+        return self
 
     def default_backend_config(self) -> BackendConfig:
         name = self.agent.default_backend
