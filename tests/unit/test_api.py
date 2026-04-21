@@ -416,29 +416,23 @@ class TestSSHEndpointsWithoutAsyncSSH:
     the None sentinel is set correctly and the 503 guard fires.
     """
 
-    def test_ssh_sessions_returns_503_when_asyncssh_absent(
-        self, daemon: Daemon
-    ) -> None:
+    def test_ssh_sessions_returns_503_when_asyncssh_absent(self, daemon: Daemon) -> None:
         import sys
         from unittest.mock import patch
 
         # Simulate asyncssh being absent by making it unimportable.
-        with patch.dict(sys.modules, {"asyncssh": None}):
-            with TestClient(create_app(daemon)) as c:
-                r = c.get("/api/v1/ssh/sessions")
+        with patch.dict(sys.modules, {"asyncssh": None}), TestClient(create_app(daemon)) as c:
+            r = c.get("/api/v1/ssh/sessions")
         assert r.status_code == 503
         assert "SSH support not installed" in r.json()["detail"]
 
-    def test_ssh_connect_returns_503_when_asyncssh_absent(
-        self, daemon: Daemon
-    ) -> None:
+    def test_ssh_connect_returns_503_when_asyncssh_absent(self, daemon: Daemon) -> None:
         import sys
         from unittest.mock import patch
 
-        with patch.dict(sys.modules, {"asyncssh": None}):
-            with TestClient(create_app(daemon)) as c:
-                r = c.post(
-                    "/api/v1/ssh/connect",
-                    json={"host": "srv", "user": "ubuntu"},
-                )
+        with patch.dict(sys.modules, {"asyncssh": None}), TestClient(create_app(daemon)) as c:
+            r = c.post(
+                "/api/v1/ssh/connect",
+                json={"host": "srv", "user": "ubuntu"},
+            )
         assert r.status_code == 503

@@ -184,7 +184,7 @@ class APIConfig(BaseModel):
         description="HMAC-SHA256 secret for JWT token issuance and validation. "
         "When set, /api/v1/auth/token becomes usable. "
         "Supports ${ENV_VAR} substitution. "
-        "Generate with: python -c \"import secrets; print(secrets.token_hex(32))\"",
+        'Generate with: python -c "import secrets; print(secrets.token_hex(32))"',
     )
     tls_cert: Path | None = None
     tls_key: Path | None = None

@@ -159,6 +159,21 @@ class CostSummary(BaseModel):
     by_backend: dict[str, float]
 
 
+class SSHConnectRequest(BaseModel):
+    host: str
+    port: int = 22
+    user: str
+    password: str | None = None
+
+
+class SSHRunRequest(BaseModel):
+    host: str
+    port: int = 22
+    user: str
+    command: str
+    timeout_seconds: float = 30.0
+
+
 def _auth_dep(token: str | None) -> Any:
     async def _check(authorization: Annotated[str | None, Header()] = None) -> None:
         if token is None:
@@ -932,12 +947,6 @@ def create_app(
         SSHKeyStore().remove(machine)
         return {"machine": machine, "deleted": True}
 
-    class SSHConnectRequest(BaseModel):
-        host: str
-        port: int = 22
-        user: str
-        password: str | None = None
-
     @app.post("/api/v1/ssh/connect", dependencies=[Depends(auth), Depends(_require_admin())])
     async def ssh_connect(payload: SSHConnectRequest) -> Any:
         """Open (or reuse) an SSH session and return its summary."""
@@ -956,13 +965,6 @@ def create_app(
             "user": payload.user,
             "age_seconds": round(session.age_seconds, 1),
         }
-
-    class SSHRunRequest(BaseModel):
-        host: str
-        port: int = 22
-        user: str
-        command: str
-        timeout_seconds: float = 30.0
 
     @app.post("/api/v1/ssh/run", dependencies=[Depends(auth), Depends(_require_admin())])
     async def ssh_run(payload: SSHRunRequest) -> Any:
