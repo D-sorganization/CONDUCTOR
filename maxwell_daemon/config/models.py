@@ -181,9 +181,25 @@ class APIConfig(BaseModel):
     auth_token: str | None = None
     tls_cert: Path | None = None
     tls_key: Path | None = None
+    # JWT RBAC — set jwt_secret to enable role-based access control.
+    jwt_secret: SecretStr | None = Field(
+        None,
+        description="HMAC-SHA256 secret for signing JWTs. "
+        'Generate with: python -c "import secrets; print(secrets.token_hex(32))". '
+        "When set, the daemon issues and validates JWT bearer tokens with role claims.",
+    )
+    jwt_expiry_seconds: int = Field(
+        3600,
+        ge=1,
+        description="Default JWT lifetime in seconds (default: 1 hour).",
+    )
     # Rate limiting. Absent = disabled entirely.
     rate_limit_default: RateLimitConfig | None = None
     rate_limit_groups: dict[str, RateLimitConfig] = Field(default_factory=dict)
+
+    def jwt_secret_value(self) -> str | None:
+        """Unwrap the JWT secret SecretStr, or None if unset."""
+        return self.jwt_secret.get_secret_value() if self.jwt_secret is not None else None
 
 
 class MaxwellDaemonConfig(BaseModel):
