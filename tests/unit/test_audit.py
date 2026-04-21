@@ -204,6 +204,19 @@ class TestVerifyChain:
         violations = verify_chain(log_path)
         assert any("chain broken" in v["error"] for v in violations)
 
+    def test_tampered_first_entry_prev_hash_detected(
+        self, logger: AuditLogger, log_path: Path
+    ) -> None:
+        """Issue #233: verify_chain must flag a non-genesis prev_hash on line 1."""
+        logger.log_api_call(method="GET", path="/a", status=200)
+        lines = log_path.read_text().splitlines()
+        obj = json.loads(lines[0])
+        obj["prev_hash"] = "a" * 64  # tamper: replace genesis sentinel
+        lines[0] = json.dumps(obj)
+        log_path.write_text("\n".join(lines) + "\n")
+        violations = verify_chain(log_path)
+        assert any(v["line"] == 1 and "chain broken" in v["error"] for v in violations)
+
 
 class TestAuditApiEndpoints:
     """Integration tests for /api/v1/audit and /api/v1/audit/verify."""
