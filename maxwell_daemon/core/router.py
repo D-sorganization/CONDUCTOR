@@ -10,10 +10,17 @@ Routing rules (in priority order):
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 from maxwell_daemon.backends import ILLMBackend, registry
 from maxwell_daemon.config import BackendConfig, MaxwellDaemonConfig
+
+if TYPE_CHECKING:
+    from maxwell_daemon.core.budget import BudgetEnforcer
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -25,8 +32,9 @@ class RouteDecision:
 
 
 class BackendRouter:
-    def __init__(self, config: MaxwellDaemonConfig) -> None:
+    def __init__(self, config: MaxwellDaemonConfig, budget: Any = None) -> None:
         self._config = config
+        self._budget = budget
         self._instances: dict[str, ILLMBackend] = {}
 
     def _get_or_create(self, name: str, cfg: BackendConfig) -> ILLMBackend:
@@ -75,9 +83,48 @@ class BackendRouter:
         if repo:
             repo_cfg = next((r for r in self._config.repos if r.name == repo), None)
             if repo_cfg and repo_cfg.backend:
-                return repo_cfg.backend, f"repo override for {repo}"
+                name = repo_cfg.backend
+                return self._apply_budget_fallback(name, f"repo override for {repo}")
 
-        return self._config.agent.default_backend, "global default"
+        name = self._config.agent.default_backend
+        return self._apply_budget_fallback(name, "global default")
+
+    def _apply_budget_fallback(self, name: str, reason: str) -> tuple[str, str]:
+        """Apply budget-aware fallback if utilisation exceeds the threshold.
+
+        If the candidate backend has a ``fallback_backend`` configured and we have
+        a BudgetEnforcer, check the current budget utilisation. When utilisation >=
+        ``fallback_threshold``, switch to the fallback backend (if it exists in config).
+        """
+        if self._budget is None:
+            return name, reason
+
+        candidate_cfg = self._config.backends.get(name)
+        if candidate_cfg is None or not candidate_cfg.fallback_backend:
+            return name, reason
+
+        fallback = candidate_cfg.fallback_backend
+        if fallback not in self._config.backends:
+            log.warning(
+                "fallback_backend '%s' for '%s' not found in backends — ignoring",
+                fallback,
+                name,
+            )
+            return name, reason
+
+        check = self._budget.check()
+        utilisation = check.utilisation
+        if utilisation >= candidate_cfg.fallback_threshold:
+            log.warning(
+                "budget at %.0f%% (>= %.0f%%) — falling back from %s to %s",
+                utilisation * 100,
+                candidate_cfg.fallback_threshold * 100,
+                name,
+                fallback,
+            )
+            return fallback, f"budget fallback from {name} to {fallback}"
+
+        return name, reason
 
     def available_backends(self) -> list[str]:
         return [name for name, cfg in self._config.backends.items() if cfg.enabled]
