@@ -587,6 +587,34 @@ def create_app(
             "audit_enabled": True,
         }
 
+    @app.post(
+        "/api/reload",
+        dependencies=[Depends(_require_operator())],
+    )
+    async def reload_config() -> dict[str, Any]:
+        """Reload daemon config from disk without restarting.
+
+        Atomically swaps the in-memory config and router so running workers are
+        not interrupted. Requires operator role (or static bearer token when JWT
+        is not configured).
+
+        Returns the path that was reloaded and an ISO-8601 timestamp.
+        """
+        try:
+            path = daemon.reload_config()
+        except FileNotFoundError as exc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                f"config reload failed: {exc}",
+            ) from exc
+        return {
+            "status": "reloaded",
+            "config_path": str(path),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
     @app.get("/api/v1/cost", dependencies=[Depends(auth)])
     async def cost_summary() -> CostSummary:
         now = datetime.now(timezone.utc)
