@@ -266,3 +266,93 @@ class TestHookOutcome:
         o = HookOutcome(blocked=False, errored=False, passed=True, detail="ok", failing_command="")
         with pytest.raises(FrozenInstanceError):
             o.blocked = True  # type: ignore[misc]
+
+
+class TestLoadHookConfigEdgeCases:
+    def test_non_mapping_root_raises(self, tmp_path: Path) -> None:
+        (tmp_path / "h.yaml").write_text("- list item\n")
+        with pytest.raises(HookViolationError, match="mapping"):
+            load_hook_config(tmp_path / "h.yaml")
+
+    def test_non_mapping_hooks_section_raises(self, tmp_path: Path) -> None:
+        (tmp_path / "h.yaml").write_text("hooks:\n  - list_not_mapping\n")
+        with pytest.raises(HookViolationError, match="non-mapping"):
+            load_hook_config(tmp_path / "h.yaml")
+
+
+class TestParseSpecsEdgeCases:
+    """Tests for _parse_specs() error branches."""
+
+    def _load_with_pre_tool(self, tmp_path: Path, pre_tool_yaml: str) -> None:
+        (tmp_path / "h.yaml").write_text(f"hooks:\n  pre_tool:\n{pre_tool_yaml}")
+        load_hook_config(tmp_path / "h.yaml")
+
+    def test_string_item_creates_spec(self, tmp_path: Path) -> None:
+        (tmp_path / "h.yaml").write_text("hooks:\n  pre_tool:\n    - 'echo hello'\n")
+        cfg = load_hook_config(tmp_path / "h.yaml")
+        assert cfg.pre_tool[0].command == "echo hello"
+        assert cfg.pre_tool[0].match == "*"
+
+    def test_non_list_pre_tool_raises(self, tmp_path: Path) -> None:
+        (tmp_path / "h.yaml").write_text("hooks:\n  pre_tool: not_a_list\n")
+        with pytest.raises(HookViolationError, match="list"):
+            load_hook_config(tmp_path / "h.yaml")
+
+    def test_non_dict_non_string_item_raises(self, tmp_path: Path) -> None:
+        (tmp_path / "h.yaml").write_text("hooks:\n  pre_tool:\n    - 42\n")
+        with pytest.raises(HookViolationError, match="mapping"):
+            load_hook_config(tmp_path / "h.yaml")
+
+    def test_missing_command_key_raises(self, tmp_path: Path) -> None:
+        (tmp_path / "h.yaml").write_text("hooks:\n  pre_tool:\n    - match: foo\n")
+        with pytest.raises(HookViolationError, match="command"):
+            load_hook_config(tmp_path / "h.yaml")
+
+    def test_non_string_match_raises(self, tmp_path: Path) -> None:
+        (tmp_path / "h.yaml").write_text(
+            "hooks:\n  pre_tool:\n    - command: echo\n      match: 123\n"
+        )
+        with pytest.raises(HookViolationError, match="match"):
+            load_hook_config(tmp_path / "h.yaml")
+
+
+class TestParseStringsEdgeCases:
+    def test_non_list_pre_commit_raises(self, tmp_path: Path) -> None:
+        (tmp_path / "h.yaml").write_text("hooks:\n  pre_commit: not_a_list\n")
+        with pytest.raises(HookViolationError, match="list"):
+            load_hook_config(tmp_path / "h.yaml")
+
+    def test_non_string_item_raises(self, tmp_path: Path) -> None:
+        (tmp_path / "h.yaml").write_text("hooks:\n  pre_commit:\n    - 42\n")
+        with pytest.raises(HookViolationError, match="string"):
+            load_hook_config(tmp_path / "h.yaml")
+
+
+class TestPostToolNonMatching:
+    async def test_non_matching_post_tool_skipped(self, tmp_path: Path) -> None:
+        runner = _Runner()
+        cfg = HookConfig(post_tool=(HookSpec(match="write_file", command="check.sh"),))
+        hr = HookRunner(cfg, workspace=tmp_path, runner=runner)
+        out = await hr.run_post_tool("read_file", {}, tool_output="data")
+        assert out.passed is True
+        assert runner.calls == []
+
+
+class TestDefaultRunner:
+    async def test_successful_command(self, tmp_path: Path) -> None:
+        import os
+        from maxwell_daemon.hooks import _default_runner
+
+        rc, out = await _default_runner("echo hello", cwd=str(tmp_path), env=dict(os.environ), timeout=10.0)
+        assert rc == 0
+        assert "hello" in out
+
+    async def test_timeout_kills_process(self, tmp_path: Path) -> None:
+        import os
+        from maxwell_daemon.hooks import _default_runner
+
+        rc, out = await _default_runner(
+            "sleep 60", cwd=str(tmp_path), env=dict(os.environ), timeout=0.1
+        )
+        assert rc == 124
+        assert "timeout" in out

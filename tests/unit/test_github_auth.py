@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -105,3 +106,70 @@ class TestAppAuth:
 
         with patch.dict("sys.modules", {"jwt": None}), pytest.raises(ImportError, match="PyJWT"):
             auth._fetch_installation_token()
+
+    def test_no_httpx_import_raises_helpful_error(self) -> None:
+        auth = self._make_auth()
+        fake_jwt = MagicMock()
+        fake_jwt.encode.return_value = "jwt-token"
+        with (
+            patch.dict("sys.modules", {"jwt": fake_jwt, "httpx": None}),
+            pytest.raises(ImportError, match="httpx"),
+        ):
+            auth._fetch_installation_token()
+
+    def test_fetch_installation_token_success(self) -> None:
+        auth = self._make_auth()
+        fake_jwt = MagicMock()
+        fake_jwt.encode.return_value = "jwt-token"
+        fake_resp = MagicMock()
+        fake_resp.json.return_value = {
+            "token": "ghs_freshtoken",
+            "expires_at": "2099-01-01T00:00:00Z",
+        }
+        fake_httpx = MagicMock()
+        fake_httpx.post.return_value = fake_resp
+        with patch.dict("sys.modules", {"jwt": fake_jwt, "httpx": fake_httpx}):
+            token, expires_mono = auth._fetch_installation_token()
+        assert token == "ghs_freshtoken"
+        assert expires_mono > time.monotonic()
+
+    def test_fetch_installation_token_http_error(self) -> None:
+        auth = self._make_auth()
+        fake_jwt = MagicMock()
+        fake_jwt.encode.return_value = "jwt-token"
+        fake_resp = MagicMock()
+        import httpx
+
+        fake_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "403", request=MagicMock(), response=MagicMock()
+        )
+        fake_httpx = MagicMock()
+        fake_httpx.post.return_value = fake_resp
+        fake_httpx.HTTPStatusError = httpx.HTTPStatusError
+        with (
+            patch.dict("sys.modules", {"jwt": fake_jwt, "httpx": fake_httpx}),
+            pytest.raises(httpx.HTTPStatusError),
+        ):
+            auth._fetch_installation_token()
+
+
+class TestAppAuthFromConfig:
+    def test_from_config_app_mode(self, tmp_path: Path) -> None:
+        pem_path = tmp_path / "key.pem"
+        pem_path.write_text("-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----")
+        cfg = MagicMock()
+        cfg.github.auth_method = "app"
+        cfg.github.private_key_path = str(pem_path)
+        cfg.github.app_id = "111"
+        cfg.github.installation_id = "222"
+        auth = GitHubAuth.from_config(cfg)
+        assert auth._mode == "app"
+        assert auth._app_id == 111
+        assert auth._installation_id == 222
+
+    def test_from_config_app_mode_missing_key_raises(self, tmp_path: Path) -> None:
+        cfg = MagicMock()
+        cfg.github.auth_method = "app"
+        cfg.github.private_key_path = str(tmp_path / "nonexistent.pem")
+        with pytest.raises(FileNotFoundError, match="private key"):
+            GitHubAuth.from_config(cfg)
