@@ -424,7 +424,6 @@ def create_app(
         repo: Annotated[str | None, Query()] = None,
         completed_before: Annotated[datetime | None, Query()] = None,
         limit: Annotated[int, Query(ge=1, le=1000)] = 100,
-        completed_before: Annotated[datetime | None, Query()] = None,
     ) -> list[TaskView]:
         tasks = list(daemon.state().tasks.values())
         if status:
