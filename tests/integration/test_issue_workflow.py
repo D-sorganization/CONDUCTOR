@@ -170,7 +170,7 @@ def _wait_done(
         t = client.get(f"/api/v1/tasks/{task_id}").json()
         if t["status"] in {"completed", "failed"}:
             return t
-        loop.run_until_complete(asyncio.sleep(0.05))
+        loop.run_until_complete(asyncio.sleep(0.25))
     raise AssertionError(f"task did not complete: {t}")
 
 

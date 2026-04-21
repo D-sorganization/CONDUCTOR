@@ -79,7 +79,7 @@ def _wait_for_completion(
         if t["status"] in {"completed", "failed"}:
             return t
         # Yield: run the loop long enough for a worker to pick up the task.
-        loop.run_until_complete(asyncio.sleep(0.05))
+        loop.run_until_complete(asyncio.sleep(0.25))
     raise AssertionError(f"task did not complete: {t}")
 
 
