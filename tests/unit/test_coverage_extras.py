@@ -31,7 +31,9 @@ def _issue() -> Issue:
 @dataclass
 class FakeGitHub:
     issue: Issue
-    pr: PullRequest = field(default_factory=lambda: PullRequest(number=1, url="https://x/p/1", draft=True))
+    pr: PullRequest = field(
+        default_factory=lambda: PullRequest(number=1, url="https://x/p/1", draft=True)
+    )
 
     async def get_issue(self, repo: str, number: int) -> Issue:
         return self.issue
@@ -60,10 +62,16 @@ class TestPickStaticMethod:
         assert IssueExecutor._pick(None, "context_max_chars", 9999) == 9999
 
     def test_pick_returns_override_value_when_set(self) -> None:
-        assert IssueExecutor._pick(RepoOverrides(context_max_chars=12345), "context_max_chars", 9999) == 12345
+        assert (
+            IssueExecutor._pick(RepoOverrides(context_max_chars=12345), "context_max_chars", 9999)
+            == 12345
+        )
 
     def test_pick_returns_default_when_override_field_is_none(self) -> None:
-        assert IssueExecutor._pick(RepoOverrides(context_max_chars=None), "context_max_chars", 9999) == 9999
+        assert (
+            IssueExecutor._pick(RepoOverrides(context_max_chars=None), "context_max_chars", 9999)
+            == 9999
+        )
 
 
 class TestParseResponseEdgeCases:
@@ -93,9 +101,17 @@ class TestDraftChangeWithContextAndMemory:
         class CaptureMsgBackend(ILLMBackend):
             name = "capture"
 
-            async def complete(self, messages: list[Message], *, model: str, **kw: Any) -> BackendResponse:
+            async def complete(
+                self, messages: list[Message], *, model: str, **kw: Any
+            ) -> BackendResponse:
                 captured_messages.append(messages)
-                return BackendResponse(content=json.dumps({"plan": "ok", "diff": ""}), finish_reason="stop", usage=TokenUsage(total_tokens=5), model=model, backend=self.name)
+                return BackendResponse(
+                    content=json.dumps({"plan": "ok", "diff": ""}),
+                    finish_reason="stop",
+                    usage=TokenUsage(total_tokens=5),
+                    model=model,
+                    backend=self.name,
+                )
 
             async def stream(self, *a: Any, **kw: Any):
                 if False:
@@ -107,7 +123,20 @@ class TestDraftChangeWithContextAndMemory:
             def capabilities(self, model: str) -> BackendCapabilities:
                 return BackendCapabilities()
 
-        asyncio.run(IssueExecutor(github=FakeGitHub(issue=_issue()), workspace=FakeWorkspace(), backend=CaptureMsgBackend())._draft_change(issue_title="title", issue_body="body", model="m", context="CONTEXT_MARKER", memory="MEMORY_MARKER", labels=[]))
+        asyncio.run(
+            IssueExecutor(
+                github=FakeGitHub(issue=_issue()),
+                workspace=FakeWorkspace(),
+                backend=CaptureMsgBackend(),
+            )._draft_change(
+                issue_title="title",
+                issue_body="body",
+                model="m",
+                context="CONTEXT_MARKER",
+                memory="MEMORY_MARKER",
+                labels=[],
+            )
+        )
         assert captured_messages
         user_text = next(m for m in captured_messages[0] if m.role == MessageRole.USER).content
         assert "CONTEXT_MARKER" in user_text

@@ -61,7 +61,9 @@ class CapturingBackend(ILLMBackend):
     def __init__(self) -> None:
         self.system_messages: list[str] = []
 
-    async def complete(self, messages: list[Message], *, model: str, **kwargs: Any) -> BackendResponse:
+    async def complete(
+        self, messages: list[Message], *, model: str, **kwargs: Any
+    ) -> BackendResponse:
         for m in messages:
             if m.role == MessageRole.SYSTEM:
                 self.system_messages.append(m.content)
@@ -85,85 +87,179 @@ class CapturingBackend(ILLMBackend):
 
 
 def _cfg(**kw: Any) -> MaxwellDaemonConfig:
-    return MaxwellDaemonConfig.model_validate({
-        "backends": {"c": {"type": "ollama", "model": "m"}},
-        "agent": {"default_backend": "c"},
-        "repos": [{"name": "my-repo", "path": "/tmp/x", **kw}],
-    })
+    return MaxwellDaemonConfig.model_validate(
+        {
+            "backends": {"c": {"type": "ollama", "model": "m"}},
+            "agent": {"default_backend": "c"},
+            "repos": [{"name": "my-repo", "path": "/tmp/x", **kw}],
+        }
+    )
 
 
 class TestBuildSystemPrompt:
     def test_no_overrides_returns_default(self) -> None:
-        assert IssueExecutor._build_system_prompt(overrides=None, repo="o/r", issue_title="t", issue_body="b") == _SYSTEM_PROMPT
+        assert (
+            IssueExecutor._build_system_prompt(
+                overrides=None, repo="o/r", issue_title="t", issue_body="b"
+            )
+            == _SYSTEM_PROMPT
+        )
 
     def test_overrides_without_prompt_fields_returns_default(self) -> None:
-        assert IssueExecutor._build_system_prompt(overrides=RepoOverrides(), repo="o/r", issue_title="t", issue_body="b") == _SYSTEM_PROMPT
+        assert (
+            IssueExecutor._build_system_prompt(
+                overrides=RepoOverrides(), repo="o/r", issue_title="t", issue_body="b"
+            )
+            == _SYSTEM_PROMPT
+        )
 
     def test_system_prompt_prefix_is_prepended(self) -> None:
-        result = IssueExecutor._build_system_prompt(overrides=RepoOverrides(system_prompt_prefix="USE PYTHON."), repo="o/r", issue_title="t", issue_body="b")
+        result = IssueExecutor._build_system_prompt(
+            overrides=RepoOverrides(system_prompt_prefix="USE PYTHON."),
+            repo="o/r",
+            issue_title="t",
+            issue_body="b",
+        )
         assert result.startswith("USE PYTHON.")
         assert _SYSTEM_PROMPT.strip() in result
 
     def test_prefix_and_default_are_separated(self) -> None:
-        result = IssueExecutor._build_system_prompt(overrides=RepoOverrides(system_prompt_prefix="PREFIX"), repo="o/r", issue_title="t", issue_body="b")
+        result = IssueExecutor._build_system_prompt(
+            overrides=RepoOverrides(system_prompt_prefix="PREFIX"),
+            repo="o/r",
+            issue_title="t",
+            issue_body="b",
+        )
         assert "PREFIX\n\n" in result
 
     def test_template_substitution_repo(self) -> None:
-        result = IssueExecutor._build_system_prompt(overrides=RepoOverrides(system_prompt_prefix="Repo: {repo}"), repo="myorg/myrepo", issue_title="t", issue_body="b")
+        result = IssueExecutor._build_system_prompt(
+            overrides=RepoOverrides(system_prompt_prefix="Repo: {repo}"),
+            repo="myorg/myrepo",
+            issue_title="t",
+            issue_body="b",
+        )
         assert "Repo: myorg/myrepo" in result
 
     def test_template_substitution_issue_title(self) -> None:
-        result = IssueExecutor._build_system_prompt(overrides=RepoOverrides(system_prompt_prefix="Fix: {issue_title}"), repo="o/r", issue_title="My Bug", issue_body="b")
+        result = IssueExecutor._build_system_prompt(
+            overrides=RepoOverrides(system_prompt_prefix="Fix: {issue_title}"),
+            repo="o/r",
+            issue_title="My Bug",
+            issue_body="b",
+        )
         assert "Fix: My Bug" in result
 
     def test_template_substitution_issue_body_truncated(self) -> None:
-        result = IssueExecutor._build_system_prompt(overrides=RepoOverrides(system_prompt_prefix="Body: {issue_body}"), repo="o/r", issue_title="t", issue_body="x" * 1000)
+        result = IssueExecutor._build_system_prompt(
+            overrides=RepoOverrides(system_prompt_prefix="Body: {issue_body}"),
+            repo="o/r",
+            issue_title="t",
+            issue_body="x" * 1000,
+        )
         assert "Body: " + "x" * 500 in result
         assert "x" * 501 not in result
 
     def test_template_substitution_none_body(self) -> None:
-        result = IssueExecutor._build_system_prompt(overrides=RepoOverrides(system_prompt_prefix="Body: {issue_body}"), repo="o/r", issue_title="t", issue_body=None)  # type: ignore[arg-type]
+        result = IssueExecutor._build_system_prompt(
+            overrides=RepoOverrides(system_prompt_prefix="Body: {issue_body}"),
+            repo="o/r",
+            issue_title="t",
+            issue_body=None,
+        )  # type: ignore[arg-type]
         assert "Body: " in result
 
     def test_system_prompt_file_is_read(self, tmp_path: Path) -> None:
         f = tmp_path / "p.md"
         f.write_text("File content.", encoding="utf-8")
-        result = IssueExecutor._build_system_prompt(overrides=RepoOverrides(system_prompt_file=f), repo="o/r", issue_title="t", issue_body="b")
+        result = IssueExecutor._build_system_prompt(
+            overrides=RepoOverrides(system_prompt_file=f),
+            repo="o/r",
+            issue_title="t",
+            issue_body="b",
+        )
         assert result.startswith("File content.")
         assert _SYSTEM_PROMPT.strip() in result
 
     def test_system_prompt_file_takes_priority_over_prefix(self, tmp_path: Path) -> None:
         f = tmp_path / "p.md"
         f.write_text("From file.", encoding="utf-8")
-        result = IssueExecutor._build_system_prompt(overrides=RepoOverrides(system_prompt_prefix="From prefix.", system_prompt_file=f), repo="o/r", issue_title="t", issue_body="b")
+        result = IssueExecutor._build_system_prompt(
+            overrides=RepoOverrides(system_prompt_prefix="From prefix.", system_prompt_file=f),
+            repo="o/r",
+            issue_title="t",
+            issue_body="b",
+        )
         assert "From file." in result
         assert "From prefix." not in result
 
     def test_empty_prefix_string_returns_default(self) -> None:
-        assert IssueExecutor._build_system_prompt(overrides=RepoOverrides(system_prompt_prefix=""), repo="o/r", issue_title="t", issue_body="b") == _SYSTEM_PROMPT
+        assert (
+            IssueExecutor._build_system_prompt(
+                overrides=RepoOverrides(system_prompt_prefix=""),
+                repo="o/r",
+                issue_title="t",
+                issue_body="b",
+            )
+            == _SYSTEM_PROMPT
+        )
 
 
 class TestSystemPromptInExecuteIssue:
     def test_no_override_uses_default_prompt(self) -> None:
         backend = CapturingBackend()
-        asyncio.run(IssueExecutor(github=FakeGitHub(issue=_issue()), workspace=FakeWorkspace(), backend=backend).execute_issue(repo="o/r", issue_number=42, model="m", mode="plan", overrides=None))
+        asyncio.run(
+            IssueExecutor(
+                github=FakeGitHub(issue=_issue()), workspace=FakeWorkspace(), backend=backend
+            ).execute_issue(repo="o/r", issue_number=42, model="m", mode="plan", overrides=None)
+        )
         assert any("JSON" in msg or "json" in msg.lower() for msg in backend.system_messages)
 
     def test_prefix_override_reaches_backend(self) -> None:
         backend = CapturingBackend()
-        asyncio.run(IssueExecutor(github=FakeGitHub(issue=_issue()), workspace=FakeWorkspace(), backend=backend).execute_issue(repo="o/r", issue_number=42, model="m", mode="plan", overrides=RepoOverrides(system_prompt_prefix="CUSTOM_PREFIX_MARKER")))
+        asyncio.run(
+            IssueExecutor(
+                github=FakeGitHub(issue=_issue()), workspace=FakeWorkspace(), backend=backend
+            ).execute_issue(
+                repo="o/r",
+                issue_number=42,
+                model="m",
+                mode="plan",
+                overrides=RepoOverrides(system_prompt_prefix="CUSTOM_PREFIX_MARKER"),
+            )
+        )
         assert any("CUSTOM_PREFIX_MARKER" in msg for msg in backend.system_messages)
 
     def test_file_override_reaches_backend(self, tmp_path: Path) -> None:
         f = tmp_path / "s.md"
         f.write_text("FILE_PROMPT_MARKER", encoding="utf-8")
         backend = CapturingBackend()
-        asyncio.run(IssueExecutor(github=FakeGitHub(issue=_issue()), workspace=FakeWorkspace(), backend=backend).execute_issue(repo="o/r", issue_number=42, model="m", mode="plan", overrides=RepoOverrides(system_prompt_file=f)))
+        asyncio.run(
+            IssueExecutor(
+                github=FakeGitHub(issue=_issue()), workspace=FakeWorkspace(), backend=backend
+            ).execute_issue(
+                repo="o/r",
+                issue_number=42,
+                model="m",
+                mode="plan",
+                overrides=RepoOverrides(system_prompt_file=f),
+            )
+        )
         assert any("FILE_PROMPT_MARKER" in msg for msg in backend.system_messages)
 
     def test_repo_template_substitution_in_backend_message(self) -> None:
         backend = CapturingBackend()
-        asyncio.run(IssueExecutor(github=FakeGitHub(issue=_issue()), workspace=FakeWorkspace(), backend=backend).execute_issue(repo="owner/testrepo", issue_number=42, model="m", mode="plan", overrides=RepoOverrides(system_prompt_prefix="Repo={repo}")))
+        asyncio.run(
+            IssueExecutor(
+                github=FakeGitHub(issue=_issue()), workspace=FakeWorkspace(), backend=backend
+            ).execute_issue(
+                repo="owner/testrepo",
+                issue_number=42,
+                model="m",
+                mode="plan",
+                overrides=RepoOverrides(system_prompt_prefix="Repo={repo}"),
+            )
+        )
         assert any("Repo=owner/testrepo" in msg for msg in backend.system_messages)
 
 
@@ -183,11 +279,15 @@ class TestRepoOverridesNewFields:
 
 class TestRepoConfigSystemPromptFields:
     def test_accepts_system_prompt_prefix(self) -> None:
-        rc = RepoConfig.model_validate({"name": "x", "path": "/tmp/x", "system_prompt_prefix": "Use ruff."})
+        rc = RepoConfig.model_validate(
+            {"name": "x", "path": "/tmp/x", "system_prompt_prefix": "Use ruff."}
+        )
         assert rc.system_prompt_prefix == "Use ruff."
 
     def test_accepts_system_prompt_file(self, tmp_path: Path) -> None:
-        rc = RepoConfig.model_validate({"name": "x", "path": "/tmp/x", "system_prompt_file": str(tmp_path / "p.md")})
+        rc = RepoConfig.model_validate(
+            {"name": "x", "path": "/tmp/x", "system_prompt_file": str(tmp_path / "p.md")}
+        )
         assert rc.system_prompt_file == tmp_path / "p.md"
 
     def test_defaults_to_none(self) -> None:
@@ -198,11 +298,19 @@ class TestRepoConfigSystemPromptFields:
 
 class TestResolveOverridesSystemPromptPropagation:
     def test_propagates_prefix(self) -> None:
-        assert resolve_overrides(_cfg(system_prompt_prefix="Use mypy."), repo="my-repo").system_prompt_prefix == "Use mypy."
+        assert (
+            resolve_overrides(
+                _cfg(system_prompt_prefix="Use mypy."), repo="my-repo"
+            ).system_prompt_prefix
+            == "Use mypy."
+        )
 
     def test_propagates_file(self, tmp_path: Path) -> None:
         p = tmp_path / "p.md"
-        assert resolve_overrides(_cfg(system_prompt_file=str(p)), repo="my-repo").system_prompt_file == p
+        assert (
+            resolve_overrides(_cfg(system_prompt_file=str(p)), repo="my-repo").system_prompt_file
+            == p
+        )
 
     def test_missing_repo_leaves_fields_none(self) -> None:
         ov = resolve_overrides(_cfg(system_prompt_prefix="x"), repo="unknown")

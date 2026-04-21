@@ -127,7 +127,6 @@ class IssueExecutor:
         self._memory = memory
         self._memory_max_chars = memory_max_chars
 
-
     @staticmethod
     def _build_system_prompt(
         *,
