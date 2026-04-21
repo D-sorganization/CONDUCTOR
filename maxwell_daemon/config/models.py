@@ -205,7 +205,10 @@ class MaxwellDaemonConfig(BaseModel):
 
         # Validate fallback_backend references within each BackendConfig
         for backend_name, backend_cfg in self.backends.items():
-            if backend_cfg.fallback_backend is not None and backend_cfg.fallback_backend not in known:
+            if (
+                backend_cfg.fallback_backend is not None
+                and backend_cfg.fallback_backend not in known
+            ):
                 raise ValueError(
                     f"backends['{backend_name}'].fallback_backend "
                     f"'{backend_cfg.fallback_backend}' not found in backends: {sorted(known)}"
