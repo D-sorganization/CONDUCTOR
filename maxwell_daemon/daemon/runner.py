@@ -306,11 +306,15 @@ class Daemon:
             model=model,
             priority=priority,
         )
-        # Write to self._tasks under lock to prevent iteration errors
+        # Write to self._tasks and enqueue under lock. asyncio.PriorityQueue
+        # is not thread-safe — concurrent put_nowait() from multiple threads
+        # can corrupt the underlying heap list ("list changed size during
+        # iteration"). Serializing via _tasks_lock makes the submit path safe
+        # for sync callers; the async path uses submit_threadsafe() instead.
         with self._tasks_lock:
             self._tasks[task.id] = task
+            self._queue.put_nowait((task.priority, task))
         self._task_store.save(task)
-        self._queue.put_nowait((task.priority, task))
         # Fire-and-forget: if there's no running loop yet (e.g. sync test
         # submits before start()), skip the event — the queued state is
         # observable via get_task().
@@ -386,11 +390,12 @@ class Daemon:
             issue_mode=mode,
             priority=priority,
         )
-        # Write to self._tasks under lock to prevent iteration errors
+        # See note in submit(): queue put is serialized under _tasks_lock
+        # because asyncio.PriorityQueue.put_nowait is not thread-safe.
         with self._tasks_lock:
             self._tasks[task.id] = task
+            self._queue.put_nowait((task.priority, task))
         self._task_store.save(task)
-        self._queue.put_nowait((task.priority, task))
         with contextlib.suppress(RuntimeError):
             loop = asyncio.get_running_loop()
             bg = loop.create_task(
@@ -540,10 +545,13 @@ class Daemon:
                 )
             old_priority = task.priority
             task.priority = new_priority
-        # Enqueue a fresh entry with the new priority; the stale entry will be
-        # skipped when dequeued because the task will no longer be QUEUED by then
-        # (or the worker will simply execute it at the corrected priority).
-        self._queue.put_nowait((new_priority, task))
+            # Enqueue a fresh entry with the new priority; the stale entry will
+            # be skipped when dequeued because the task will no longer be
+            # QUEUED by then (or the worker will simply execute it at the
+            # corrected priority). asyncio.PriorityQueue is not thread-safe, so
+            # the put_nowait stays inside _tasks_lock alongside the submit()
+            # path.
+            self._queue.put_nowait((new_priority, task))
         self._task_store.save(task)
         log.info("reprioritized task=%s old=%d new=%d", task_id, old_priority, new_priority)
         return task
