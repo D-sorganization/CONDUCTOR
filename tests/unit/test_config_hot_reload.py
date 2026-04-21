@@ -185,6 +185,7 @@ class TestReloadConfig:
 
 
 class TestSIGHUP:
+    @pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="SIGHUP is not available")
     def test_sighup_triggers_reload(self, file_daemon: Daemon, config_file: Path) -> None:
         """Sending SIGHUP from within the event loop should invoke reload_config."""
 

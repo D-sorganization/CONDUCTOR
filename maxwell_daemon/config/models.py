@@ -142,6 +142,7 @@ class FleetConfig(BaseModel):
     machines: list[MachineConfig] = Field(default_factory=list)
     discovery_method: Literal["manual", "mdns"] = "manual"
     heartbeat_seconds: int = Field(30, ge=5)
+    coordinator_poll_seconds: int = Field(30, ge=5)
 
 
 class WebhookRouteConfig(BaseModel):
@@ -181,6 +182,7 @@ class MaxwellDaemonConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     version: str = "1"
+    role: Literal["standalone", "coordinator", "worker"] = "standalone"
     backends: dict[str, BackendConfig] = Field(default_factory=dict)
     agent: AgentConfig = Field(default_factory=lambda: AgentConfig())
     tools: ToolConfig = Field(default_factory=lambda: ToolConfig())
