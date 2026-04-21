@@ -814,14 +814,14 @@ class Daemon:
 
     async def _execute(self, task: Task) -> None:
         task.status = TaskStatus.RUNNING
-        await self._events.publish(
-            Event(
-                kind=EventKind.TASK_STARTED,
-                payload={"id": task.id, "prompt": task.prompt},
-            )
-        )
         decision_backend = decision_model = "unknown"
         try:
+            await self._events.publish(
+                Event(
+                    kind=EventKind.TASK_STARTED,
+                    payload={"id": task.id, "prompt": task.prompt},
+                )
+            )
             self._budget.require_under_budget()
             decision = self._router.route(
                 repo=task.repo,
