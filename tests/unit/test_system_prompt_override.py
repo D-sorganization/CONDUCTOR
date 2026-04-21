@@ -8,8 +8,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 from maxwell_daemon.backends.base import (
     BackendCapabilities,
     BackendResponse,
@@ -21,7 +19,7 @@ from maxwell_daemon.backends.base import (
 from maxwell_daemon.config import MaxwellDaemonConfig, RepoConfig
 from maxwell_daemon.core.repo_overrides import RepoOverrides, resolve_overrides
 from maxwell_daemon.gh import Issue, PullRequest
-from maxwell_daemon.gh.executor import IssueExecutor, _SYSTEM_PROMPT
+from maxwell_daemon.gh.executor import _SYSTEM_PROMPT, IssueExecutor
 
 
 def _issue(title: str = "Fix the bug", body: str = "details here") -> Issue:

@@ -109,6 +109,6 @@ class TestDraftChangeWithContextAndMemory:
 
         asyncio.run(IssueExecutor(github=FakeGitHub(issue=_issue()), workspace=FakeWorkspace(), backend=CaptureMsgBackend())._draft_change(issue_title="title", issue_body="body", model="m", context="CONTEXT_MARKER", memory="MEMORY_MARKER", labels=[]))
         assert captured_messages
-        user_text = [m for m in captured_messages[0] if m.role == MessageRole.USER][0].content
+        user_text = next(m for m in captured_messages[0] if m.role == MessageRole.USER).content
         assert "CONTEXT_MARKER" in user_text
         assert "MEMORY_MARKER" in user_text
