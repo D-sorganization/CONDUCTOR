@@ -262,7 +262,6 @@ class TestSubmitThreadsafe:
 
         _run(_with_daemon(minimal_config, isolated_ledger_path, worker_count=1, body=body))
 
-
     def test_state_version_is_string(
         self, minimal_config: MaxwellDaemonConfig, isolated_ledger_path: Path
     ) -> None:
@@ -297,6 +296,7 @@ class TestPackageVersion:
 
         # Should never be None, regardless of whether pkg is installed
         assert __version__ is not None
+
 
 class TestWorkerRescaling:
     def test_set_worker_count_up(
