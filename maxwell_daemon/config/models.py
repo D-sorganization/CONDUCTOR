@@ -248,3 +248,48 @@ class MaxwellDaemonConfig(BaseModel):
                 f"default_backend '{name}' not found in backends: {sorted(self.backends)}"
             )
         return self.backends[name]
+
+    # ── Config boundary accessors (Law of Demeter) ────────────────────────────
+    # Callers should prefer these over traversing sub-objects directly so that
+    # internal config layout changes don't ripple through all consumers.
+
+    @property
+    def default_backend_name(self) -> str:
+        """Shortcut for ``agent.default_backend``."""
+        return self.agent.default_backend
+
+    @property
+    def api_auth_token(self) -> str | None:
+        """Shortcut for ``api.auth_token``."""
+        return self.api.auth_token
+
+    @property
+    def fleet_coordinator_poll_seconds(self) -> int:
+        """Shortcut for ``fleet.coordinator_poll_seconds``."""
+        return self.fleet.coordinator_poll_seconds
+
+    @property
+    def fleet_heartbeat_seconds(self) -> int:
+        """Shortcut for ``fleet.heartbeat_seconds``."""
+        return self.fleet.heartbeat_seconds
+
+    @property
+    def fleet_machines(self) -> list[MachineConfig]:
+        """Shortcut for ``fleet.machines``."""
+        return self.fleet.machines
+
+    @property
+    def github_routes(self) -> list[WebhookRouteConfig]:
+        """Shortcut for ``github.routes``."""
+        return self.github.routes
+
+    @property
+    def github_allowed_repos(self) -> list[str]:
+        """Shortcut for ``github.allowed_repos``."""
+        return self.github.allowed_repos
+
+    def github_webhook_secret_value(self) -> str | None:
+        """Return the raw webhook secret string, or None if unset."""
+        if self.github.webhook_secret is None:
+            return None
+        return self.github.webhook_secret.get_secret_value()
