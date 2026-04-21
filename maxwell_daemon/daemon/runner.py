@@ -135,6 +135,7 @@ class Daemon:
         self._bg_tasks: set[asyncio.Task[None]] = set()
         self._started_at = datetime.now(timezone.utc)
         self._running = False
+        self._loop: asyncio.AbstractEventLoop | None = None
         # Lazily-built collaborators — injected by tests, built on demand in prod.
         self._github_client: Any = None
         self._workspace: Any = None
@@ -154,6 +155,7 @@ class Daemon:
         if recover:
             self.recover()
         self._running = True
+        self._loop = asyncio.get_event_loop()
         for i in range(worker_count):
             self._workers.append(asyncio.create_task(self._worker_loop(i), name=f"worker-{i}"))
         log.info("daemon started with %d workers", worker_count)
@@ -210,6 +212,15 @@ class Daemon:
         backend: str | None = None,
         model: str | None = None,
     ) -> Task:
+        """Queue a prompt task and return it immediately.
+
+        .. warning::
+            This method calls :py:meth:`asyncio.Queue.put_nowait` and is only
+            safe to call from **the event-loop thread** (e.g. inside an
+            ``async`` handler). Cross-thread callers — sync test clients,
+            background threads, CLI threads — must use
+            :py:meth:`submit_threadsafe` instead.
+        """
         task = Task(
             id=uuid.uuid4().hex[:12],
             prompt=prompt,
@@ -235,6 +246,20 @@ class Daemon:
             self._bg_tasks.add(bg)
             bg.add_done_callback(self._bg_tasks.discard)
         return task
+
+    def submit_threadsafe(self, task: Task) -> None:
+        """Thread-safe version of :py:meth:`submit` for cross-thread callers.
+
+        Uses :func:`asyncio.run_coroutine_threadsafe` to put the task on the
+        queue from any thread, then blocks (up to 5 s) until the enqueue
+        coroutine completes.  Raises :exc:`RuntimeError` if the daemon has not
+        been started or its event loop is already closed.
+        """
+        loop = self._loop
+        if loop is None or loop.is_closed():
+            raise RuntimeError("Daemon is not running")
+        future = asyncio.run_coroutine_threadsafe(self._queue.put(task), loop)
+        future.result(timeout=5.0)
 
     def submit_issue(
         self,
@@ -393,9 +418,14 @@ class Daemon:
         task.started_at = datetime.now(timezone.utc)
         try:
             self._task_store.update_status(task.id, TaskStatus.RUNNING, started_at=task.started_at)
-        except Exception:
-            log.exception("task store write failed for task=%s", task.id)
-            raise
+        except Exception as e:
+            # Can't persist RUNNING — put back on queue so the task is not
+            # silently lost and can be retried (fixes #142).
+            log.error("Failed to mark task %s as RUNNING: %s", task.id, e)
+            task.status = TaskStatus.QUEUED
+            task.started_at = None
+            await self._queue.put(task)
+            return
         await self._events.publish(
             Event(
                 kind=EventKind.TASK_STARTED,
