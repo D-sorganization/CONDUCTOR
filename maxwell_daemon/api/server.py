@@ -624,6 +624,26 @@ def create_app(
             "audit_enabled": True,
         }
 
+    @app.get("/api/v1/workers", dependencies=[Depends(_rbac_viewer)])
+    async def workers_status() -> dict:
+        """Return current worker count and queue depth."""
+        state = daemon.state()
+        return {
+            "worker_count": state.worker_count,
+            "queue_depth": state.queue_depth,
+        }
+
+    @app.put("/api/v1/workers", dependencies=[Depends(_rbac_viewer)])
+    async def set_workers(count: int) -> dict:
+        """Rescale the worker pool to *count* workers."""
+        from maxwell_daemon.contracts import PreconditionError
+
+        try:
+            await daemon.set_worker_count(count)
+        except PreconditionError as e:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from None
+        return {"worker_count": count}
+
     @app.get("/api/v1/cost", dependencies=[Depends(_rbac_viewer)])
     async def cost_summary() -> CostSummary:
         now = datetime.now(timezone.utc)
