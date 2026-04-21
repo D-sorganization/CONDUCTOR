@@ -69,6 +69,7 @@ class TaskSubmit(BaseModel):
     repo: str | None = None
     backend: str | None = None
     model: str | None = None
+    priority: int = Field(default=100, ge=0, le=200)
 
 
 class IssueCreate(BaseModel):
@@ -86,6 +87,7 @@ class IssueDispatch(BaseModel):
     mode: str = Field(default="plan", pattern=r"^(plan|implement)$")
     backend: str | None = None
     model: str | None = None
+    priority: int = Field(default=100, ge=0, le=200)
 
 
 class IssueBatchDispatch(BaseModel):
@@ -117,6 +119,7 @@ class TaskView(BaseModel):
     issue_number: int | None = None
     issue_mode: str | None = None
     ab_group: str | None = None
+    priority: int = 100
     pr_url: str | None = None
     status: str
     result: str | None
@@ -139,6 +142,7 @@ class TaskView(BaseModel):
             issue_number=t.issue_number,
             issue_mode=t.issue_mode,
             ab_group=t.ab_group,
+            priority=getattr(t, "priority", 100),
             pr_url=t.pr_url,
             status=t.status.value,
             result=t.result,
@@ -315,6 +319,7 @@ def create_app(
             repo=payload.repo,
             backend=payload.backend,
             model=payload.model,
+            priority=payload.priority,
         )
         return TaskView.from_task(task)
 
@@ -351,6 +356,67 @@ def create_app(
         except ValueError as e:
             raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from None
         return TaskView.from_task(cancelled)
+
+    # ── Priority, worker scaling, and config hot-reload admin endpoints ───────
+
+    class TaskReprioritize(BaseModel):
+        priority: int = Field(..., ge=0, le=200)
+
+    @app.patch("/api/v1/tasks/{task_id}/priority", dependencies=[Depends(auth)])
+    async def reprioritize_task(task_id: str, payload: TaskReprioritize) -> TaskView:
+        """Change the priority of a queued task (operator action).
+
+        Lower priority number = higher urgency: 0=emergency, 50=high,
+        100=normal (default), 200=batch.
+        """
+        try:
+            task = daemon.reprioritize_task(task_id, payload.priority)
+        except KeyError:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "task not found") from None
+        except ValueError as e:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from None
+        return TaskView.from_task(task)
+
+    class WorkerScaleRequest(BaseModel):
+        count: int = Field(..., ge=1, le=64)
+
+    @app.post("/api/v1/admin/workers", dependencies=[Depends(auth)])
+    async def scale_workers(req: WorkerScaleRequest) -> dict[str, Any]:
+        """Scale the worker pool up or down at runtime (admin action)."""
+        await daemon.set_worker_count(req.count)
+        return {"worker_count": req.count}
+
+    @app.post("/api/v1/admin/reload", dependencies=[Depends(auth)])
+    async def reload_config() -> dict[str, Any]:
+        """Re-read config from disk and apply hot-reloadable settings (admin action).
+
+        Hot-reloadable: discovery_interval, budget_limits, repo_list.
+        NOT hot-reloadable (require restart): database path, API host/port.
+        """
+        try:
+            changed = await daemon.reload_config()
+        except FileNotFoundError as e:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, str(e)) from None
+        except Exception as e:
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, str(e)) from None
+        return {"status": "reloaded", "changed": {k: list(v) for k, v in changed.items()}}  # type: ignore[arg-type]
+
+    @app.get("/api/v1/status", dependencies=[Depends(auth)])
+    async def daemon_status() -> dict[str, Any]:
+        """Return daemon runtime status including worker count and queue depth."""
+        s = daemon.state()
+        return {
+            "version": s.version,
+            "started_at": s.started_at.isoformat(),
+            "uptime_seconds": (datetime.now(timezone.utc) - s.started_at).total_seconds(),
+            "backends_available": s.backends_available,
+            "worker_count": s.worker_count,
+            "queue_depth": s.queue_depth,
+            "task_counts": {
+                st: sum(1 for t in s.tasks.values() if t.status.value == st)
+                for st in ("queued", "running", "completed", "failed", "cancelled")
+            },
+        }
 
     @app.post(
         "/api/v1/issues",
@@ -397,6 +463,7 @@ def create_app(
             mode=payload.mode,
             backend=payload.backend,
             model=payload.model,
+            priority=payload.priority,
         )
         return TaskView.from_task(task)
 

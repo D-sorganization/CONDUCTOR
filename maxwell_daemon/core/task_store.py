@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     issue_number INTEGER,
     issue_mode TEXT,
     ab_group TEXT,
+    priority INTEGER NOT NULL DEFAULT 100,
     result TEXT,
     error TEXT,
     pr_url TEXT,
@@ -59,6 +60,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at);
 # Indexes that depend on migrated-in columns — created after migrations run.
 _SCHEMA_POST_MIGRATION = """
 CREATE INDEX IF NOT EXISTS idx_tasks_ab_group ON tasks(ab_group);
+CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
 """
 
 
@@ -67,6 +69,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_ab_group ON tasks(ab_group);
 # add what's missing.
 _MIGRATIONS = [
     ("ab_group", "ALTER TABLE tasks ADD COLUMN ab_group TEXT"),
+    ("priority", "ALTER TABLE tasks ADD COLUMN priority INTEGER NOT NULL DEFAULT 100"),
 ]
 
 
@@ -121,6 +124,7 @@ class TaskStore:
             task.issue_number,
             task.issue_mode,
             task.ab_group,
+            getattr(task, "priority", 100),
             task.result,
             task.error,
             task.pr_url,
@@ -134,9 +138,9 @@ class TaskStore:
                 INSERT INTO tasks (
                     id, created_at, updated_at, kind, status, prompt,
                     repo, backend, model,
-                    issue_repo, issue_number, issue_mode, ab_group,
+                    issue_repo, issue_number, issue_mode, ab_group, priority,
                     result, error, pr_url, cost_usd, started_at, finished_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     updated_at=excluded.updated_at,
                     status=excluded.status,
@@ -146,6 +150,7 @@ class TaskStore:
                     issue_number=excluded.issue_number,
                     issue_mode=excluded.issue_mode,
                     ab_group=excluded.ab_group,
+                    priority=excluded.priority,
                     result=excluded.result, error=excluded.error, pr_url=excluded.pr_url,
                     cost_usd=excluded.cost_usd,
                     started_at=excluded.started_at, finished_at=excluded.finished_at
@@ -238,11 +243,18 @@ def _row_to_task(row: sqlite3.Row) -> Task:
     # TaskStore at module load.
     from maxwell_daemon.daemon.runner import Task, TaskKind, TaskStatus
 
-    # ab_group was added later — missing on older DBs.
+    # ab_group and priority were added later — missing on older DBs.
     try:
         ab_group = row["ab_group"]
     except (IndexError, KeyError):
         ab_group = None
+
+    try:
+        priority = row["priority"]
+        if priority is None:
+            priority = 100
+    except (IndexError, KeyError):
+        priority = 100
 
     return Task(
         id=row["id"],
@@ -256,6 +268,7 @@ def _row_to_task(row: sqlite3.Row) -> Task:
         issue_number=row["issue_number"],
         issue_mode=row["issue_mode"],
         ab_group=ab_group,
+        priority=priority,
         result=row["result"],
         error=row["error"],
         pr_url=row["pr_url"],

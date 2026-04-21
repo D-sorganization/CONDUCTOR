@@ -63,6 +63,8 @@ class Task:
     issue_mode: str | None = None  # "plan" | "implement"
     # A/B grouping: sibling tasks share an ab_group so the UI pairs them.
     ab_group: str | None = None
+    # Priority: lower number = higher urgency. 0=emergency, 50=high, 100=normal, 200=batch.
+    priority: int = 100
     status: TaskStatus = TaskStatus.QUEUED
     result: str | None = None
     error: str | None = None
@@ -72,6 +74,12 @@ class Task:
     started_at: datetime | None = None
     finished_at: datetime | None = None
 
+    def __lt__(self, other: object) -> bool:
+        """Support PriorityQueue ordering -- compare by (priority, created_at)."""
+        if not isinstance(other, Task):
+            return NotImplemented
+        return (self.priority, self.created_at) < (other.priority, other.created_at)
+
 
 @dataclass
 class DaemonState:
@@ -80,6 +88,8 @@ class DaemonState:
     tasks: dict[str, Task]
     started_at: datetime
     backends_available: list[str]
+    worker_count: int = 0
+    queue_depth: int = 0
 
 
 class Daemon:
@@ -130,11 +140,14 @@ class Daemon:
         # are a mix of sync and async — acquisition is uncontended under
         # normal load and a lock-free async path doesn't win us anything.
         self._tasks_lock = threading.Lock()
-        self._queue: asyncio.Queue[Task] = asyncio.Queue()
+        # PriorityQueue: workers dequeue (priority, task) tuples.
+        self._queue: asyncio.PriorityQueue[tuple[int, Task | None]] = asyncio.PriorityQueue()
         self._workers: list[asyncio.Task[None]] = []
+        self._worker_count: int = 0
         self._bg_tasks: set[asyncio.Task[None]] = set()
         self._started_at = datetime.now(timezone.utc)
         self._running = False
+        self._config_path: Path | None = None
         # Lazily-built collaborators — injected by tests, built on demand in prod.
         self._github_client: Any = None
         self._workspace: Any = None
@@ -146,7 +159,10 @@ class Daemon:
 
     @classmethod
     def from_config_path(cls, path: Path | str | None = None) -> Daemon:
-        return cls(load_config(path))
+        daemon = cls(load_config(path))
+        if path is not None:
+            daemon._config_path = Path(path).expanduser()
+        return daemon
 
     async def start(self, *, worker_count: int = 2, recover: bool = True) -> None:
         if self._running:
@@ -154,8 +170,18 @@ class Daemon:
         if recover:
             self.recover()
         self._running = True
+        self._worker_count = worker_count
         for i in range(worker_count):
             self._workers.append(asyncio.create_task(self._worker_loop(i), name=f"worker-{i}"))
+        # Install SIGUSR1 handler for config hot-reload (Unix only).
+        try:
+            loop = asyncio.get_running_loop()
+            loop.add_signal_handler(
+                signal.SIGUSR1,
+                lambda: asyncio.create_task(self._reload_config_signal()),
+            )
+        except (AttributeError, NotImplementedError, OSError):
+            pass
         log.info("daemon started with %d workers", worker_count)
 
     def recover(self) -> list[Task]:
@@ -164,7 +190,7 @@ class Daemon:
         with self._tasks_lock:
             for task in recovered:
                 self._tasks[task.id] = task
-                self._queue.put_nowait(task)
+                self._queue.put_nowait((task.priority, task))
         if recovered:
             log.info("recovered %d pending task(s) from previous run", len(recovered))
         return recovered
@@ -209,6 +235,7 @@ class Daemon:
         repo: str | None = None,
         backend: str | None = None,
         model: str | None = None,
+        priority: int = 100,
     ) -> Task:
         task = Task(
             id=uuid.uuid4().hex[:12],
@@ -217,12 +244,13 @@ class Daemon:
             repo=repo,
             backend=backend,
             model=model,
+            priority=priority,
         )
         # Write to self._tasks under lock to prevent iteration errors
         with self._tasks_lock:
             self._tasks[task.id] = task
         self._task_store.save(task)
-        self._queue.put_nowait(task)
+        self._queue.put_nowait((task.priority, task))
         # Fire-and-forget: if there's no running loop yet (e.g. sync test
         # submits before start()), skip the event — the queued state is
         # observable via get_task().
@@ -244,6 +272,7 @@ class Daemon:
         mode: str = "plan",
         backend: str | None = None,
         model: str | None = None,
+        priority: int = 100,
     ) -> Task:
         """Queue a task that reads a GitHub issue and opens a draft PR for it."""
         if mode not in {"plan", "implement"}:
@@ -258,12 +287,13 @@ class Daemon:
             issue_repo=repo,
             issue_number=issue_number,
             issue_mode=mode,
+            priority=priority,
         )
         # Write to self._tasks under lock to prevent iteration errors
         with self._tasks_lock:
             self._tasks[task.id] = task
         self._task_store.save(task)
-        self._queue.put_nowait(task)
+        self._queue.put_nowait((task.priority, task))
         with contextlib.suppress(RuntimeError):
             loop = asyncio.get_running_loop()
             bg = loop.create_task(
@@ -362,15 +392,98 @@ class Daemon:
             bg.add_done_callback(self._bg_tasks.discard)
         return task
 
+    async def set_worker_count(self, n: int) -> None:
+        """Scale workers up or down to *n* without restarting."""
+        if n < 1:
+            raise ValueError(f"worker count must be at least 1, got {n}")
+        if n > 64:
+            raise ValueError(f"worker count must be at most 64, got {n}")
+        current = len(self._workers)
+        if n > current:
+            for i in range(n - current):
+                worker_id = current + i
+                t = asyncio.create_task(
+                    self._worker_loop(worker_id), name=f"worker-{worker_id}"
+                )
+                self._workers.append(t)
+        elif n < current:
+            for _ in range(current - n):
+                await self._queue.put((-1, None))
+            self._workers = [w for w in self._workers if not w.done()]
+        self._worker_count = n
+        log.info("worker count set to %d", n)
+
+    def reprioritize_task(self, task_id: str, new_priority: int) -> Task:
+        """Change the priority of a queued task."""
+        with self._tasks_lock:
+            task = self._tasks.get(task_id)
+            if task is None:
+                raise KeyError(task_id)
+            if task.status is not TaskStatus.QUEUED:
+                raise ValueError(
+                    f"task {task_id} is {task.status.value}; only queued tasks can be reprioritized"
+                )
+            old_priority = task.priority
+            task.priority = new_priority
+        self._queue.put_nowait((new_priority, task))
+        self._task_store.save(task)
+        log.info("reprioritized task=%s old=%d new=%d", task_id, old_priority, new_priority)
+        return task
+
+    async def reload_config(self, path: Path | None = None) -> dict[str, object]:
+        """Re-read and apply hot-reloadable config settings without restarting.
+
+        Hot-reloadable: discovery_interval, budget_limits, repo_list.
+        NOT hot-reloadable (require restart): database path, API host/port.
+
+        Returns a dict of {field: (old_value, new_value)} for changed fields.
+        """
+        config_path = path or self._config_path
+        if config_path is None:
+            from maxwell_daemon.config.loader import default_config_path
+            config_path = default_config_path()
+        new_config = load_config(config_path)
+        changed: dict[str, object] = {}
+
+        old_interval = self._config.agent.discovery_interval_seconds
+        new_interval = new_config.agent.discovery_interval_seconds
+        if new_interval != old_interval:
+            changed["discovery_interval_seconds"] = (old_interval, new_interval)
+
+        old_budget = self._config.budget.monthly_limit_usd
+        new_budget = new_config.budget.monthly_limit_usd
+        if new_budget != old_budget:
+            changed["budget.monthly_limit_usd"] = (old_budget, new_budget)
+
+        old_repos = sorted(r.name for r in self._config.repos)
+        new_repos = sorted(r.name for r in new_config.repos)
+        if new_repos != old_repos:
+            changed["repos"] = (old_repos, new_repos)
+
+        self._config = new_config
+        self._budget = BudgetEnforcer(new_config.budget, self._ledger)
+        self._config_path = config_path
+        log.info("config reloaded from %s; changed=%s", config_path, list(changed.keys()))
+        return changed
+
+    async def _reload_config_signal(self) -> None:
+        """Signal handler wrapper -- logs errors rather than crashing the event loop."""
+        try:
+            await self.reload_config()
+        except Exception:
+            log.exception("config reload via SIGUSR1 failed")
+
     def state(self) -> DaemonState:
         with self._tasks_lock:
             tasks_snapshot = dict(self._tasks)
         return DaemonState(
             version="0.1.0",
-            config_path=None,
+            config_path=self._config_path,
             tasks=tasks_snapshot,
             started_at=self._started_at,
             backends_available=self._router.available_backends(),
+            worker_count=self._worker_count,
+            queue_depth=self._queue.qsize(),
         )
 
     async def _worker_loop(self, worker_id: int) -> None:
@@ -379,9 +492,13 @@ class Daemon:
         log.info("worker %d ready", worker_id)
         while self._running or not self._queue.empty():
             try:
-                task = await asyncio.wait_for(self._queue.get(), timeout=0.2)
+                _priority, task = await asyncio.wait_for(self._queue.get(), timeout=0.2)
             except asyncio.TimeoutError:
                 continue
+            # Sentinel value (None task) signals this worker to exit.
+            if task is None:
+                log.info("worker %d received stop sentinel; exiting", worker_id)
+                break
             # Tasks cancelled while queued shouldn't be executed.
             if task.status is TaskStatus.CANCELLED:
                 continue
