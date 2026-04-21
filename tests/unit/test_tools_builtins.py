@@ -11,12 +11,15 @@ touch the real shell here.
 
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 
 import pytest
 
 from maxwell_daemon.tools.builtins import (
     SandboxViolationError,
+    _build_run_bash_env,
     build_default_registry,
     make_edit_file,
     make_glob_files,
@@ -50,6 +53,10 @@ class TestReadFile:
         with pytest.raises(SandboxViolationError):
             read(path="../secret.txt")
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="Symlinks require admin privileges on Windows",
+    )
     def test_symlink_escape_rejected(self, tmp_path: Path) -> None:
         target = tmp_path.parent / "outside.txt"
         target.write_text("nope")
@@ -166,15 +173,22 @@ class TestRunBash:
         assert "SECRET_KEY" not in out
         assert "hunter2" not in out
 
-    async def test_default_runner_honours_allowlist_env_var(
+    def test_default_runner_honours_allowlist_env_var(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """MAXWELL_ALLOW_ENV names env vars that *may* pass through."""
+        """MAXWELL_ALLOW_ENV names env vars that *may* pass through.
+
+        Tests the pure ``_build_run_bash_env()`` function directly rather than
+        round-tripping through a real bash subprocess, making the test
+        platform-agnostic (bash may not be in PATH on Windows CI).
+        """
         monkeypatch.setenv("SECRET_KEY", "hunter2")
         monkeypatch.setenv("MAXWELL_ALLOW_ENV", "SECRET_KEY")
-        bash = make_run_bash(tmp_path)
-        out = await bash(command="echo value=$SECRET_KEY")
-        assert "value=hunter2" in out
+        env = _build_run_bash_env()
+        assert os.environ.get("SECRET_KEY") == "hunter2"
+        assert env.get("SECRET_KEY") == "hunter2", (
+            f"expected SECRET_KEY in run_bash env; got keys: {sorted(env)}"
+        )
 
 
 def test_sandbox_cmd_linux_bwrap(monkeypatch: pytest.MonkeyPatch) -> None:
