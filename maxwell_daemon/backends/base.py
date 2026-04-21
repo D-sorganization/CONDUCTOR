@@ -127,6 +127,14 @@ class ILLMBackend(ABC):
     def capabilities(self, model: str) -> BackendCapabilities:
         """Describe what `model` can do. Used for routing decisions."""
 
+    def supports_streaming(self) -> bool:
+        """Return True if stream() yields tokens progressively (not buffered).
+
+        Backends that implement true token-by-token streaming should override this
+        and return True. Defaults to False for backwards compatibility.
+        """
+        return False
+
     def estimate_cost(self, usage: TokenUsage, model: str) -> float:
         caps = self.capabilities(model)
         return (

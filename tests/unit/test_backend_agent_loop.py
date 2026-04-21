@@ -450,3 +450,63 @@ class TestAclose:
         backend._client = mock_client  # type: ignore[assignment]
         await backend.aclose()
         mock_client.aclose.assert_awaited_once()
+
+
+# ── Streaming ─────────────────────────────────────────────────────────────────
+
+
+class TestStreaming:
+    """stream() should yield tokens progressively using the Anthropic streaming API."""
+
+    def test_supports_streaming_returns_true(self, tmp_path: Path) -> None:
+        backend = AgentLoopBackend(workspace_dir=str(tmp_path))
+        assert backend.supports_streaming() is True
+
+    def test_capabilities_supports_streaming(self, tmp_path: Path) -> None:
+        caps = AgentLoopBackend(workspace_dir=str(tmp_path)).capabilities("claude-sonnet-4-6")
+        assert caps.supports_streaming is True
+
+    async def test_stream_yields_multiple_chunks(self, tmp_path: Path) -> None:
+        """stream() must yield each text chunk progressively, not buffer them."""
+        backend = AgentLoopBackend(workspace_dir=str(tmp_path))
+
+        async def _text_stream():
+            for chunk in ["Hello", " world", "!"]:
+                yield chunk
+
+        stream_cm = MagicMock()
+        stream_cm.__aenter__ = AsyncMock(return_value=MagicMock(text_stream=_text_stream()))
+        stream_cm.__aexit__ = AsyncMock(return_value=False)
+
+        mock_client = MagicMock()
+        mock_client.messages.stream = MagicMock(return_value=stream_cm)
+        backend._client = mock_client  # type: ignore[assignment]
+
+        chunks: list[str] = []
+        async for chunk in backend.stream(_user("hello"), model="claude-sonnet-4-6"):
+            chunks.append(chunk)
+
+        assert chunks == ["Hello", " world", "!"]
+        mock_client.messages.stream.assert_called_once()
+
+    async def test_stream_passes_model_to_api(self, tmp_path: Path) -> None:
+        """stream() must forward the model parameter to the Anthropic API."""
+        backend = AgentLoopBackend(workspace_dir=str(tmp_path))
+
+        async def _text_stream():
+            yield "ok"
+
+        stream_cm = MagicMock()
+        stream_cm.__aenter__ = AsyncMock(return_value=MagicMock(text_stream=_text_stream()))
+        stream_cm.__aexit__ = AsyncMock(return_value=False)
+
+        mock_client = MagicMock()
+        mock_client.messages.stream = MagicMock(return_value=stream_cm)
+        backend._client = mock_client  # type: ignore[assignment]
+
+        chunks: list[str] = []
+        async for chunk in backend.stream(_user("hi"), model="claude-haiku-4-5"):
+            chunks.append(chunk)
+
+        call_kwargs = mock_client.messages.stream.call_args.kwargs
+        assert call_kwargs["model"] == "claude-haiku-4-5"

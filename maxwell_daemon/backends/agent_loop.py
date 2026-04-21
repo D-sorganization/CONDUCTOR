@@ -451,20 +451,45 @@ class AgentLoopBackend(ILLMBackend):
         tools: list[dict[str, Any]] | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
-        """Run the loop and yield the final text as a single chunk.
+        """Stream tokens from a single Anthropic API call progressively.
 
-        True token-stream passthrough for a multi-turn agent is tricky (we'd
-        have to surface tool-call deltas) and isn't needed yet. This simple
-        adapter keeps the ILLMBackend contract honest.
+        Unlike ``complete()``, which drives the full multi-turn tool-use loop,
+        this method performs a single streaming request and yields each text
+        chunk as it arrives from the Anthropic SDK.  Tool-call deltas are
+        skipped — callers that need tool execution should use ``complete()``.
         """
-        resp = await self.complete(
-            messages,
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            **kwargs,
+        from pathlib import Path as _Path
+        effective_model = model or self._default_model
+        workspace = (
+            _Path(self._default_workspace).resolve()
+            if self._default_workspace
+            else _Path(".")
         )
-        yield resp.content
+        system_prompt = self._build_system_blocks(
+            system_texts=[m.content for m in messages if m.role is MessageRole.SYSTEM],
+            workspace=workspace,
+            repo=kwargs.get("repo"),
+            issue_title=kwargs.get("issue_title", ""),
+            issue_body=kwargs.get("issue_body", ""),
+            agent_id=kwargs.get("agent_id"),
+        )
+        sdk_messages: list[dict[str, Any]] = [
+            {"role": m.role.value, "content": m.content}
+            for m in messages
+            if m.role is not MessageRole.SYSTEM
+        ]
+        async with self._client.messages.stream(
+            model=effective_model,
+            messages=sdk_messages,  # type: ignore[arg-type]
+            system=system_prompt,  # type: ignore[arg-type]
+            max_tokens=max_tokens or 8096,
+        ) as stream:
+            async for text in stream.text_stream:
+                yield text
+
+    def supports_streaming(self) -> bool:
+        """AgentLoopBackend yields tokens progressively via the Anthropic stream API."""
+        return True
 
     async def health_check(self) -> bool:
         try:
@@ -480,7 +505,7 @@ class AgentLoopBackend(ILLMBackend):
     def capabilities(self, model: str) -> BackendCapabilities:
         price_in, price_out = _MODEL_PRICING.get(model, (3.0, 15.0))
         return BackendCapabilities(
-            supports_streaming=False,
+            supports_streaming=True,
             supports_tool_use=True,
             supports_vision=True,
             supports_system_prompt=True,
