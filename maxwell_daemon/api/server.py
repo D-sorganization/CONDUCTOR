@@ -263,7 +263,11 @@ def create_app(
             return _make_rbac_dep(Role.admin, auth_token, jwt_config)
         return auth
 
-    _audit: AuditLogger | None = AuditLogger(audit_log_path) if audit_log_path is not None else None
+    _audit: AuditLogger | None = (
+        AuditLogger(audit_log_path, retention_days=daemon._config.agent.task_retention_days)
+        if audit_log_path is not None
+        else None
+    )
 
     # Rate-limit middleware — installs only when config declares a default group.
     api_cfg = daemon._config.api
@@ -395,6 +399,7 @@ def create_app(
         status: Annotated[str | None, Query()] = None,
         kind: Annotated[str | None, Query()] = None,
         repo: Annotated[str | None, Query()] = None,
+        completed_before: Annotated[datetime | None, Query()] = None,
         limit: Annotated[int, Query(ge=1, le=1000)] = 100,
     ) -> list[TaskView]:
         tasks = list(daemon.state().tasks.values())
@@ -404,6 +409,10 @@ def create_app(
             tasks = [t for t in tasks if t.kind.value == kind]
         if repo:
             tasks = [t for t in tasks if t.repo == repo or t.issue_repo == repo]
+        if completed_before is not None:
+            tasks = [
+                t for t in tasks if t.finished_at is not None and t.finished_at < completed_before
+            ]
         tasks.sort(key=lambda t: t.created_at, reverse=True)
         return [TaskView.from_task(t) for t in tasks[:limit]]
 
@@ -761,6 +770,23 @@ def create_app(
         except ValueError as e:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from None
         return {"worker_count": count}
+
+    @app.get("/api/v1/admin/prune", dependencies=[Depends(_require_admin())])
+    async def prune_history(
+        older_than_days: Annotated[int | None, Query(ge=0)] = None,
+    ) -> dict[str, Any]:
+        """Run retention pruning on demand."""
+        days = (
+            daemon._config.agent.task_retention_days if older_than_days is None else older_than_days
+        )
+        result = daemon.prune_retained_history(days)
+        audit_removed = _audit.rotate() if _audit is not None else 0
+        return {
+            "older_than_days": days,
+            "tasks_pruned": result["tasks"],
+            "ledger_records_pruned": result["ledger_records"],
+            "audit_entries_pruned": audit_removed,
+        }
 
     @app.get("/api/v1/cost", dependencies=[Depends(_require_viewer())])
     async def cost_summary() -> CostSummary:

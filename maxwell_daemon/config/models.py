@@ -82,6 +82,16 @@ class AgentConfig(BaseModel):
     max_turns: int = Field(200, ge=1)
     discovery_interval_seconds: int = Field(300, ge=10)
     delivery_interval_seconds: int = Field(60, ge=10)
+    task_retention_days: int = Field(
+        30,
+        ge=0,
+        description="Delete terminal tasks and cost records older than this many days. 0 disables pruning.",
+    )
+    task_prune_interval_seconds: int = Field(
+        86_400,
+        ge=60,
+        description="How often the daemon runs retention pruning while started.",
+    )
     reasoning_effort: Literal["low", "medium", "high"] = "medium"
     temperature: float = Field(1.0, ge=0.0, le=2.0)
     default_backend: str = "claude"

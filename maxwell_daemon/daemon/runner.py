@@ -14,7 +14,7 @@ import signal
 import threading
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -242,6 +242,10 @@ class Daemon:
         except (AttributeError, NotImplementedError, OSError):
             # Windows or unsupported platform — skip signal handler.
             pass
+        if self._config.agent.task_retention_days > 0:
+            prune_task = asyncio.create_task(self._retention_loop(), name="retention-pruner")
+            self._bg_tasks.add(prune_task)
+            prune_task.add_done_callback(self._bg_tasks.discard)
         log.info("daemon started with %d workers", self._worker_count)
 
     def recover(self) -> list[Task]:
@@ -281,12 +285,53 @@ class Daemon:
         if hasattr(self._router, "aclose_all"):
             await self._router.aclose_all()
 
-        # Flush fire-and-forget background tasks (like event publishing)
+        # Stop background loops and flush fire-and-forget tasks.
         if self._bg_tasks:
+            for task in self._bg_tasks:
+                if not task.done():
+                    task.cancel()
             await asyncio.gather(*self._bg_tasks, return_exceptions=True)
             self._bg_tasks.clear()
 
         log.info("daemon stopped")
+
+    def prune_retained_history(self, older_than_days: int | None = None) -> dict[str, int]:
+        """Prune terminal tasks and ledger rows older than the retention window."""
+        days = (
+            self._config.agent.task_retention_days if older_than_days is None else older_than_days
+        )
+        if days <= 0:
+            return {"tasks": 0, "ledger_records": 0}
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        terminal = {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}
+        with self._tasks_lock:
+            stale_ids = [
+                task_id
+                for task_id, task in self._tasks.items()
+                if task.status in terminal
+                and task.finished_at is not None
+                and task.finished_at < cutoff
+            ]
+            for task_id in stale_ids:
+                self._tasks.pop(task_id, None)
+
+        pruned_tasks = self._task_store.prune(days)
+        pruned_ledger = self._ledger.prune(days)
+        return {"tasks": pruned_tasks, "ledger_records": pruned_ledger}
+
+    async def _retention_loop(self) -> None:
+        interval = self._config.agent.task_prune_interval_seconds
+        while self._running:
+            try:
+                result = self.prune_retained_history()
+                if result["tasks"] or result["ledger_records"]:
+                    log.info("retention prune completed: %s", result)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.warning("retention prune failed", exc_info=True)
+            await asyncio.sleep(interval)
 
     def submit(
         self,

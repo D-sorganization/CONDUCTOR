@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterator
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -131,6 +132,29 @@ class TestTaskSubmission:
         body = r.json()
         assert [task["id"] for task in body] == ["match"]
 
+    def test_list_filters_by_completed_before(self, client: TestClient, daemon: Daemon) -> None:
+        old_done = Task(
+            id="old-done",
+            prompt="old",
+            status=TaskStatus.COMPLETED,
+            finished_at=datetime.now(timezone.utc) - timedelta(days=10),
+        )
+        recent_done = Task(
+            id="recent-done",
+            prompt="recent",
+            status=TaskStatus.COMPLETED,
+            finished_at=datetime.now(timezone.utc),
+        )
+        with daemon._tasks_lock:
+            daemon._tasks[old_done.id] = old_done
+            daemon._tasks[recent_done.id] = recent_done
+
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        r = client.get("/api/v1/tasks", params={"completed_before": cutoff})
+
+        assert r.status_code == 200
+        assert [task["id"] for task in r.json()] == ["old-done"]
+
     def test_get_task_by_id(self, client: TestClient) -> None:
         submitted = client.post("/api/v1/tasks", json={"prompt": "x"}).json()
         r = client.get(f"/api/v1/tasks/{submitted['id']}")
@@ -150,6 +174,25 @@ class TestCostEndpoint:
         assert "month_to_date_usd" in body
         assert "by_backend" in body
         assert body["month_to_date_usd"] >= 0.0
+
+
+class TestAdminPruneEndpoint:
+    def test_prune_endpoint_runs_retention(self, client: TestClient, daemon: Daemon) -> None:
+        old_done = Task(
+            id="old-prune",
+            prompt="old",
+            status=TaskStatus.COMPLETED,
+            finished_at=datetime.now(timezone.utc) - timedelta(days=40),
+        )
+        with daemon._tasks_lock:
+            daemon._tasks[old_done.id] = old_done
+        daemon._task_store.save(old_done)
+
+        r = client.get("/api/v1/admin/prune?older_than_days=30")
+
+        assert r.status_code == 200
+        assert r.json()["tasks_pruned"] == 1
+        assert daemon.get_task(old_done.id) is None
 
 
 class TestJwtAuthEndpoint:
