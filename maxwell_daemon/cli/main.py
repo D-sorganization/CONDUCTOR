@@ -68,7 +68,9 @@ def _root(
 
 @app.command()
 def init(
-    path: Annotated[Path | None, typer.Option("--path", "-p", help="Config path")] = None,
+    path: Annotated[
+        Path | None, typer.Option("--path", "-p", help="Config path")
+    ] = None,
     force: Annotated[bool, typer.Option("--force", "-f")] = False,
 ) -> None:
     """Create a starter maxwell-daemon.yaml."""
@@ -170,7 +172,9 @@ def health(
             try:
                 decision = router.route(backend_override=name)
                 ok = await decision.backend.health_check()
-                table.add_row(name, "[green]healthy[/green]" if ok else "[red]unreachable[/red]")
+                table.add_row(
+                    name, "[green]healthy[/green]" if ok else "[red]unreachable[/red]"
+                )
                 if not ok:
                     failures += 1
             except Exception as e:
@@ -212,7 +216,9 @@ def ask(
             resp = await decision.backend.complete(msgs, model=decision.model)
             console.print(resp.content)
             cost = decision.backend.estimate_cost(resp.usage, decision.model)
-            console.print(f"\n[dim]tokens: {resp.usage.total_tokens}  cost: ${cost:.4f}[/dim]")
+            console.print(
+                f"\n[dim]tokens: {resp.usage.total_tokens}  cost: ${cost:.4f}[/dim]"
+            )
 
     try:
         asyncio.run(_run())
@@ -243,7 +249,9 @@ def cross_audit(
             ),
         ),
     ] = None,
-    repo: Annotated[str | None, typer.Option("--repo", help="Repo override name")] = None,
+    repo: Annotated[
+        str | None, typer.Option("--repo", help="Repo override name")
+    ] = None,
     config: Annotated[Path | None, typer.Option("--config", "-c")] = None,
     json_output: Annotated[
         bool, typer.Option("--json", help="Emit JSON instead of tables")
@@ -261,7 +269,9 @@ def cross_audit(
         )
         raise typer.Exit(2)
 
-    selected_roles = [DEFAULT_CROSS_AUDIT_ROLES[name] for name in role] if role else None
+    selected_roles = (
+        [DEFAULT_CROSS_AUDIT_ROLES[name] for name in role] if role else None
+    )
     service = CrossAuditService(router)
 
     async def _run() -> int:
@@ -325,7 +335,9 @@ def audit_alias(
             ),
         ),
     ] = None,
-    repo: Annotated[str | None, typer.Option("--repo", help="Repo override name")] = None,
+    repo: Annotated[
+        str | None, typer.Option("--repo", help="Repo override name")
+    ] = None,
     config: Annotated[Path | None, typer.Option("--config", "-c")] = None,
     json_output: Annotated[
         bool, typer.Option("--json", help="Emit JSON instead of tables")
@@ -333,14 +345,21 @@ def audit_alias(
 ) -> None:
     """Alias for cross-audit."""
     cross_audit(
-        prompt, backend=backend, role=role, repo=repo, config=config, json_output=json_output
+        prompt,
+        backend=backend,
+        role=role,
+        repo=repo,
+        config=config,
+        json_output=json_output,
     )
 
 
 @app.command()
 def cost(
     config: Annotated[Path | None, typer.Option("--config", "-c")] = None,
-    ledger: Annotated[Path | None, typer.Option("--ledger", help="Ledger DB path")] = None,
+    ledger: Annotated[
+        Path | None, typer.Option("--ledger", help="Ledger DB path")
+    ] = None,
 ) -> None:
     """Show current month-to-date spend and budget status."""
     from maxwell_daemon.core import BudgetEnforcer, CostLedger
@@ -354,7 +373,9 @@ def cost(
     status_color = {"ok": "green", "alert": "yellow", "exceeded": "red"}[check.status]
     forecast_line = ""
     if check.forecast_usd is not None and check.forecast_usd > 0:
-        forecast_line = f"\n[bold]Forecast (month-end):[/bold] ${check.forecast_usd:.2f}"
+        forecast_line = (
+            f"\n[bold]Forecast (month-end):[/bold] ${check.forecast_usd:.2f}"
+        )
         if check.limit_usd is not None:
             headroom = check.limit_usd - check.forecast_usd
             headroom_colour = "green" if headroom > 0 else "red"
@@ -376,7 +397,9 @@ def cost(
     )
 
     by_backend = ledger_obj.by_backend(
-        datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        datetime.now(timezone.utc).replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        )
     )
     if by_backend:
         t = Table(title="By backend", header_style="bold cyan")
@@ -449,7 +472,9 @@ def serve(
 
     try:
         fastapi_app = create_app(daemon, auth_token=cfg.api.auth_token)
-        console.print(f"[green]✓[/green] Maxwell-Daemon serving on http://{host}:{port}")
+        console.print(
+            f"[green]✓[/green] Maxwell-Daemon serving on http://{host}:{port}"
+        )
         uvicorn.run(fastapi_app, host=host, port=port, log_level="info")
     finally:
         asyncio.run(daemon.stop())

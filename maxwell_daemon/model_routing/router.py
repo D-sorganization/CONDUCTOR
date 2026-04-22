@@ -44,21 +44,32 @@ def select_profile(
             rejections.append(ProfileRejection(profile.id, "remote_models_not_allowed"))
             continue
         if not policy.required_capabilities.issubset(profile.capabilities):
-            rejections.append(ProfileRejection(profile.id, "missing_required_capabilities"))
+            rejections.append(
+                ProfileRejection(profile.id, "missing_required_capabilities")
+            )
             continue
         if profile.cost_class > policy.max_cost_class:
             rejections.append(ProfileRejection(profile.id, "cost_class_exceeds_policy"))
             continue
         if profile.max_allowed_action_risk < policy.required_action_risk:
-            rejections.append(ProfileRejection(profile.id, "action_risk_too_high_for_profile"))
+            rejections.append(
+                ProfileRejection(profile.id, "action_risk_too_high_for_profile")
+            )
             continue
-        if policy.required_benchmark_suite is not None and policy.min_benchmark_score is not None:
+        if (
+            policy.required_benchmark_suite is not None
+            and policy.min_benchmark_score is not None
+        ):
             key = (profile.id, policy.required_benchmark_suite)
             if key not in scores:
-                rejections.append(ProfileRejection(profile.id, "missing_required_benchmark"))
+                rejections.append(
+                    ProfileRejection(profile.id, "missing_required_benchmark")
+                )
                 continue
             if scores[key] < policy.min_benchmark_score:
-                rejections.append(ProfileRejection(profile.id, "benchmark_below_threshold"))
+                rejections.append(
+                    ProfileRejection(profile.id, "benchmark_below_threshold")
+                )
                 continue
         accepted.append(profile)
 

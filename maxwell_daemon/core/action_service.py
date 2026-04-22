@@ -11,7 +11,12 @@ from typing import Any
 from maxwell_daemon.audit import AuditLogger
 from maxwell_daemon.core.action_policy import ActionPolicy, PolicyDecision
 from maxwell_daemon.core.action_store import ActionStore
-from maxwell_daemon.core.actions import Action, ActionKind, ActionRiskLevel, ActionStatus
+from maxwell_daemon.core.actions import (
+    Action,
+    ActionKind,
+    ActionRiskLevel,
+    ActionStatus,
+)
 from maxwell_daemon.events import Event, EventBus, EventKind
 
 
@@ -104,7 +109,11 @@ class ActionService:
             audit.log_agent_operation(
                 operation="action_approved",
                 task_id=action.task_id,
-                details={"action_id": action.id, "actor": actor, "kind": action.kind.value},
+                details={
+                    "action_id": action.id,
+                    "actor": actor,
+                    "kind": action.kind.value,
+                },
             )
         self._publish(EventKind.ACTION_APPROVED, action)
         return action
@@ -181,7 +190,9 @@ class ActionService:
         }
         try:
             loop = asyncio.get_running_loop()
-            task = loop.create_task(self._events.publish(Event(kind=kind, payload=payload)))
+            task = loop.create_task(
+                self._events.publish(Event(kind=kind, payload=payload))
+            )
             self._event_tasks.add(task)
             task.add_done_callback(self._event_tasks.discard)
         except RuntimeError:

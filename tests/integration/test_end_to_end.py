@@ -57,6 +57,7 @@ def live_system(
         cfg,
         ledger_path=tmp_path / "ledger.db",
         task_store_path=tmp_path / "tasks.db",
+        action_store_path=tmp_path / "actions.db",
     )
     loop.run_until_complete(daemon.start(worker_count=2))
     loop.run_until_complete(asyncio.sleep(0))

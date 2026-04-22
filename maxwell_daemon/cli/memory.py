@@ -34,7 +34,9 @@ def status(
     table.add_row("Workspace", str(memory_status.workspace))
     table.add_row("Raw logs", str(memory_status.raw_log_count))
     table.add_row("Raw bytes", str(memory_status.raw_bytes))
-    table.add_row("Markdown memory", "present" if memory_status.memory_exists else "missing")
+    table.add_row(
+        "Markdown memory", "present" if memory_status.memory_exists else "missing"
+    )
     table.add_row(
         "Dream interval",
         (

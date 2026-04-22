@@ -145,7 +145,9 @@ class TestEditFile:
 # ── run_bash ─────────────────────────────────────────────────────────────────
 class TestRunBash:
     async def test_runs_and_returns_stdout(self, tmp_path: Path) -> None:
-        async def runner(cmd: list[str], cwd: str, timeout: float) -> tuple[int, bytes, bytes]:
+        async def runner(
+            cmd: list[str], cwd: str, timeout: float
+        ) -> tuple[int, bytes, bytes]:
             assert cwd == str(tmp_path)
             assert cmd[-1] == "echo hi"
             # Must invoke ``bash -c`` (not ``-lc``) so login-profile files
@@ -159,7 +161,9 @@ class TestRunBash:
         assert "hi" in out
 
     async def test_non_zero_exit_reports_rc(self, tmp_path: Path) -> None:
-        async def runner(cmd: list[str], cwd: str, timeout: float) -> tuple[int, bytes, bytes]:
+        async def runner(
+            cmd: list[str], cwd: str, timeout: float
+        ) -> tuple[int, bytes, bytes]:
             return 2, b"", b"oops"
 
         bash = make_run_bash(tmp_path, runner=runner)
@@ -168,7 +172,9 @@ class TestRunBash:
         assert "oops" in out
 
     async def test_timeout_honoured(self, tmp_path: Path) -> None:
-        async def runner(cmd: list[str], cwd: str, timeout: float) -> tuple[int, bytes, bytes]:
+        async def runner(
+            cmd: list[str], cwd: str, timeout: float
+        ) -> tuple[int, bytes, bytes]:
             assert timeout == 5
             return 0, b"", b""
 
@@ -178,7 +184,9 @@ class TestRunBash:
     async def test_default_timeout_applied(self, tmp_path: Path) -> None:
         seen: list[float] = []
 
-        async def runner(cmd: list[str], cwd: str, timeout: float) -> tuple[int, bytes, bytes]:
+        async def runner(
+            cmd: list[str], cwd: str, timeout: float
+        ) -> tuple[int, bytes, bytes]:
             seen.append(timeout)
             return 0, b"", b""
 
@@ -187,7 +195,9 @@ class TestRunBash:
         assert seen == [42]
 
     async def test_output_truncated(self, tmp_path: Path) -> None:
-        async def runner(cmd: list[str], cwd: str, timeout: float) -> tuple[int, bytes, bytes]:
+        async def runner(
+            cmd: list[str], cwd: str, timeout: float
+        ) -> tuple[int, bytes, bytes]:
             return 0, b"x" * 10_000, b""
 
         bash = make_run_bash(tmp_path, runner=runner, max_output_bytes=100)
@@ -195,7 +205,9 @@ class TestRunBash:
         assert "truncated" in out.lower()
 
     async def test_command_records_failed_action(self, tmp_path: Path) -> None:
-        async def runner(cmd: list[str], cwd: str, timeout: float) -> tuple[int, bytes, bytes]:
+        async def runner(
+            cmd: list[str], cwd: str, timeout: float
+        ) -> tuple[int, bytes, bytes]:
             return 2, b"", b"oops"
 
         service = ActionService(
@@ -238,9 +250,9 @@ class TestRunBash:
         monkeypatch.setenv("MAXWELL_ALLOW_ENV", "SECRET_KEY")
         env = _build_run_bash_env()
         assert os.environ.get("SECRET_KEY") == "hunter2"
-        assert env.get("SECRET_KEY") == "hunter2", (
-            f"expected SECRET_KEY in run_bash env; got keys: {sorted(env)}"
-        )
+        assert (
+            env.get("SECRET_KEY") == "hunter2"
+        ), f"expected SECRET_KEY in run_bash env; got keys: {sorted(env)}"
 
 
 # ── glob_files ───────────────────────────────────────────────────────────────
@@ -324,7 +336,9 @@ class TestBuildDefaultRegistry:
         assert result.content == "payload"
         assert result.is_error is False
 
-    async def test_sandbox_violation_surfaces_as_tool_error(self, tmp_path: Path) -> None:
+    async def test_sandbox_violation_surfaces_as_tool_error(
+        self, tmp_path: Path
+    ) -> None:
         reg = build_default_registry(tmp_path)
         result = await reg.invoke("read_file", {"path": "/etc/passwd"})
         assert result.is_error is True

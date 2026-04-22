@@ -88,7 +88,9 @@ class TestConfigLoad:
         with pytest.raises(ValidationError, match="not found in backends"):
             MaxwellDaemonConfig.model_validate(
                 {
-                    "backends": {"claude": {"type": "claude", "model": "claude-sonnet-4-6"}},
+                    "backends": {
+                        "claude": {"type": "claude", "model": "claude-sonnet-4-6"}
+                    },
                     "agent": {"default_backend": "nonexistent"},
                 }
             )
@@ -126,7 +128,9 @@ class TestConfigLoad:
     def test_memory_config_expands_workspace_path(self, tmp_path: Path) -> None:
         cfg = MaxwellDaemonConfig.model_validate(
             {
-                "backends": {"claude": {"type": "claude", "model": "claude-sonnet-4-6"}},
+                "backends": {
+                    "claude": {"type": "claude", "model": "claude-sonnet-4-6"}
+                },
                 "memory": {
                     "workspace_path": str(tmp_path),
                     "dream_interval_seconds": 1800,
@@ -164,7 +168,9 @@ class TestAPIConfigJWT:
     """Issue #230 — jwt_secret must be wired from config into JWTConfig."""
 
     def _base_cfg(self) -> dict:
-        return {"backends": {"claude": {"type": "claude", "model": "claude-sonnet-4-6"}}}
+        return {
+            "backends": {"claude": {"type": "claude", "model": "claude-sonnet-4-6"}}
+        }
 
     def test_jwt_secret_defaults_to_none(self) -> None:
         cfg = MaxwellDaemonConfig.model_validate(self._base_cfg())

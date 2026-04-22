@@ -18,7 +18,9 @@ console = Console()
 
 @checks_app.command("list")
 def list_checks(
-    repo: Annotated[Path | None, typer.Option("--repo", help="Repository root.")] = None,
+    repo: Annotated[
+        Path | None, typer.Option("--repo", help="Repository root.")
+    ] = None,
     json_output: Annotated[bool, typer.Option("--json", help="Emit JSON.")] = False,
 ) -> None:
     """List `.maxwell/checks/*.md` definitions."""
@@ -30,7 +32,9 @@ def list_checks(
         raise typer.Exit(1) from exc
 
     if json_output:
-        typer.echo(json.dumps([item.model_dump(mode="json") for item in definitions], indent=2))
+        typer.echo(
+            json.dumps([item.model_dump(mode="json") for item in definitions], indent=2)
+        )
         return
     if not definitions:
         console.print("[dim]No Maxwell checks found.[/dim]")
@@ -52,7 +56,9 @@ def list_checks(
 
 @checks_app.command("run")
 def run_checks(
-    repo: Annotated[Path | None, typer.Option("--repo", help="Repository root.")] = None,
+    repo: Annotated[
+        Path | None, typer.Option("--repo", help="Repository root.")
+    ] = None,
     changed_file: Annotated[
         list[str] | None,
         typer.Option("--changed-file", help="Changed file path. Repeatable."),
@@ -69,7 +75,9 @@ def run_checks(
         raise typer.Exit(1) from exc
 
     if json_output:
-        typer.echo(json.dumps([item.model_dump(mode="json") for item in results], indent=2))
+        typer.echo(
+            json.dumps([item.model_dump(mode="json") for item in results], indent=2)
+        )
         return
     if not results:
         console.print("[dim]No Maxwell checks found.[/dim]")

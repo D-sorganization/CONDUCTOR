@@ -124,7 +124,9 @@ class ActionStore:
 
     def get(self, action_id: str) -> Action | None:
         with self._connect() as conn:
-            row = conn.execute("SELECT * FROM actions WHERE id = ?", (action_id,)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM actions WHERE id = ?", (action_id,)
+            ).fetchone()
         return _row_to_action(row) if row else None
 
     def list_for_task(self, task_id: str) -> list[Action]:
@@ -161,7 +163,9 @@ class ActionStore:
     ) -> Action:
         now = datetime.now(timezone.utc)
         with self._lock, self._connect() as conn:
-            row = conn.execute("SELECT * FROM actions WHERE id = ?", (action_id,)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM actions WHERE id = ?", (action_id,)
+            ).fetchone()
             if row is None:
                 raise KeyError(action_id)
             action = _row_to_action(row)
@@ -199,7 +203,9 @@ class ActionStore:
             )
             if cursor.rowcount != 1:
                 raise RuntimeError(f"action {action_id} changed concurrently")
-            updated = conn.execute("SELECT * FROM actions WHERE id = ?", (action_id,)).fetchone()
+            updated = conn.execute(
+                "SELECT * FROM actions WHERE id = ?", (action_id,)
+            ).fetchone()
         if updated is None:
             raise KeyError(action_id)
         return _row_to_action(updated)

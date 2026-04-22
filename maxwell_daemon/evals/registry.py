@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from maxwell_daemon.evals.models import EvalScenario, EvalSourceType, RiskLevel, ScoringProfile
+from maxwell_daemon.evals.models import (
+    EvalScenario,
+    EvalSourceType,
+    RiskLevel,
+    ScoringProfile,
+)
 
 DEFAULT_SCORING_PROFILE = ScoringProfile(
     id="default",

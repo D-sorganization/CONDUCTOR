@@ -36,7 +36,9 @@ class LocalCheckRunner:
         )
         if artifact_store is not None:
             if work_item_id is None:
-                raise ValueError("work_item_id is required when persisting check results")
+                raise ValueError(
+                    "work_item_id is required when persisting check results"
+                )
             artifact_store.put_text(
                 kind=ArtifactKind.CHECK_RESULT,
                 name="Maxwell local check results",
@@ -47,7 +49,10 @@ class LocalCheckRunner:
                 ),
                 work_item_id=work_item_id,
                 media_type="application/json",
-                metadata={"repo": str(self._repo), "changed_files": list(changed_files)},
+                metadata={
+                    "repo": str(self._repo),
+                    "changed_files": list(changed_files),
+                },
             )
         return results
 

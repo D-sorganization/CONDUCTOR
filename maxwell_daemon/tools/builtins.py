@@ -120,7 +120,9 @@ def make_write_file(
                 type="string",
                 description="Path relative to the workspace root",
             ),
-            ToolParam(name="content", type="string", description="Full file content to write"),
+            ToolParam(
+                name="content", type="string", description="Full file content to write"
+            ),
         ],
     )
     def write_file(path: str, content: str) -> str:
@@ -159,7 +161,9 @@ def make_write_file(
                 action_service.mark_failed(action_id, error="write_file failed")
             raise
         if action_id is not None and action_service is not None:
-            action_service.mark_applied(action_id, result={"path": path, "bytes": len(content)})
+            action_service.mark_applied(
+                action_id, result={"path": path, "bytes": len(content)}
+            )
         return f"wrote {len(content)} bytes to {path}"
 
     return write_file
@@ -185,7 +189,9 @@ def make_edit_file(
                 type="string",
                 description="Path relative to the workspace root",
             ),
-            ToolParam(name="old_string", type="string", description="Exact text to replace"),
+            ToolParam(
+                name="old_string", type="string", description="Exact text to replace"
+            ),
             ToolParam(name="new_string", type="string", description="Replacement text"),
         ],
     )
@@ -208,7 +214,11 @@ def make_edit_file(
                 task_id=task_id,
                 kind=ActionKind.FILE_EDIT,
                 summary=f"edit file {path}",
-                payload={"path": path, "old_bytes": len(old_string), "new_bytes": len(new_string)},
+                payload={
+                    "path": path,
+                    "old_bytes": len(old_string),
+                    "new_bytes": len(new_string),
+                },
                 risk_level=ActionRiskLevel.MEDIUM,
             )
             action_id = action.id
@@ -270,7 +280,9 @@ def _build_run_bash_env() -> dict[str, str]:
     return {k: v for k, v in os.environ.items() if k in allowed}
 
 
-async def _default_runner(cmd: list[str], cwd: str, timeout: float) -> tuple[int, bytes, bytes]:
+async def _default_runner(
+    cmd: list[str], cwd: str, timeout: float
+) -> tuple[int, bytes, bytes]:
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         cwd=cwd,
@@ -317,7 +329,9 @@ def make_run_bash(
         ],
     )
     async def run_bash(command: str, timeout_seconds: int | float | None = None) -> str:
-        timeout = float(timeout_seconds) if timeout_seconds is not None else default_timeout
+        timeout = (
+            float(timeout_seconds) if timeout_seconds is not None else default_timeout
+        )
         cwd = str(root.resolve())
         action_id: str | None = None
         if action_service is not None and task_id is not None:
@@ -400,7 +414,9 @@ def make_grep_files(root: Path) -> Callable[..., str]:
             "matching lines as ``path:lineno:line``. Optionally scoped to a glob."
         ),
         params=[
-            ToolParam(name="pattern", type="string", description="Python regex pattern"),
+            ToolParam(
+                name="pattern", type="string", description="Python regex pattern"
+            ),
             ToolParam(
                 name="glob",
                 type="string",
@@ -455,7 +471,9 @@ def build_default_registry(
     reg.register_from_function(
         make_write_file(root, action_service=action_service, task_id=task_id)
     )
-    reg.register_from_function(make_edit_file(root, action_service=action_service, task_id=task_id))
+    reg.register_from_function(
+        make_edit_file(root, action_service=action_service, task_id=task_id)
+    )
     reg.register_from_function(make_glob_files(root))
     reg.register_from_function(make_grep_files(root))
     reg.register_from_function(

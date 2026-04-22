@@ -33,7 +33,9 @@ def _load_pyqt6() -> QtBindings:
         qt_gui: Any = importlib.import_module("PyQt6.QtGui")
         qt_widgets: Any = importlib.import_module("PyQt6.QtWidgets")
     except ImportError as exc:
-        raise RuntimeError("PyQt6 is required to launch the Maxwell desktop app.") from exc
+        raise RuntimeError(
+            "PyQt6 is required to launch the Maxwell desktop app."
+        ) from exc
 
     return QtBindings(
         qt=qt_core.Qt,
@@ -101,8 +103,7 @@ def _build_sidebar(bindings: QtBindings) -> Any:
         btn = bindings.push_button(item)
         btn.setCursor(bindings.qt.CursorShape.PointingHandCursor)
         if item == "Dashboard":
-            btn.setStyleSheet(
-                """
+            btn.setStyleSheet("""
                 QPushButton {
                     background-color: #24283B;
                     color: #7AA2F7;
@@ -113,11 +114,9 @@ def _build_sidebar(bindings: QtBindings) -> Any:
                     border: none;
                     border-radius: 8px;
                 }
-                """
-            )
+                """)
         else:
-            btn.setStyleSheet(
-                """
+            btn.setStyleSheet("""
                 QPushButton {
                     background-color: transparent;
                     color: #A9B1D6;
@@ -131,8 +130,7 @@ def _build_sidebar(bindings: QtBindings) -> Any:
                     background-color: #1F2335;
                     color: #FFFFFF;
                 }
-                """
-            )
+                """)
         sidebar_layout.addWidget(btn)
 
     sidebar_layout.addStretch()
@@ -141,15 +139,13 @@ def _build_sidebar(bindings: QtBindings) -> Any:
 
 def _build_pipeline_visualizer(bindings: QtBindings) -> Any:
     pipeline_frame = bindings.frame()
-    pipeline_frame.setStyleSheet(
-        """
+    pipeline_frame.setStyleSheet("""
         QFrame {
             background-color: rgba(36, 40, 59, 0.7);
             border-radius: 16px;
             border: 1px solid rgba(122, 162, 247, 0.2);
         }
-        """
-    )
+        """)
     pipeline_frame.setFixedHeight(150)
     pipe_layout = bindings.horizontal_layout(pipeline_frame)
 

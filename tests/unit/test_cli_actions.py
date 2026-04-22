@@ -130,7 +130,8 @@ def test_action_approve_posts_decision(
     assert result.exit_code == 0
     assert "approved" in result.stdout
     assert any(
-        call.get("url", "").endswith("/api/v1/actions/act-1/approve") for call in patch_httpx
+        call.get("url", "").endswith("/api/v1/actions/act-1/approve")
+        for call in patch_httpx
     )
 
 

@@ -9,7 +9,9 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-action_app = typer.Typer(name="action", help="Inspect and decide proposed agent actions.")
+action_app = typer.Typer(
+    name="action", help="Inspect and decide proposed agent actions."
+)
 console = Console()
 
 

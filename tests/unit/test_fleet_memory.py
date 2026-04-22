@@ -47,7 +47,12 @@ class _Client:
         timeout: float,
     ) -> _Response:
         self.requests.append(
-            {"url": url, "json": dict(json), "headers": dict(headers), "timeout": timeout}
+            {
+                "url": url,
+                "json": dict(json),
+                "headers": dict(headers),
+                "timeout": timeout,
+            }
         )
         if isinstance(self.response, Exception):
             raise self.response
@@ -74,7 +79,9 @@ def test_assemble_context_merges_remote_context_and_local_scratchpad() -> None:
 
     assert "shared context" in assembled
     assert "local note" in assembled
-    assert _Client.requests[0]["url"] == "https://coordinator.test/api/v1/memory/assemble"
+    assert (
+        _Client.requests[0]["url"] == "https://coordinator.test/api/v1/memory/assemble"
+    )
     assert _Client.requests[0]["headers"]["Authorization"] == "Bearer token"
 
 

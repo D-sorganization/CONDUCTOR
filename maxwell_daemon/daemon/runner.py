@@ -89,7 +89,9 @@ class Task:
     started_at: datetime | None = None
     finished_at: datetime | None = None
     # Fleet dispatch tracking: set when a coordinator sends this task to a remote worker.
-    dispatched_to: str | None = None  # machine name of the worker that received this task
+    dispatched_to: str | None = (
+        None  # machine name of the worker that received this task
+    )
 
     def __lt__(self, other: object) -> bool:
         """Support PriorityQueue ordering — compare by (priority, created_at)."""
@@ -140,9 +142,15 @@ class Daemon:
         # Durable task store lives next to the cost ledger by default.
         default_store = Path.home() / ".local/share/maxwell-daemon/tasks.db"
         self._task_store = TaskStore(task_store_path or default_store)
-        default_work_item_store = Path.home() / ".local/share/maxwell-daemon/work_items.db"
-        self._work_item_store = WorkItemStore(work_item_store_path or default_work_item_store)
-        default_artifact_store = Path.home() / ".local/share/maxwell-daemon/artifacts.db"
+        default_work_item_store = (
+            Path.home() / ".local/share/maxwell-daemon/work_items.db"
+        )
+        self._work_item_store = WorkItemStore(
+            work_item_store_path or default_work_item_store
+        )
+        default_artifact_store = (
+            Path.home() / ".local/share/maxwell-daemon/artifacts.db"
+        )
         default_artifact_root = Path.home() / ".local/share/maxwell-daemon/artifacts"
         self._artifact_store = ArtifactStore(
             artifact_store_path or default_artifact_store,
@@ -196,7 +204,9 @@ class Daemon:
         self._tasks_lock = threading.Lock()
         # PriorityQueue: workers dequeue (priority, task) tuples. Lower priority
         # number = higher urgency (0=emergency, 50=high, 100=normal, 200=batch).
-        self._queue: asyncio.PriorityQueue[tuple[int, Task | None]] = asyncio.PriorityQueue()
+        self._queue: asyncio.PriorityQueue[tuple[int, Task | None]] = (
+            asyncio.PriorityQueue()
+        )
         self._workers: list[asyncio.Task[None]] = []
         self._worker_count: int = 0
         self._bg_tasks: set[asyncio.Task[None]] = set()
@@ -259,20 +269,26 @@ class Daemon:
             # Coordinator: runs discovery and dispatches to remote workers — no local execution.
             self._worker_count = 0
             log.info("daemon started as coordinator (no local workers)")
-            coord_task = asyncio.create_task(self._coordinator_loop(), name="coordinator-loop")
+            coord_task = asyncio.create_task(
+                self._coordinator_loop(), name="coordinator-loop"
+            )
             self._bg_tasks.add(coord_task)
             coord_task.add_done_callback(self._bg_tasks.discard)
         elif role == "worker":
             # Worker: accepts tasks via REST API and executes locally — no discovery.
             self._worker_count = worker_count
             for i in range(worker_count):
-                self._workers.append(asyncio.create_task(self._worker_loop(i), name=f"worker-{i}"))
+                self._workers.append(
+                    asyncio.create_task(self._worker_loop(i), name=f"worker-{i}")
+                )
             log.info("daemon started as worker with %d workers", worker_count)
         else:
             # Standalone (default): run local workers.
             self._worker_count = worker_count
             for i in range(worker_count):
-                self._workers.append(asyncio.create_task(self._worker_loop(i), name=f"worker-{i}"))
+                self._workers.append(
+                    asyncio.create_task(self._worker_loop(i), name=f"worker-{i}")
+                )
             log.info("daemon started (standalone) with %d workers", worker_count)
 
         # Install SIGUSR1 handler for config hot-reload (Unix only).
@@ -288,7 +304,9 @@ class Daemon:
                 # Windows or unsupported platform — skip signal handler.
                 pass
         if self._config.agent.task_retention_days > 0:
-            prune_task = asyncio.create_task(self._retention_loop(), name="retention-pruner")
+            prune_task = asyncio.create_task(
+                self._retention_loop(), name="retention-pruner"
+            )
             self._bg_tasks.add(prune_task)
             prune_task.add_done_callback(self._bg_tasks.discard)
         if self._config.memory_dream_interval_seconds > 0:
@@ -347,10 +365,14 @@ class Daemon:
 
         log.info("daemon stopped")
 
-    def prune_retained_history(self, older_than_days: int | None = None) -> dict[str, int]:
+    def prune_retained_history(
+        self, older_than_days: int | None = None
+    ) -> dict[str, int]:
         """Prune terminal tasks and ledger rows older than the retention window."""
         days = (
-            self._config.agent.task_retention_days if older_than_days is None else older_than_days
+            self._config.agent.task_retention_days
+            if older_than_days is None
+            else older_than_days
         )
         if days <= 0:
             return {"tasks": 0, "ledger_records": 0}
@@ -460,7 +482,9 @@ class Daemon:
             loop = asyncio.get_running_loop()
             # Task kept alive via strong reference in _bg_tasks.
             bg = loop.create_task(
-                self._events.publish(Event(kind=EventKind.TASK_QUEUED, payload={"id": task.id}))
+                self._events.publish(
+                    Event(kind=EventKind.TASK_QUEUED, payload={"id": task.id})
+                )
             )
             self._bg_tasks.add(bg)
             bg.add_done_callback(self._bg_tasks.discard)
@@ -498,9 +522,9 @@ class Daemon:
         with self._tasks_lock:
             self._tasks[task.id] = task
         self._task_store.save(task)
-        asyncio.run_coroutine_threadsafe(self._queue.put((task.priority, task)), self._loop).result(
-            timeout=5.0
-        )
+        asyncio.run_coroutine_threadsafe(
+            self._queue.put((task.priority, task)), self._loop
+        ).result(timeout=5.0)
         return task
 
     def submit_issue(
@@ -728,7 +752,9 @@ class Daemon:
             raise ValueError(
                 f"task {task_id} is {task.status.value}; only queued tasks can be cancelled"
             )
-        self._task_store.update_status(task.id, TaskStatus.CANCELLED, finished_at=task.finished_at)
+        self._task_store.update_status(
+            task.id, TaskStatus.CANCELLED, finished_at=task.finished_at
+        )
         with contextlib.suppress(RuntimeError):
             loop = asyncio.get_running_loop()
             bg = loop.create_task(
@@ -757,7 +783,9 @@ class Daemon:
         if n > current:
             for i in range(n - current):
                 worker_id = current + i
-                task = asyncio.create_task(self._worker_loop(worker_id), name=f"worker-{worker_id}")
+                task = asyncio.create_task(
+                    self._worker_loop(worker_id), name=f"worker-{worker_id}"
+                )
                 self._workers.append(task)
                 log.info(
                     "scaled up: added worker %d (total=%d)",
@@ -772,7 +800,9 @@ class Daemon:
             # Remove excess workers from tracking immediately; sentinels will
             # signal them to exit after finishing their current task.
             self._workers = self._workers[:n]
-            log.info("scaled down: sent %d stop sentinel(s) (target=%d)", current - n, n)
+            log.info(
+                "scaled down: sent %d stop sentinel(s) (target=%d)", current - n, n
+            )
         self._worker_count = n
 
     def reprioritize_task(self, task_id: str, new_priority: int) -> Task:
@@ -802,7 +832,9 @@ class Daemon:
             # path.
             self._queue.put_nowait((new_priority, task))
         self._task_store.save(task)
-        log.info("reprioritized task=%s old=%d new=%d", task_id, old_priority, new_priority)
+        log.info(
+            "reprioritized task=%s old=%d new=%d", task_id, old_priority, new_priority
+        )
         return task
 
     # -- coordinator loop ----------------------------------------------------
@@ -859,7 +891,9 @@ class Daemon:
             if t.status is not TaskStatus.DISPATCHED or t.dispatched_to is None:
                 continue
             machine_name = t.dispatched_to
-            machine_healthy = any(m.name == machine_name and m.healthy for m in machines)
+            machine_healthy = any(
+                m.name == machine_name and m.healthy for m in machines
+            )
             if not machine_healthy:
                 last_seen = self._worker_last_seen.get(machine_name)
                 stale = True
@@ -880,7 +914,9 @@ class Daemon:
         with self._tasks_lock:
             tasks_snapshot = dict(self._tasks)
 
-        queued_tasks = [t for t in tasks_snapshot.values() if t.status is TaskStatus.QUEUED]
+        queued_tasks = [
+            t for t in tasks_snapshot.values() if t.status is TaskStatus.QUEUED
+        ]
         if not queued_tasks:
             return
 
@@ -890,7 +926,9 @@ class Daemon:
         dispatched_counts: dict[str, int] = {}
         for t in tasks_snapshot.values():
             if t.status is TaskStatus.DISPATCHED and t.dispatched_to:
-                dispatched_counts[t.dispatched_to] = dispatched_counts.get(t.dispatched_to, 0) + 1
+                dispatched_counts[t.dispatched_to] = (
+                    dispatched_counts.get(t.dispatched_to, 0) + 1
+                )
 
         machines_with_load = tuple(
             MachineState(
@@ -944,7 +982,9 @@ class Daemon:
             if result.status == "submitted":
                 assigned_task.status = TaskStatus.DISPATCHED
                 assigned_task.dispatched_to = machine.name
-                log.info("dispatched task %s to machine %s", assigned_task.id, machine.name)
+                log.info(
+                    "dispatched task %s to machine %s", assigned_task.id, machine.name
+                )
                 with contextlib.suppress(Exception):
                     self._task_store.save(assigned_task)
             else:
@@ -1026,7 +1066,9 @@ class Daemon:
         task.status = TaskStatus.RUNNING
         task.started_at = datetime.now(timezone.utc)
         try:
-            self._task_store.update_status(task.id, TaskStatus.RUNNING, started_at=task.started_at)
+            self._task_store.update_status(
+                task.id, TaskStatus.RUNNING, started_at=task.started_at
+            )
         except Exception:
             log.exception("task store write failed for task=%s", task.id)
             raise
@@ -1076,7 +1118,9 @@ class Daemon:
                 status="success",
                 tokens=resp.usage.total_tokens,
                 cost_usd=task.cost_usd,
-                duration_seconds=(datetime.now(timezone.utc) - task.started_at).total_seconds(),
+                duration_seconds=(
+                    datetime.now(timezone.utc) - task.started_at
+                ).total_seconds(),
             )
             await self._events.publish(
                 Event(
@@ -1107,9 +1151,13 @@ class Daemon:
             log.exception("task %s failed", task.id)
             task.status = TaskStatus.FAILED
             task.error = str(e)
-            record_request(backend=decision_backend, model=decision_model, status="error")
+            record_request(
+                backend=decision_backend, model=decision_model, status="error"
+            )
             await self._events.publish(
-                Event(kind=EventKind.TASK_FAILED, payload={"id": task.id, "error": str(e)})
+                Event(
+                    kind=EventKind.TASK_FAILED, payload={"id": task.id, "error": str(e)}
+                )
             )
         finally:
             task.finished_at = datetime.now(timezone.utc)
@@ -1138,9 +1186,13 @@ class Daemon:
         from maxwell_daemon.gh.workspace import Workspace
 
         if task.issue_repo is None:
-            raise ValueError(f"_execute_issue called for task {task.id!r} with no issue_repo set")
+            raise ValueError(
+                f"_execute_issue called for task {task.id!r} with no issue_repo set"
+            )
         if task.issue_number is None:
-            raise ValueError(f"_execute_issue called for task {task.id!r} with no issue_number set")
+            raise ValueError(
+                f"_execute_issue called for task {task.id!r} with no issue_number set"
+            )
 
         github = self._github_client or GitHubClient()
         workspace = self._workspace or Workspace(root=self._workspace_root)
