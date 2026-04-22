@@ -14,6 +14,11 @@ the shell shows an install action and sends a native desktop notification.
 The command palette opens from the app button or Cmd/Ctrl+K and runs common
 desktop actions such as refresh, dispatch focus, and update checks.
 
+Dropped files are read locally with a small preview limit, staged in the
+desktop shell, and attached as markdown context when the user creates a new
+GitHub issue through the daemon. Larger files attach path and size metadata
+instead of reading full contents.
+
 ## Commands
 
 ```bash

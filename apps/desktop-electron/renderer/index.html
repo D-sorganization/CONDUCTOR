@@ -26,7 +26,8 @@
       <button id="install-update" hidden>Install Update</button>
       <span id="update-state">updates not checked</span>
     </section>
-    <section class="drop-zone" id="drop-zone">Drop files here to attach paths to a prompt</section>
+    <section class="drop-zone" id="drop-zone">Drop files here to attach them to a new issue</section>
+    <ul class="drop-list" id="drop-list"></ul>
     <section class="grid">
       <article>
         <h2>Fleet</h2>
@@ -44,6 +45,22 @@
           <option value="plan">plan</option>
         </select>
         <button id="dispatch">Dispatch</button>
+      </article>
+      <article>
+        <h2>Create Issue</h2>
+        <input id="create-repo" placeholder="D-sorganization/Maxwell-Daemon">
+        <input id="create-title" placeholder="Issue title">
+        <textarea id="create-body" placeholder="Describe the request"></textarea>
+        <select id="create-mode">
+          <option value="plan">plan</option>
+          <option value="implement">implement</option>
+        </select>
+        <label class="checkbox-row">
+          <input id="create-dispatch" type="checkbox">
+          Dispatch after create
+        </label>
+        <button id="create-issue">Create Issue</button>
+        <p id="create-status" aria-live="polite"></p>
       </article>
     </section>
   </main>

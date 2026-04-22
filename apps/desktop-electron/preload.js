@@ -1,8 +1,12 @@
 "use strict";
 
 const { contextBridge, ipcRenderer } = require("electron");
+const fs = require("fs/promises");
+const path = require("path");
 
 const cacheKey = "maxwell.desktop.snapshot";
+const maxDroppedFiles = 8;
+const maxDroppedFilePreviewBytes = 32768;
 
 async function requestJson(path, options = {}) {
   const settings = JSON.parse(localStorage.getItem("maxwell.desktop.settings") || "{}");
@@ -16,6 +20,29 @@ async function requestJson(path, options = {}) {
   const response = await fetch(`${baseUrl}${path}`, { ...options, headers });
   if (!response.ok) throw new Error(`${path} failed: ${response.status}`);
   return response.json();
+}
+
+async function readDroppedFile(filePath) {
+  const stat = await fs.stat(filePath);
+  const summary = {
+    path: filePath,
+    name: path.basename(filePath),
+    sizeBytes: stat.size,
+    text: "",
+    truncated: false,
+    error: "",
+  };
+  if (!stat.isFile()) {
+    return { ...summary, error: "not a regular file" };
+  }
+  if (stat.size > maxDroppedFilePreviewBytes) {
+    return { ...summary, truncated: true };
+  }
+  try {
+    return { ...summary, text: await fs.readFile(filePath, "utf8") };
+  } catch (error) {
+    return { ...summary, error: error.message || "file could not be read as text" };
+  }
 }
 
 contextBridge.exposeInMainWorld("maxwellDesktop", {
@@ -43,6 +70,16 @@ contextBridge.exposeInMainWorld("maxwellDesktop", {
       method: "POST",
       body: JSON.stringify({ repo, number, mode }),
     });
+  },
+  createIssue(payload) {
+    return requestJson("/api/v1/issues", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  readDroppedFiles(filePaths) {
+    const paths = [...new Set((filePaths || []).filter(Boolean))].slice(0, maxDroppedFiles);
+    return Promise.all(paths.map((filePath) => readDroppedFile(filePath)));
   },
   notify(payload) {
     return ipcRenderer.invoke("desktop:notify", payload);
