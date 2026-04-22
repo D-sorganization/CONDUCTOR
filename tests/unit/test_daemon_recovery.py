@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,7 @@ class TestRecovery:
             id="previous-run",
             prompt="unfinished",
             kind=TaskKind.PROMPT,
+            priority=25,
             created_at=datetime.now(timezone.utc),
         )
         store.save(pending)
@@ -49,6 +51,7 @@ class TestRecovery:
         recovered = d.recover()
         assert len(recovered) == 1
         assert recovered[0].id == "previous-run"
+        assert recovered[0].priority == 25
         assert d.get_task("previous-run") is not None
 
     def test_running_task_marked_failed_on_recovery(
@@ -81,6 +84,133 @@ class TestRecovery:
         assert loaded.status is TaskStatus.FAILED
         assert loaded.error is not None
         assert "crashed" in loaded.error.lower()
+
+    def test_dispatched_task_tracked_on_recovery(
+        self, cfg: MaxwellDaemonConfig, tmp_path: Path
+    ) -> None:
+        task_store_path = tmp_path / "tasks.db"
+        store = TaskStore(task_store_path)
+        dispatched = Task(
+            id="remote-run",
+            prompt="remote work",
+            kind=TaskKind.PROMPT,
+            priority=50,
+            status=TaskStatus.DISPATCHED,
+            dispatched_to="worker-a",
+            created_at=datetime.now(timezone.utc),
+        )
+        store.save(dispatched)
+        del store
+
+        d = Daemon(
+            cfg,
+            ledger_path=tmp_path / "l.db",
+            task_store_path=task_store_path,
+            action_store_path=tmp_path / "actions.db",
+        )
+
+        recovered = d.recover()
+
+        assert len(recovered) == 1
+        assert recovered[0].id == "remote-run"
+        assert recovered[0].status is TaskStatus.DISPATCHED
+        assert recovered[0].priority == 50
+        assert recovered[0].dispatched_to == "worker-a"
+        assert d.get_task("remote-run") is not None
+        assert d.get_task("remote-run").status is TaskStatus.DISPATCHED
+        assert d._queue.qsize() == 0
+
+    def test_dispatched_task_without_worker_requeued_on_recovery(
+        self, cfg: MaxwellDaemonConfig, tmp_path: Path
+    ) -> None:
+        task_store_path = tmp_path / "tasks.db"
+        store = TaskStore(task_store_path)
+        dispatched = Task(
+            id="missing-worker",
+            prompt="remote work",
+            kind=TaskKind.PROMPT,
+            priority=10,
+            status=TaskStatus.DISPATCHED,
+            dispatched_to=None,
+            created_at=datetime.now(timezone.utc),
+        )
+        store.save(dispatched)
+        del store
+
+        d = Daemon(
+            cfg,
+            ledger_path=tmp_path / "l.db",
+            task_store_path=task_store_path,
+            action_store_path=tmp_path / "actions.db",
+        )
+
+        recovered = d.recover()
+
+        assert len(recovered) == 1
+        assert recovered[0].status is TaskStatus.QUEUED
+        assert recovered[0].priority == 10
+        assert recovered[0].dispatched_to is None
+        assert d.get_task("missing-worker").status is TaskStatus.QUEUED
+        assert d._queue.qsize() == 1
+
+    def test_task_store_round_trips_priority_and_dispatched_to(self, tmp_path: Path) -> None:
+        task_store_path = tmp_path / "tasks.db"
+        store = TaskStore(task_store_path)
+        task = Task(
+            id="persist-fleet-fields",
+            prompt="remote",
+            kind=TaskKind.PROMPT,
+            priority=5,
+            status=TaskStatus.DISPATCHED,
+            dispatched_to="worker-b",
+            created_at=datetime.now(timezone.utc),
+        )
+
+        store.save(task)
+        loaded = store.get(task.id)
+
+        assert loaded is not None
+        assert loaded.priority == 5
+        assert loaded.dispatched_to == "worker-b"
+        assert loaded.status is TaskStatus.DISPATCHED
+
+    def test_existing_task_db_migrates_priority_and_dispatched_to(self, tmp_path: Path) -> None:
+        task_store_path = tmp_path / "tasks.db"
+        with sqlite3.connect(task_store_path) as conn:
+            conn.executescript(
+                """
+                CREATE TABLE tasks (
+                    id TEXT PRIMARY KEY,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    prompt TEXT NOT NULL,
+                    repo TEXT,
+                    backend TEXT,
+                    model TEXT,
+                    issue_repo TEXT,
+                    issue_number INTEGER,
+                    issue_mode TEXT,
+                    ab_group TEXT,
+                    result TEXT,
+                    error TEXT,
+                    pr_url TEXT,
+                    cost_usd REAL NOT NULL DEFAULT 0,
+                    started_at TEXT,
+                    finished_at TEXT,
+                    completed_at TEXT
+                );
+                """
+            )
+
+        TaskStore(task_store_path)
+
+        with sqlite3.connect(task_store_path) as conn:
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(tasks)").fetchall()}
+
+        assert "priority" in columns
+        assert "dispatched_to" in columns
 
     def test_submit_persists_immediately(self, cfg: MaxwellDaemonConfig, tmp_path: Path) -> None:
         task_store_path = tmp_path / "tasks.db"

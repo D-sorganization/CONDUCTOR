@@ -305,14 +305,30 @@ class Daemon:
         log.info("daemon started with %d workers", self._worker_count)
 
     def recover(self) -> list[Task]:
-        """Re-queue tasks from a prior daemon run. Called automatically from start()."""
+        """Recover non-terminal tasks from a prior daemon run.
+
+        Queued tasks are re-enqueued locally. Fleet-dispatched tasks are restored
+        to the in-memory task map without entering the local worker queue so a
+        restarted coordinator can continue accounting for the remote lease.
+        """
         recovered = self._task_store.recover_pending()
+        queued = 0
+        dispatched = 0
         with self._tasks_lock:
             for task in recovered:
                 self._tasks[task.id] = task
-                self._queue.put_nowait((task.priority, task))
+                if task.status is TaskStatus.QUEUED:
+                    self._queue.put_nowait((task.priority, task))
+                    queued += 1
+                elif task.status is TaskStatus.DISPATCHED:
+                    dispatched += 1
         if recovered:
-            log.info("recovered %d pending task(s) from previous run", len(recovered))
+            log.info(
+                "recovered %d pending task(s) from previous run (queued=%d dispatched=%d)",
+                len(recovered),
+                queued,
+                dispatched,
+            )
         return recovered
 
     async def stop(self, *, drain: bool = False, timeout: float = 30.0) -> None:
