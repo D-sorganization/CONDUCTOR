@@ -89,6 +89,14 @@ class TestHTMLContent:
         js = client.get("/ui/app.js").text
         assert "/api/v1/tasks" in js
         assert "/api/v1/events" in js or "WebSocket" in js
+
+    def test_deferred_test_output_preserves_fallback_and_selection_guard(
+        self, client: TestClient
+    ) -> None:
+        js = client.get("/ui/app.js").text
+        assert "const selectedTaskId = state.selected;" in js
+        assert "state.selected === selectedTaskId" in js
+        assert 'state.testOutput.get(selectedTaskId) || "(no streamed output)"' in js
         assert "openCommandPalette" in js
         assert "terminal-log" in js
 

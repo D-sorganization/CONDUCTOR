@@ -619,13 +619,14 @@ function handleEvent(evt) {
   if (evt.kind === "test_output" && p.task_id) {
     const prev = state.testOutput.get(p.task_id) || "";
     state.testOutput.set(p.task_id, (prev + (p.chunk || "")).slice(-64_000));
-    if (p.task_id === state.selected) {
+    const selectedTaskId = state.selected;
+    if (p.task_id === selectedTaskId) {
       if (!_testOutputRaf) {
         _testOutputRaf = requestAnimationFrame(() => {
           _testOutputRaf = null;
           const outEl = document.getElementById("detail-output");
-          if (outEl) {
-            outEl.textContent = state.testOutput.get(state.selected);
+          if (outEl && state.selected === selectedTaskId) {
+            outEl.textContent = state.testOutput.get(selectedTaskId) || "(no streamed output)";
           }
         });
       }
