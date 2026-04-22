@@ -89,7 +89,7 @@ class TaskSubmit(BaseModel):
     model: str | None = None
     issue_repo: str | None = None
     issue_number: int | None = None
-    issue_mode: Literal["plan", "implement"] | None = None
+    issue_mode: Literal["plan", "implement"] | None = Field(default=None)
     priority: int = Field(default=100, ge=0, le=200)
 
 

@@ -9,6 +9,7 @@ commands it invokes.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
 
@@ -20,8 +21,8 @@ WORKFLOW_PATH = (
 )
 
 
-def _load() -> dict:
-    return yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
+def _load() -> dict[Any, Any]:
+    return cast(dict[Any, Any], yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8")))
 
 
 class TestWorkflowExists:
@@ -37,12 +38,12 @@ class TestWorkflowExists:
 class TestTriggers:
     def test_workflow_dispatch_present(self) -> None:
         # PyYAML parses the ``on:`` key as True (YAML 1.1 bool) — accept both shapes.
-        triggers = _load().get(True) or _load().get("on")
+        triggers = _load().get(True) or _load().get("on", {})
         assert triggers is not None
         assert "workflow_dispatch" in triggers
 
     def test_schedule_present(self) -> None:
-        triggers = _load().get(True) or _load().get("on")
+        triggers = _load().get(True) or _load().get("on", {})
         schedule = triggers.get("schedule") or []
         assert schedule, "schedule must be configured for unattended runs"
         assert any("cron" in entry for entry in schedule)
@@ -50,8 +51,8 @@ class TestTriggers:
 
 class TestDispatchInputs:
     def test_action_input_is_choice(self) -> None:
-        triggers = _load().get(True) or _load().get("on")
-        inputs = triggers["workflow_dispatch"]["inputs"]
+        triggers = _load().get(True) or _load().get("on", {})
+        inputs = triggers.get("workflow_dispatch", {}).get("inputs", {})
         action = inputs["action"]
         assert action["type"] == "choice"
         # Must cover full-run (default autonomous path) plus the discover/deliver split.
@@ -59,8 +60,8 @@ class TestDispatchInputs:
         assert {"full-run", "discover", "deliver"} <= options
 
     def test_required_inputs_defined(self) -> None:
-        triggers = _load().get(True) or _load().get("on")
-        inputs = triggers["workflow_dispatch"]["inputs"]
+        triggers = _load().get(True) or _load().get("on", {})
+        inputs = triggers.get("workflow_dispatch", {}).get("inputs", {})
         for key in ("action", "repos", "label", "max_stories", "dry_run"):
             assert key in inputs, f"missing input: {key}"
 

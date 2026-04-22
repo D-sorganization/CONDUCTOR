@@ -78,6 +78,28 @@ class ActionStore:
         self._lock = threading.Lock()
         with self._connect() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
+
+            # Migrate legacy schema to new schema if needed.
+            try:
+                columns = [
+                    row["name"]
+                    for row in conn.execute("PRAGMA table_info(actions)").fetchall()
+                ]
+                if columns and "task_id" not in columns:
+                    conn.execute(
+                        "ALTER TABLE actions ADD COLUMN task_id TEXT NOT NULL DEFAULT 'legacy'"
+                    )
+                    conn.execute("ALTER TABLE actions ADD COLUMN work_item_id TEXT")
+                    if "parent_id" in columns and "parent_type" in columns:
+                        conn.execute(
+                            "UPDATE actions SET task_id = parent_id WHERE parent_type = 'task'"
+                        )
+                        conn.execute(
+                            "UPDATE actions SET work_item_id = parent_id WHERE parent_type = 'work_item'"
+                        )
+            except sqlite3.OperationalError:
+                pass
+
             conn.executescript(_SCHEMA)
 
     @contextmanager
