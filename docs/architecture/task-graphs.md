@@ -46,3 +46,30 @@ retry exhaustion.
 This keeps graph execution compatible with future parallel scheduling. The
 current runner is sequential, but the model already separates graph validation,
 node readiness, artifact dependencies, and node execution.
+
+## CLI Access
+
+The `task-graph` CLI group exposes graph definitions as reviewable JSON
+artifacts. Use it to materialize the selected template before handing work to
+automation:
+
+```bash
+maxwell-daemon task-graph create wi-123 \
+  --title "Ship the approval dashboard" \
+  --criterion "Actions are visible" \
+  --criterion "Approvals are audited" \
+  --risk high \
+  --output graph.json
+```
+
+Inspect a saved graph to verify node order, role assignment, required handoff
+artifacts, output artifact kinds, and retry policy:
+
+```bash
+maxwell-daemon task-graph inspect graph.json
+```
+
+This CLI is intentionally definition-oriented. It creates and validates the
+handoff contract without hiding state in a chat transcript. Persistence, API
+management, and backend-routed execution can build on the same `TaskGraph` and
+`GraphRunner` primitives.
