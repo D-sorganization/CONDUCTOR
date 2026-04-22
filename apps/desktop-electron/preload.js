@@ -53,6 +53,12 @@ contextBridge.exposeInMainWorld("maxwellDesktop", {
   checkForUpdates() {
     return ipcRenderer.invoke("desktop:checkForUpdates");
   },
+  installUpdate() {
+    return ipcRenderer.invoke("desktop:installUpdate");
+  },
+  onUpdateStatus(callback) {
+    ipcRenderer.on("desktop:updateStatus", (_event, status) => callback(status));
+  },
   onRefresh(callback) {
     ipcRenderer.on("desktop:refresh", callback);
   },

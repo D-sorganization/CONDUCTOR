@@ -37,6 +37,10 @@ header,
   background: var(--panel);
 }
 
+#update-state {
+  color: var(--muted);
+}
+
 h1 {
   margin: 0;
   flex: 1;

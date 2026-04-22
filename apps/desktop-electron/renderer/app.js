@@ -106,6 +106,15 @@ function render(snapshot, offline = false) {
   });
 }
 
+function renderUpdateStatus(status) {
+  const state = status || { state: "idle", message: "Updates not checked" };
+  const message = state.percent === null || state.percent === undefined
+    ? state.message
+    : `${state.message} (${state.percent}%)`;
+  $("update-state").textContent = message || "Updates not checked";
+  $("install-update").hidden = state.state !== "ready";
+}
+
 async function refresh() {
   try {
     const snapshot = await window.maxwellDesktop.snapshot();
@@ -154,10 +163,16 @@ document.addEventListener("DOMContentLoaded", () => {
   $("save-settings").addEventListener("click", saveSettings);
   $("refresh").addEventListener("click", refresh);
   $("dispatch").addEventListener("click", dispatchIssue);
-  $("updates").addEventListener("click", () => window.maxwellDesktop.checkForUpdates());
+  $("updates").addEventListener("click", async () => {
+    const result = await window.maxwellDesktop.checkForUpdates();
+    renderUpdateStatus(result.status);
+  });
+  $("install-update").addEventListener("click", () => window.maxwellDesktop.installUpdate());
   $("command-button").addEventListener("click", () => $("command-palette").showModal());
   window.maxwellDesktop.onRefresh(refresh);
+  window.maxwellDesktop.onUpdateStatus(renderUpdateStatus);
   window.maxwellDesktop.onCommandPalette(() => $("command-palette").showModal());
   wireDropZone();
+  renderUpdateStatus();
   refresh();
 });

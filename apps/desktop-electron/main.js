@@ -12,6 +12,12 @@ let lastFleetStatus = {
   repos: 0,
   updatedAt: null,
 };
+let lastUpdateStatus = {
+  state: "idle",
+  message: "Updates not checked",
+  version: null,
+  percent: null,
+};
 
 function trayIcon() {
   return nativeImage.createFromDataURL(
@@ -94,6 +100,65 @@ function updateTaskbar(status) {
   mainWindow.setProgressBar(-1);
 }
 
+function publishUpdateStatus(status) {
+  lastUpdateStatus = { ...lastUpdateStatus, ...status };
+  mainWindow?.webContents.send("desktop:updateStatus", lastUpdateStatus);
+}
+
+function registerAutoUpdaterEvents() {
+  autoUpdater.autoDownload = true;
+  autoUpdater.on("checking-for-update", () => {
+    publishUpdateStatus({
+      state: "checking",
+      message: "Checking for updates",
+      percent: null,
+    });
+  });
+  autoUpdater.on("update-available", (info) => {
+    publishUpdateStatus({
+      state: "available",
+      message: `Update ${info.version || ""} is available`.trim(),
+      version: info.version || null,
+      percent: null,
+    });
+  });
+  autoUpdater.on("download-progress", (progress) => {
+    publishUpdateStatus({
+      state: "downloading",
+      message: "Downloading update",
+      percent: Math.round(progress.percent || 0),
+    });
+  });
+  autoUpdater.on("update-downloaded", (info) => {
+    publishUpdateStatus({
+      state: "ready",
+      message: `Update ${info.version || ""} is ready to install`.trim(),
+      version: info.version || null,
+      percent: 100,
+    });
+    if (Notification.isSupported()) {
+      new Notification({
+        title: "Maxwell-Daemon update ready",
+        body: "Restart the desktop app to install it.",
+      }).show();
+    }
+  });
+  autoUpdater.on("update-not-available", () => {
+    publishUpdateStatus({
+      state: "current",
+      message: "Maxwell-Daemon is up to date",
+      percent: null,
+    });
+  });
+  autoUpdater.on("error", (error) => {
+    publishUpdateStatus({
+      state: "error",
+      message: error.message || "Update check failed",
+      percent: null,
+    });
+  });
+}
+
 function registerShortcuts() {
   globalShortcut.register("CommandOrControl+K", () => {
     mainWindow?.webContents.send("desktop:command-palette");
@@ -117,17 +182,26 @@ ipcMain.handle("desktop:updateTrayStatus", (_event, status) => {
 
 ipcMain.handle("desktop:checkForUpdates", async () => {
   try {
+    publishUpdateStatus({ state: "checking", message: "Checking for updates", percent: null });
     const result = await autoUpdater.checkForUpdates();
-    return { ok: true, updateInfo: result?.updateInfo || null };
+    return { ok: true, updateInfo: result?.updateInfo || null, status: lastUpdateStatus };
   } catch (error) {
-    return { ok: false, error: error.message };
+    publishUpdateStatus({ state: "error", message: error.message, percent: null });
+    return { ok: false, error: error.message, status: lastUpdateStatus };
   }
+});
+
+ipcMain.handle("desktop:installUpdate", () => {
+  if (lastUpdateStatus.state !== "ready") return false;
+  autoUpdater.quitAndInstall(false, true);
+  return true;
 });
 
 app.whenReady().then(() => {
   app.setAppUserModelId("org.d-sorganization.maxwell-daemon");
   createWindow();
   createTray();
+  registerAutoUpdaterEvents();
   registerShortcuts();
 
   app.on("activate", () => {
