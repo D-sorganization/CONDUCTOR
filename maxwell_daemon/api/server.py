@@ -48,7 +48,7 @@ from maxwell_daemon.core.work_items import (
     WorkItemStatus,
 )
 from maxwell_daemon.daemon import Daemon
-from maxwell_daemon.daemon.runner import DuplicateTaskIdError, Task
+from maxwell_daemon.daemon.runner import DuplicateTaskIdError, Task, TaskStatus
 from maxwell_daemon.director import (
     GraphStatus,
     NodeRun,
@@ -302,6 +302,18 @@ class ActionRejectRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=1000)
 
 
+class GateRetryRequest(BaseModel):
+    target_id: str = Field(..., min_length=1)
+    expected_status: Literal["failed"] = "failed"
+
+
+class GateWaiverRequest(BaseModel):
+    target_id: str = Field(..., min_length=1)
+    expected_status: Literal["failed"] = "failed"
+    actor: str = Field(..., min_length=1)
+    reason: str = Field(..., min_length=1, max_length=1000)
+
+
 class IssueCreate(BaseModel):
     repo: str = Field(..., pattern=REPO_PATTERN)
     title: str = Field(..., min_length=1)
@@ -354,6 +366,9 @@ class TaskView(BaseModel):
     status: str
     result: str | None
     error: str | None
+    waived_by: str | None = None
+    waiver_reason: str | None = None
+    waived_at: datetime | None = None
     cost_usd: float
     created_at: datetime
     started_at: datetime | None
@@ -377,6 +392,9 @@ class TaskView(BaseModel):
             status=t.status.value,
             result=t.result,
             error=t.error,
+            waived_by=t.waived_by,
+            waiver_reason=t.waiver_reason,
+            waived_at=t.waived_at,
             cost_usd=t.cost_usd,
             created_at=t.created_at,
             started_at=t.started_at,
@@ -420,17 +438,28 @@ class ResourceRoutingView(BaseModel):
     warning: str | None = None
 
 
+class ControlPlaneActionView(BaseModel):
+    kind: Literal["retry", "waive"]
+    label: str
+    path: str
+    target_id: str
+    expected_status: Literal["failed"]
+    requires_reason: bool = False
+    requires_actor: bool = False
+
+
 class ControlPlaneWorkItemView(BaseModel):
     task_id: str
     title: str
     status: str
-    final_decision: Literal["pass", "fail", "blocked", "running", "pending", "cancelled"]
+    final_decision: Literal["pass", "fail", "blocked", "running", "pending", "cancelled", "waived"]
     current_gate: str | None
     next_action: str
     gates: tuple[GateTimelineEntry, ...]
     critic_findings: tuple[CriticFindingView, ...] = ()
     delegates: tuple[DelegateSessionView, ...]
     resource_routing: ResourceRoutingView
+    actions: tuple[ControlPlaneActionView, ...] = ()
 
 
 class CostSummary(BaseModel):
@@ -594,6 +623,33 @@ def _duration_seconds(task: Task) -> float | None:
     return max(0.0, (end - task.started_at).total_seconds())
 
 
+def _task_is_waived(task: Task) -> bool:
+    return bool(task.waived_by and task.waiver_reason)
+
+
+def _control_plane_actions_for_task(task: Task) -> tuple[ControlPlaneActionView, ...]:
+    if task.status.value != "failed" or _task_is_waived(task):
+        return ()
+    return (
+        ControlPlaneActionView(
+            kind="retry",
+            label="Retry",
+            path=f"/api/v1/control-plane/gauntlet/{task.id}/retry",
+            target_id=task.id,
+            expected_status="failed",
+        ),
+        ControlPlaneActionView(
+            kind="waive",
+            label="Waive",
+            path=f"/api/v1/control-plane/gauntlet/{task.id}/waive",
+            target_id=task.id,
+            expected_status="failed",
+            requires_reason=True,
+            requires_actor=True,
+        ),
+    )
+
+
 def _gate_statuses_for_task(task: Task) -> tuple[GateTimelineEntry, ...]:
     status_value = task.status.value
     target = _task_title(task)
@@ -648,6 +704,23 @@ def _gate_statuses_for_task(task: Task) -> tuple[GateTimelineEntry, ...]:
             ),
         )
     if status_value == "failed":
+        if _task_is_waived(task):
+            return (
+                intake,
+                GateTimelineEntry(
+                    id="delegate",
+                    name="Delegate session",
+                    status="waived",
+                    evidence_links=evidence,
+                    next_action=f"Waived by {task.waived_by}: {task.waiver_reason}",
+                ),
+                GateTimelineEntry(
+                    id="verification",
+                    name="Verification",
+                    status="blocked",
+                    next_action="Waived failures stay visible until the task is retried",
+                ),
+            )
         return (
             intake,
             GateTimelineEntry(
@@ -719,10 +792,10 @@ def _control_plane_view_from_task(task: Task) -> ControlPlaneWorkItemView:
         None,
     )
     decision_by_status: dict[
-        str, Literal["pass", "fail", "blocked", "running", "pending", "cancelled"]
+        str, Literal["pass", "fail", "blocked", "running", "pending", "cancelled", "waived"]
     ] = {
         "completed": "pass",
-        "failed": "fail",
+        "failed": "waived" if _task_is_waived(task) else "fail",
         "cancelled": "cancelled",
         "running": "running",
         "dispatched": "running",
@@ -730,7 +803,11 @@ def _control_plane_view_from_task(task: Task) -> ControlPlaneWorkItemView:
     }
     next_action_by_status = {
         "completed": "Review artifacts and merge only if policy allows",
-        "failed": "Inspect blocker evidence, then retry or waive with a reason",
+        "failed": (
+            f"Waived by {task.waived_by}: {task.waiver_reason}"
+            if _task_is_waived(task)
+            else "Inspect blocker evidence, then retry or waive with a reason"
+        ),
         "cancelled": "No action required unless the task should be requeued",
         "running": "Wait for the delegate to reach the next gate",
         "dispatched": "Wait for the assigned worker heartbeat or recovery timeout",
@@ -763,6 +840,7 @@ def _control_plane_view_from_task(task: Task) -> ControlPlaneWorkItemView:
             alternatives_considered=(),
             warning=None if backend else "No backend has been selected yet",
         ),
+        actions=_control_plane_actions_for_task(task),
     )
 
 
@@ -1012,6 +1090,70 @@ def create_app(
         tasks = list(daemon.state().tasks.values())
         tasks.sort(key=lambda task: task.created_at, reverse=True)
         return tuple(_control_plane_view_from_task(task) for task in tasks[:limit])
+
+    @app.post(
+        "/api/v1/control-plane/gauntlet/{task_id}/retry",
+        dependencies=[Depends(auth), Depends(_require_operator())],
+    )
+    async def retry_control_plane_gate(
+        task_id: str, payload: GateRetryRequest
+    ) -> ControlPlaneWorkItemView:
+        if payload.target_id != task_id:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, "target_id does not match the route task_id"
+            )
+        task = daemon.get_task(task_id)
+        if task is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "task not found")
+        if task.status.value != payload.expected_status:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"task {task_id} is {task.status.value}; expected {payload.expected_status}",
+            )
+        if _task_is_waived(task):
+            raise HTTPException(status.HTTP_409_CONFLICT, f"task {task_id} is already waived")
+        try:
+            task = daemon.retry_task(task_id, expected_status=TaskStatus(payload.expected_status))
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "task not found") from exc
+        return _control_plane_view_from_task(task)
+
+    @app.post(
+        "/api/v1/control-plane/gauntlet/{task_id}/waive",
+        dependencies=[Depends(auth), Depends(_require_operator())],
+    )
+    async def waive_control_plane_gate(
+        task_id: str,
+        payload: GateWaiverRequest,
+    ) -> ControlPlaneWorkItemView:
+        if payload.target_id != task_id:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, "target_id does not match the route task_id"
+            )
+        task = daemon.get_task(task_id)
+        if task is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "task not found")
+        if task.status.value != payload.expected_status:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"task {task_id} is {task.status.value}; expected {payload.expected_status}",
+            )
+        if _task_is_waived(task):
+            raise HTTPException(status.HTTP_409_CONFLICT, f"task {task_id} is already waived")
+        try:
+            task = daemon.waive_task(
+                task_id,
+                expected_status=TaskStatus(payload.expected_status),
+                actor=payload.actor,
+                reason=payload.reason,
+            )
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "task not found") from exc
+        return _control_plane_view_from_task(task)
 
     @app.get("/api/v1/tasks/{task_id}/artifacts", dependencies=[Depends(_require_viewer())])
     async def list_task_artifacts(
