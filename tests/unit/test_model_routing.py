@@ -81,6 +81,58 @@ def test_disabled_profiles_are_never_selected() -> None:
     assert any(r.profile_id == "local.disabled" for r in decision.rejections)
 
 
+def test_policy_rejections_report_each_failed_gate() -> None:
+    deployment_policy = ModelRoutingPolicy(
+        task_type=TaskType.PATCH_GENERATION,
+        allow_local_models=False,
+        allow_remote_models=False,
+    )
+    deployment_decision = select_profile(
+        profiles=[
+            _profile("local.blocked", deployment=DeploymentKind.LOCAL),
+            _profile("remote.blocked", deployment=DeploymentKind.REMOTE),
+        ],
+        policy=deployment_policy,
+    )
+
+    capability_policy = ModelRoutingPolicy(
+        task_type=TaskType.PATCH_GENERATION,
+        required_capabilities={Capability.PATCH_GENERATION},
+        max_cost_class=CostClass.STANDARD,
+        required_benchmark_suite="maxwell.patch_quality",
+        min_benchmark_score=0.75,
+    )
+    capability_decision = select_profile(
+        profiles=[
+            _profile(
+                "missing.capability",
+                capabilities={Capability.STRUCTURED_OUTPUT},
+            ),
+            _profile(
+                "too.expensive",
+                cost=CostClass.PREMIUM,
+                capabilities={Capability.PATCH_GENERATION},
+            ),
+            _profile("missing.benchmark", capabilities={Capability.PATCH_GENERATION}),
+        ],
+        policy=capability_policy,
+    )
+
+    assert deployment_decision.selected_profile_id is None
+    assert capability_decision.selected_profile_id is None
+    rejections = {
+        r.profile_id: r.reason
+        for r in (*deployment_decision.rejections, *capability_decision.rejections)
+    }
+    assert rejections == {
+        "local.blocked": "local_models_not_allowed",
+        "remote.blocked": "remote_models_not_allowed",
+        "missing.capability": "missing_required_capabilities",
+        "too.expensive": "cost_class_exceeds_policy",
+        "missing.benchmark": "missing_required_benchmark",
+    }
+
+
 def test_benchmark_gate_escalates_to_qualified_remote() -> None:
     policy = ModelRoutingPolicy(
         task_type=TaskType.ISSUE_TRIAGE,
