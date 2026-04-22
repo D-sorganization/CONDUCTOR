@@ -6,6 +6,7 @@ import fnmatch
 from collections.abc import Iterable
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -13,7 +14,10 @@ from maxwell_daemon.core.model_selector import ModelTier
 
 __all__ = [
     "CheckApplicability",
+    "CheckConclusion",
     "CheckDefinition",
+    "CheckFinding",
+    "CheckResult",
     "CheckSeverity",
     "CheckTrigger",
 ]
@@ -25,6 +29,15 @@ class CheckSeverity(str, Enum):
     ADVISORY = "advisory"
     REQUIRED = "required"
     BLOCKING = "blocking"
+
+
+class CheckConclusion(str, Enum):
+    """Structured conclusion for one check run."""
+
+    PASS = "pass"  # nosec B105 - check conclusion literal, not a password
+    FAIL = "fail"
+    ERROR = "error"
+    SKIPPED = "skipped"
 
 
 class CheckApplicability(BaseModel):
@@ -121,6 +134,32 @@ class CheckDefinition(BaseModel):
         """Return ``True`` when the check listens for ``event``."""
 
         return self.trigger.matches_event(event)
+
+
+class CheckFinding(BaseModel):
+    """One structured finding emitted by a check run."""
+
+    model_config = ConfigDict(frozen=True)
+
+    file: str | None = Field(default=None, min_length=1)
+    line: int | None = Field(default=None, ge=1)
+    severity: str = Field(default="info", min_length=1)
+    message: str = Field(..., min_length=1)
+
+
+class CheckResult(BaseModel):
+    """Structured local result for one check definition."""
+
+    model_config = ConfigDict(use_enum_values=False, frozen=True)
+
+    check_id: str = Field(..., min_length=1)
+    name: str = Field(..., min_length=1)
+    severity: CheckSeverity
+    conclusion: CheckConclusion
+    summary: str = Field(..., min_length=1)
+    findings: tuple[CheckFinding, ...] = ()
+    changed_files: tuple[str, ...] = ()
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 def _coerce_str_tuple(value: object) -> tuple[str, ...]:
