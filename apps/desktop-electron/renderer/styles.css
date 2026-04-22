@@ -49,13 +49,21 @@ h1 {
 
 button,
 input,
-select {
+select,
+textarea {
   min-height: 36px;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--panel);
   color: var(--text);
   padding: 6px 10px;
+}
+
+textarea {
+  box-sizing: border-box;
+  min-height: 96px;
+  resize: vertical;
+  width: 100%;
 }
 
 button {
@@ -105,6 +113,22 @@ article,
 .drop-zone {
   margin-bottom: 12px;
   color: var(--muted);
+}
+
+.drop-list {
+  margin: 0 0 12px;
+}
+
+.drop-list span,
+#create-status {
+  color: var(--muted);
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
 }
 
 .drop-zone.active {

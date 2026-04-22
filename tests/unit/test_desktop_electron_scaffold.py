@@ -71,15 +71,23 @@ def test_renderer_tracks_system_light_and_dark_theme() -> None:
 def test_renderer_wires_daemon_api_offline_cache_and_drag_drop() -> None:
     preload = (APP_DIR / "preload.js").read_text(encoding="utf-8")
     renderer = (APP_DIR / "renderer" / "app.js").read_text(encoding="utf-8")
+    html = (APP_DIR / "renderer" / "index.html").read_text(encoding="utf-8")
 
     assert "/api/v1/tasks?limit=100" in preload
     assert "/api/v1/fleet" in preload
+    assert "/api/v1/issues" in preload
     assert "/api/v1/issues/dispatch" in preload
     assert "updateTrayStatus" in preload
+    assert "readDroppedFiles(filePaths)" in preload
+    assert "maxDroppedFilePreviewBytes" in preload
     assert "localStorage.setItem(cacheKey" in preload
     assert "cachedSnapshot" in renderer
     assert "status-strip" in renderer
     assert "dataTransfer.files" in renderer
+    assert "droppedFileMarkdown" in renderer
+    assert "window.maxwellDesktop.readDroppedFiles(paths)" in renderer
+    assert 'id="create-issue"' in html
+    assert 'id="drop-list"' in html
 
 
 def test_renderer_uses_event_based_notifications() -> None:

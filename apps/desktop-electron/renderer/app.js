@@ -5,6 +5,17 @@ const notificationStateKey = "maxwell.desktop.notificationState";
 const activeTaskStatuses = new Set(["queued", "running", "dispatched"]);
 const doneTaskStatuses = new Set(["completed", "succeeded", "passed", "merged"]);
 const blockedTaskStatuses = new Set(["failed", "error", "blocked", "cancelled"]);
+let droppedFiles = [];
+
+function escapeHtml(value) {
+  return String(value || "").replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[character]);
+}
 
 function parseIssueRef(raw) {
   const value = String(raw || "").trim();
@@ -174,6 +185,66 @@ async function dispatchIssue() {
   await refresh();
 }
 
+function formatBytes(value) {
+  const bytes = Number(value || 0);
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function renderDroppedFiles(files) {
+  $("drop-list").innerHTML = files
+    .map((file) => {
+      const detail = file.error || (file.truncated ? "metadata only" : "text preview attached");
+      return `<li><strong>${escapeHtml(file.name)}</strong> ${escapeHtml(formatBytes(file.sizeBytes))} <span>${escapeHtml(detail)}</span></li>`;
+    })
+    .join("");
+  $("drop-zone").textContent = files.length
+    ? `${files.length} file(s) staged for the next issue`
+    : "Drop files here to attach them to a new issue";
+}
+
+function fencedText(text) {
+  const fence = String(text || "").includes("```") ? "~~~~" : "```";
+  return `${fence}text\n${text}\n${fence}`;
+}
+
+function droppedFileMarkdown() {
+  if (!droppedFiles.length) return "";
+  const lines = ["## Desktop file attachments"];
+  for (const file of droppedFiles) {
+    lines.push(`- ${file.path} (${formatBytes(file.sizeBytes)})`);
+    if (file.error) {
+      lines.push(`  - ${file.error}`);
+    } else if (file.truncated) {
+      lines.push("  - File was larger than the desktop preview limit; path and size were attached.");
+    } else if (file.text) {
+      lines.push("", `<details><summary>${file.name}</summary>`, "", fencedText(file.text), "", "</details>", "");
+    }
+  }
+  return lines.join("\n");
+}
+
+async function createIssue() {
+  const repo = $("create-repo").value.trim();
+  const title = $("create-title").value.trim();
+  if (!repo || !title) {
+    $("create-status").textContent = "Repository and title are required";
+    return;
+  }
+  const body = [$("create-body").value.trim(), droppedFileMarkdown()].filter(Boolean).join("\n\n");
+  $("create-status").textContent = "Creating issue";
+  const result = await window.maxwellDesktop.createIssue({
+    repo,
+    title,
+    body,
+    dispatch: $("create-dispatch").checked,
+    mode: $("create-mode").value,
+  });
+  $("create-status").textContent = result.task_id ? `Created and dispatched ${result.url}` : `Created ${result.url}`;
+  await refresh();
+}
+
 function wireDropZone() {
   const zone = $("drop-zone");
   zone.addEventListener("dragover", (event) => {
@@ -181,11 +252,13 @@ function wireDropZone() {
     zone.classList.add("active");
   });
   zone.addEventListener("dragleave", () => zone.classList.remove("active"));
-  zone.addEventListener("drop", (event) => {
+  zone.addEventListener("drop", async (event) => {
     event.preventDefault();
     zone.classList.remove("active");
-    const paths = [...event.dataTransfer.files].map((file) => file.path).join(", ");
-    zone.textContent = paths || "Drop files here to attach paths to a prompt";
+    const paths = [...event.dataTransfer.files].map((file) => file.path).filter(Boolean);
+    zone.textContent = paths.length ? "Reading dropped files" : "Drop files here to attach them to a new issue";
+    droppedFiles = paths.length ? await window.maxwellDesktop.readDroppedFiles(paths) : [];
+    renderDroppedFiles(droppedFiles);
   });
 }
 
@@ -196,6 +269,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("save-settings").addEventListener("click", saveSettings);
   $("refresh").addEventListener("click", refresh);
   $("dispatch").addEventListener("click", dispatchIssue);
+  $("create-issue").addEventListener("click", createIssue);
   $("updates").addEventListener("click", async () => {
     const result = await window.maxwellDesktop.checkForUpdates();
     renderUpdateStatus(result.status);
