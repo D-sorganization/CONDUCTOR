@@ -609,16 +609,24 @@ def create_app(
     )
     async def submit_task(payload: TaskSubmit) -> TaskView:
         try:
-            if payload.kind == "issue" and payload.issue_repo and payload.issue_number is not None:
-                task = daemon.submit_issue(
-                    repo=payload.issue_repo,
-                    issue_number=payload.issue_number,
-                    mode=payload.issue_mode or "plan",
-                    backend=payload.backend,
-                    model=payload.model,
-                    priority=payload.priority,
-                    task_id=payload.task_id,
-                )
+            if payload.kind == "issue":
+                if not payload.issue_repo or payload.issue_number is None:
+                    raise HTTPException(
+                        status.HTTP_422_UNPROCESSABLE_CONTENT,
+                        "issue_repo and issue_number are required when kind is 'issue'",
+                    )
+                try:
+                    task = daemon.submit_issue(
+                        repo=payload.issue_repo,
+                        issue_number=payload.issue_number,
+                        mode=payload.issue_mode or "plan",
+                        backend=payload.backend,
+                        model=payload.model,
+                        priority=payload.priority,
+                        task_id=payload.task_id,
+                    )
+                except ValueError as exc:
+                    raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
             else:
                 task = daemon.submit(
                     payload.prompt,
