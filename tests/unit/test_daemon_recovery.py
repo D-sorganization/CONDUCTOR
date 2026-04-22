@@ -82,6 +82,42 @@ class TestRecovery:
         assert loaded.error is not None
         assert "crashed" in loaded.error.lower()
 
+    def test_dispatched_task_visible_after_daemon_recovery(
+        self, cfg: MaxwellDaemonConfig, tmp_path: Path
+    ) -> None:
+        from datetime import datetime, timezone
+
+        task_store_path = tmp_path / "tasks.db"
+        store = TaskStore(task_store_path)
+        dispatched = Task(
+            id="fleet-task",
+            prompt="assigned before restart",
+            kind=TaskKind.PROMPT,
+            status=TaskStatus.DISPATCHED,
+            priority=10,
+            dispatched_to="worker-a",
+            created_at=datetime.now(timezone.utc),
+        )
+        store.save(dispatched)
+        del store
+
+        d = Daemon(cfg, ledger_path=tmp_path / "l.db", task_store_path=task_store_path)
+        recovered = d.recover()
+
+        assert len(recovered) == 1
+        assert recovered[0].id == "fleet-task"
+        assert recovered[0].status is TaskStatus.QUEUED
+        assert recovered[0].priority == 10
+        # Keep the last assignment visible for audit/debug context even though
+        # recovery makes the task eligible for dispatch again.
+        assert recovered[0].dispatched_to == "worker-a"
+
+        visible = d.get_task("fleet-task")
+        assert visible is not None
+        assert visible.status is TaskStatus.QUEUED
+        assert visible.dispatched_to == "worker-a"
+        assert d.state().queue_depth == 1
+
     def test_submit_persists_immediately(self, cfg: MaxwellDaemonConfig, tmp_path: Path) -> None:
         task_store_path = tmp_path / "tasks.db"
         d = Daemon(

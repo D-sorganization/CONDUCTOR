@@ -6,11 +6,12 @@ this store exists so a daemon restart doesn't lose queued work.
 
 Recovery model
 --------------
-On startup, ``recover_pending()`` re-queues all ``QUEUED`` tasks and marks any
-``RUNNING`` tasks as ``FAILED`` with a "crashed mid-execution" note. We can't
-know whether a previously-running task finished before the crash, so we default
-to the safe assumption — the human will see the failed task in the UI and can
-re-dispatch it if needed.
+On startup, ``recover_pending()`` re-queues all ``QUEUED`` tasks, re-queues
+``DISPATCHED`` tasks that were assigned to fleet workers before the coordinator
+stopped, and marks any ``RUNNING`` tasks as ``FAILED`` with a "crashed
+mid-execution" note. We preserve ``dispatched_to`` on recovered dispatched
+tasks as evidence of the last worker assignment, while making the task
+eligible for dispatch again.
 
 Connection model
 ----------------
@@ -61,6 +62,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     issue_number INTEGER,
     issue_mode TEXT,
     ab_group TEXT,
+    priority INTEGER NOT NULL DEFAULT 100,
+    dispatched_to TEXT,
     result TEXT,
     error TEXT,
     pr_url TEXT,
@@ -85,6 +88,8 @@ CREATE INDEX IF NOT EXISTS idx_tasks_completed_at ON tasks(completed_at);
 _MIGRATIONS = [
     ("ab_group", "ALTER TABLE tasks ADD COLUMN ab_group TEXT"),
     ("completed_at", "ALTER TABLE tasks ADD COLUMN completed_at TEXT"),
+    ("priority", "ALTER TABLE tasks ADD COLUMN priority INTEGER NOT NULL DEFAULT 100"),
+    ("dispatched_to", "ALTER TABLE tasks ADD COLUMN dispatched_to TEXT"),
 ]
 
 _TERMINAL_STATUS_VALUES = ("completed", "failed", "cancelled")
@@ -165,6 +170,8 @@ class TaskStore:
             task.issue_number,
             task.issue_mode,
             task.ab_group,
+            task.priority,
+            task.dispatched_to,
             task.result,
             task.error,
             task.pr_url,
@@ -180,9 +187,10 @@ class TaskStore:
                     id, created_at, updated_at, kind, status, prompt,
                     repo, backend, model,
                     issue_repo, issue_number, issue_mode, ab_group,
+                    priority, dispatched_to,
                     result, error, pr_url, cost_usd, started_at, finished_at,
                     completed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     updated_at=excluded.updated_at,
                     status=excluded.status,
@@ -192,6 +200,8 @@ class TaskStore:
                     issue_number=excluded.issue_number,
                     issue_mode=excluded.issue_mode,
                     ab_group=excluded.ab_group,
+                    priority=excluded.priority,
+                    dispatched_to=excluded.dispatched_to,
                     result=excluded.result, error=excluded.error, pr_url=excluded.pr_url,
                     cost_usd=excluded.cost_usd,
                     started_at=excluded.started_at, finished_at=excluded.finished_at,
@@ -288,6 +298,18 @@ class TaskStore:
                     _TaskStatus.RUNNING.value,
                 ),
             )
+            conn.execute(
+                """
+                UPDATE tasks
+                SET status = ?, updated_at = ?
+                WHERE status = ?
+                """,
+                (
+                    _TaskStatus.QUEUED.value,
+                    now,
+                    _TaskStatus.DISPATCHED.value,
+                ),
+            )
             rows = conn.execute(
                 "SELECT * FROM tasks WHERE status = ? ORDER BY created_at",
                 (_TaskStatus.QUEUED.value,),
@@ -356,7 +378,7 @@ class TaskStore:
         return self._list_sync(limit=limit, status=status, completed_before=completed_before)
 
     def recover_pending(self) -> list[Task]:
-        """Mark stale RUNNING tasks as FAILED; return anything still QUEUED."""
+        """Fail stale RUNNING tasks and return QUEUED/recovered DISPATCHED tasks."""
         return self._recover_sync()
 
     def prune(self, older_than_days: int, *, now: datetime | None = None) -> int:
@@ -433,11 +455,14 @@ def _row_to_task(row: sqlite3.Row) -> Task:
     # TaskStore at module load.
     from maxwell_daemon.daemon.runner import Task, TaskKind, TaskStatus
 
-    # ab_group was added later — missing on older DBs.
-    try:
-        ab_group = row["ab_group"]
-    except (IndexError, KeyError):
-        ab_group = None
+    # These columns were added later. TaskStore migrates before reads, but keep
+    # row hydration tolerant for tests or callers that pass manually-built rows.
+    def _optional(name: str, default: object = None) -> object:
+        try:
+            value = row[name]
+        except (IndexError, KeyError):
+            return default
+        return default if value is None else value
 
     return Task(
         id=row["id"],
@@ -450,7 +475,9 @@ def _row_to_task(row: sqlite3.Row) -> Task:
         issue_repo=row["issue_repo"],
         issue_number=row["issue_number"],
         issue_mode=row["issue_mode"],
-        ab_group=ab_group,
+        ab_group=_optional("ab_group"),
+        priority=int(_optional("priority", 100)),
+        dispatched_to=_optional("dispatched_to"),
         result=row["result"],
         error=row["error"],
         pr_url=row["pr_url"],

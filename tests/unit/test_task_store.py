@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -32,14 +33,21 @@ def store(tmp_path: Path) -> TaskStore:
 
 class TestSaveAndGet:
     def test_roundtrip(self, store: TaskStore) -> None:
-        task = _fresh_task(prompt="do the thing")
+        task = _fresh_task(
+            prompt="do the thing",
+            priority=50,
+            status=TaskStatus.DISPATCHED,
+            dispatched_to="worker-a",
+        )
         store.save(task)
         loaded = store.get(task.id)
         assert loaded is not None
         assert loaded.id == task.id
         assert loaded.prompt == "do the thing"
         assert loaded.kind is TaskKind.PROMPT
-        assert loaded.status is TaskStatus.QUEUED
+        assert loaded.status is TaskStatus.DISPATCHED
+        assert loaded.priority == 50
+        assert loaded.dispatched_to == "worker-a"
 
     def test_get_missing_returns_none(self, store: TaskStore) -> None:
         assert store.get("nope") is None
@@ -139,6 +147,28 @@ class TestRecoverPending:
         assert loaded.error is not None
         assert "crashed" in loaded.error.lower()
 
+    def test_requeues_dispatched_tasks_preserving_assignment_evidence(
+        self, store: TaskStore
+    ) -> None:
+        dispatched = _fresh_task(
+            status=TaskStatus.DISPATCHED,
+            priority=25,
+            dispatched_to="worker-a",
+        )
+        store.save(dispatched)
+
+        recovered = store.recover_pending()
+
+        assert [task.id for task in recovered] == [dispatched.id]
+        assert recovered[0].status is TaskStatus.QUEUED
+        assert recovered[0].priority == 25
+        assert recovered[0].dispatched_to == "worker-a"
+
+        loaded = store.get(dispatched.id)
+        assert loaded is not None
+        assert loaded.status is TaskStatus.QUEUED
+        assert loaded.dispatched_to == "worker-a"
+
 
 class TestPrune:
     def test_deletes_terminal_tasks_older_than_threshold(self, store: TaskStore) -> None:
@@ -206,6 +236,58 @@ class TestSchemaMigration:
         s1.save(_fresh_task(prompt="x"))
         s2 = TaskStore(db)  # second open should be a no-op, not an error
         assert s2.list_tasks(limit=10)[0].prompt == "x"
+
+    def test_migrates_existing_db_without_priority_or_dispatch_columns(
+        self, tmp_path: Path
+    ) -> None:
+        db = tmp_path / "legacy.db"
+        created = datetime.now(timezone.utc).isoformat()
+        with sqlite3.connect(db) as conn:
+            conn.execute(
+                """
+                CREATE TABLE tasks (
+                    id TEXT PRIMARY KEY,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    prompt TEXT NOT NULL,
+                    repo TEXT,
+                    backend TEXT,
+                    model TEXT,
+                    issue_repo TEXT,
+                    issue_number INTEGER,
+                    issue_mode TEXT,
+                    result TEXT,
+                    error TEXT,
+                    pr_url TEXT,
+                    cost_usd REAL NOT NULL DEFAULT 0,
+                    started_at TEXT,
+                    finished_at TEXT
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO tasks (id, created_at, updated_at, kind, status, prompt)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "legacy",
+                    created,
+                    created,
+                    TaskKind.PROMPT.value,
+                    TaskStatus.QUEUED.value,
+                    "legacy prompt",
+                ),
+            )
+
+        store = TaskStore(db)
+        loaded = store.get("legacy")
+
+        assert loaded is not None
+        assert loaded.priority == 100
+        assert loaded.dispatched_to is None
 
 
 class TestClose:
