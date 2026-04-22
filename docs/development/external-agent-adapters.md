@@ -124,3 +124,49 @@ class ExampleCLIAdapter(ExternalAgentAdapterBase):
 Use `CodexCLIExternalAgentAdapter` as the reference wrapper for an existing
 Maxwell backend. It exposes the existing `CodexCLIBackend` in safe suggest mode
 without changing backend behavior or granting write access.
+
+## Local Plugin Descriptors
+
+Maxwell can load external-agent adapters from local JSON or TOML descriptor
+files. This is intentionally a local discovery mechanism, not a marketplace.
+The descriptor is metadata plus an importable entrypoint; the entrypoint must
+produce an `ExternalAgentAdapterProtocol` instance with an `adapter_id` that
+matches the descriptor name.
+
+JSON example:
+
+```json
+{
+  "name": "aider-cli",
+  "kind": "external-agent",
+  "entrypoint": "maxwell_daemon_external_aider:AiderAdapter",
+  "version": "1",
+  "capabilities": ["diff", "git", "stdout-artifacts"]
+}
+```
+
+TOML example:
+
+```toml
+name = "codex-cli"
+kind = "external-agent"
+entrypoint = "maxwell_daemon.backends.external_adapter:CodexCLIExternalAgentAdapter"
+version = "1"
+capabilities = ["plan", "review", "checkpoint"]
+```
+
+Use `load_external_agent_plugin_descriptor()` for one file,
+`load_external_agent_plugin_descriptors()` for a directory, and
+`register_external_agent_plugins()` to instantiate descriptors into an
+`ExternalAgentAdapterRegistry`.
+
+Descriptor contracts:
+
+- `kind` must be `external-agent`.
+- `name` must be a stable adapter id and must not collide with another local
+  descriptor.
+- `entrypoint` must use `module:attribute` syntax and must produce an external
+  adapter.
+- The loaded adapter's `adapter_id` must equal the descriptor `name`.
+- `capabilities` is descriptive metadata and must not contain duplicate or blank
+  entries.
