@@ -98,6 +98,8 @@ async function fetchTasks() {
       const allList = await allR.json();
       state.allTasks.clear();
       for (const t of allList) state.allTasks.set(t.id, t);
+    } else {
+      state.allTasks = new Map(state.tasks);
     }
   } else {
     // No filter active — filtered set is already the full set.

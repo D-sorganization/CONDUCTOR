@@ -100,6 +100,14 @@ class TestHTMLContent:
         assert 'state.testOutput.get(selectedAtSchedule) || "(no streamed output)"' in js
         assert "state.testOutput.get(state.selected)" not in js
 
+    def test_unfiltered_task_fetch_failure_resets_all_tasks_snapshot(
+        self, client: TestClient
+    ) -> None:
+        js = client.get("/ui/app.js").text
+
+        assert "if (allR.ok)" in js
+        assert "state.allTasks = new Map(state.tasks);" in js
+
     def test_service_worker_limits_shell_cache_fallback_to_navigations(
         self, client: TestClient
     ) -> None:
