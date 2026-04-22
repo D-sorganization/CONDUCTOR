@@ -51,7 +51,7 @@ def status(
             response = client.get(url, params=params, headers=headers)
             response.raise_for_status()
     except httpx.HTTPError as exc:
-        console.print(f"[red]✗[/red] fleet status request failed: {exc}")
+        console.print(f"[red]x[/red] fleet status request failed: {exc}")
         raise typer.Exit(1) from None
 
     payload: dict[str, Any] = response.json()
@@ -85,7 +85,7 @@ def _render_status(payload: dict[str, Any]) -> None:
         selected_id = payload["selected_node"].get("node_id")
 
     for node in payload.get("nodes", []):
-        marker = "• " if node.get("node_id") == selected_id else ""
+        marker = "* " if node.get("node_id") == selected_id else ""
         tailscale_status = node.get("tailscale_status") or {}
         tailscale = "online" if tailscale_status.get("online") else "offline"
         table.add_row(
