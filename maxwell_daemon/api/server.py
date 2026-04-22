@@ -439,6 +439,40 @@ def _make_rbac_dep(
     return _dep
 
 
+async def _websocket_auth_or_close(
+    ws: WebSocket,
+    minimum: Role,
+    static_token: str | None,
+    jwt_config: JWTConfig | None,
+) -> bool:
+    """Authenticate a WebSocket query token against static/JWT auth policy."""
+    if static_token is None and jwt_config is None:
+        return True
+
+    presented = ws.query_params.get("token") or ""
+    if not presented:
+        await ws.close(code=1008)
+        return False
+
+    if static_token is not None and hmac.compare_digest(presented.encode(), static_token.encode()):
+        return True
+
+    if jwt_config is None:
+        await ws.close(code=1008)
+        return False
+
+    try:
+        claims = jwt_config.decode_token(presented)
+    except Exception:  # nosec B110 - invalid WebSocket token, close below.
+        await ws.close(code=1008)
+        return False
+
+    if not claims.has_role(minimum):
+        await ws.close(code=1008)
+        return False
+    return True
+
+
 def create_app(
     daemon: Daemon,
     *,
@@ -1469,23 +1503,8 @@ def create_app(
         """
         import json as _json_mod
 
-        if auth_token is not None:
-            presented = ws.query_params.get("token") or ""
-            authenticated = False
-            if auth_token is not None and hmac.compare_digest(
-                presented.encode(), auth_token.encode()
-            ):
-                authenticated = True
-            elif jwt_config is not None and presented:
-                try:
-                    _ws_claims = jwt_config.decode_token(presented)
-                    if _ws_claims.has_role(Role.admin):
-                        authenticated = True
-                except Exception:  # nosec B110 — invalid JWT, fall through
-                    pass
-            if not authenticated:
-                await ws.close(code=1008)
-                return
+        if not await _websocket_auth_or_close(ws, Role.admin, auth_token, jwt_config):
+            return
 
         pool = _ssh_pool()
         if pool is None:
@@ -1552,15 +1571,12 @@ def create_app(
     async def events_ws(ws: WebSocket) -> None:
         """Stream daemon events as JSON frames to the client.
 
-        WebSocket auth is intentionally simpler than REST auth here: clients pass
-        ``?token=...`` as a query param because browser WebSocket APIs can't set
-        headers. Terminate at a proxy for TLS.
+        Clients pass ``?token=...`` as a query param because browser WebSocket
+        APIs can't set headers. Static tokens grant admin; JWT tokens must have
+        viewer-or-higher privileges. Terminate at a proxy for TLS.
         """
-        if auth_token is not None:
-            presented = ws.query_params.get("token") or ""
-            if not hmac.compare_digest(presented.encode(), auth_token.encode()):
-                await ws.close(code=1008)
-                return
+        if not await _websocket_auth_or_close(ws, Role.viewer, auth_token, jwt_config):
+            return
         await ws.accept()
         try:
             async for event in daemon.events.subscribe(queue_size=64):
