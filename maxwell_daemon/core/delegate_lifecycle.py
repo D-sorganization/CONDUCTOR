@@ -2,12 +2,34 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import json
+import sqlite3
+import threading
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveFloat, PositiveInt, model_validator
+
+from maxwell_daemon.contracts import require
+
+__all__ = [
+    "AssignmentLease",
+    "Checkpoint",
+    "Delegate",
+    "DelegateLifecycleManager",
+    "DelegateLifecycleService",
+    "DelegateSession",
+    "DelegateSessionSnapshot",
+    "DelegateSessionStatus",
+    "DelegateSessionStore",
+    "HandoffArtifact",
+    "LeaseRecoveryPolicy",
+    "validate_delegate_session_transition",
+]
 
 Clock = Callable[[], datetime]
 
@@ -20,6 +42,26 @@ def _normalize_datetime(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
+
+
+def _iso(value: datetime | None) -> str | None:
+    return value.isoformat() if value is not None else None
+
+
+def _parse_iso(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _parse_iso_required(value: str) -> datetime:
+    parsed = _parse_iso(value)
+    if parsed is None:
+        raise ValueError("expected non-empty timestamp")
+    return parsed
 
 
 class DelegateSessionStatus(str, Enum):
@@ -431,3 +473,717 @@ def _expires_at(now: datetime, ttl: timedelta) -> datetime:
 def _lease_id(session_id: str, owner_id: str, heartbeat_at: datetime) -> str:
     timestamp = _normalize_datetime(heartbeat_at).isoformat()
     return f"{session_id}:{owner_id}:{timestamp}"
+
+
+def _json(value: object) -> str:
+    return json.dumps(value, separators=(",", ":"), sort_keys=True)
+
+
+def _json_tuple(value: str | None) -> tuple[str, ...]:
+    if not value:
+        return ()
+    loaded = json.loads(value)
+    require(isinstance(loaded, list), "delegate lifecycle payload must decode to a list")
+    return tuple(str(item) for item in loaded)
+
+
+class DelegateSessionSnapshot(BaseModel):
+    """Durable readback for one delegate session and its evidence."""
+
+    session: DelegateSession
+    active_lease: AssignmentLease | None = None
+    latest_checkpoint: Checkpoint | None = None
+    handoff_artifacts: tuple[HandoffArtifact, ...] = ()
+
+    @property
+    def status(self) -> DelegateSessionStatus:
+        return self.session.status
+
+
+class DelegateSessionStore:
+    """SQLite persistence for delegate sessions, leases, checkpoints, and handoffs."""
+
+    _SCHEMA = """
+    CREATE TABLE IF NOT EXISTS delegate_sessions (
+        id TEXT PRIMARY KEY,
+        delegate_id TEXT NOT NULL,
+        work_item_id TEXT,
+        task_id TEXT,
+        workspace_ref TEXT NOT NULL,
+        backend_ref TEXT NOT NULL,
+        machine_ref TEXT NOT NULL,
+        status TEXT NOT NULL,
+        active_lease_id TEXT,
+        prior_session_id TEXT,
+        latest_checkpoint_id TEXT,
+        recovered_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        metadata TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS delegate_leases (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        heartbeat_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        renewal_count INTEGER NOT NULL,
+        recovery_policy TEXT NOT NULL,
+        released_at TEXT,
+        expired_at TEXT,
+        supersedes_owner_id TEXT
+    );
+    CREATE TABLE IF NOT EXISTS delegate_checkpoints (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        current_plan TEXT NOT NULL,
+        changed_files TEXT NOT NULL,
+        test_commands TEXT NOT NULL,
+        failures_and_learnings TEXT NOT NULL,
+        artifact_refs TEXT NOT NULL,
+        resume_prompt TEXT,
+        metadata TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS delegate_handoffs (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        artifact_type TEXT NOT NULL,
+        artifact_ref TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        metadata TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_delegate_sessions_delegate ON delegate_sessions(delegate_id, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_delegate_sessions_work_item ON delegate_sessions(work_item_id, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_delegate_sessions_task ON delegate_sessions(task_id, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_delegate_sessions_status ON delegate_sessions(status, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_delegate_leases_session ON delegate_leases(session_id, heartbeat_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_delegate_checkpoints_session ON delegate_checkpoints(session_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_delegate_handoffs_session ON delegate_handoffs(session_id, created_at DESC);
+    """
+
+    def __init__(self, db_path: Path | str) -> None:
+        self._path = Path(db_path).expanduser()
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
+        with self._connect() as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.executescript(self._SCHEMA)
+
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        conn = sqlite3.connect(self._path, isolation_level=None, timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout=30000")
+        try:
+            yield conn
+        finally:
+            conn.close()
+
+    def save_session(self, session: DelegateSession) -> DelegateSession:
+        require(bool(session.id), "delegate session id must be non-empty")
+        row = (
+            session.id,
+            session.delegate_id,
+            session.work_item_id,
+            session.task_id,
+            session.workspace_ref,
+            session.backend_ref,
+            session.machine_ref,
+            session.status.value,
+            session.active_lease_id,
+            session.prior_session_id,
+            session.latest_checkpoint_id,
+            _iso(session.recovered_at),
+            _iso(session.created_at),
+            _iso(session.updated_at),
+            _json(session.metadata),
+        )
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO delegate_sessions (
+                    id, delegate_id, work_item_id, task_id, workspace_ref,
+                    backend_ref, machine_ref, status, active_lease_id,
+                    prior_session_id, latest_checkpoint_id, recovered_at,
+                    created_at, updated_at, metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    delegate_id=excluded.delegate_id,
+                    work_item_id=excluded.work_item_id,
+                    task_id=excluded.task_id,
+                    workspace_ref=excluded.workspace_ref,
+                    backend_ref=excluded.backend_ref,
+                    machine_ref=excluded.machine_ref,
+                    status=excluded.status,
+                    active_lease_id=excluded.active_lease_id,
+                    prior_session_id=excluded.prior_session_id,
+                    latest_checkpoint_id=excluded.latest_checkpoint_id,
+                    recovered_at=excluded.recovered_at,
+                    created_at=excluded.created_at,
+                    updated_at=excluded.updated_at,
+                    metadata=excluded.metadata
+                """,
+                row,
+            )
+        return session
+
+    def get_session(self, session_id: str) -> DelegateSession | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM delegate_sessions WHERE id = ?",
+                (session_id,),
+            ).fetchone()
+        return _row_to_session(row) if row is not None else None
+
+    def list_sessions(
+        self,
+        *,
+        limit: int = 100,
+        delegate_id: str | None = None,
+        work_item_id: str | None = None,
+        task_id: str | None = None,
+        status: DelegateSessionStatus | None = None,
+    ) -> list[DelegateSession]:
+        require(limit >= 1, "limit must be at least 1")
+        query = "SELECT * FROM delegate_sessions"
+        clauses: list[str] = []
+        args: list[object] = []
+        if delegate_id is not None:
+            clauses.append("delegate_id = ?")
+            args.append(delegate_id)
+        if work_item_id is not None:
+            clauses.append("work_item_id = ?")
+            args.append(work_item_id)
+        if task_id is not None:
+            clauses.append("task_id = ?")
+            args.append(task_id)
+        if status is not None:
+            clauses.append("status = ?")
+            args.append(status.value)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY updated_at DESC, created_at DESC, id DESC LIMIT ?"
+        args.append(limit)
+        with self._connect() as conn:
+            rows = conn.execute(query, args).fetchall()
+        return [_row_to_session(row) for row in rows]
+
+    def save_lease(self, lease: AssignmentLease) -> AssignmentLease:
+        if not lease.id:
+            lease = lease.model_copy(
+                update={"id": _lease_id(lease.session_id, lease.owner_id, lease.heartbeat_at)}
+            )
+        row = (
+            lease.id,
+            lease.session_id,
+            lease.owner_id,
+            _iso(lease.heartbeat_at),
+            _iso(lease.expires_at),
+            lease.renewal_count,
+            lease.recovery_policy.value,
+            _iso(lease.released_at),
+            _iso(lease.expired_at),
+            lease.supersedes_owner_id,
+        )
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO delegate_leases (
+                    id, session_id, owner_id, heartbeat_at, expires_at,
+                    renewal_count, recovery_policy, released_at, expired_at,
+                    supersedes_owner_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    session_id=excluded.session_id,
+                    owner_id=excluded.owner_id,
+                    heartbeat_at=excluded.heartbeat_at,
+                    expires_at=excluded.expires_at,
+                    renewal_count=excluded.renewal_count,
+                    recovery_policy=excluded.recovery_policy,
+                    released_at=excluded.released_at,
+                    expired_at=excluded.expired_at,
+                    supersedes_owner_id=excluded.supersedes_owner_id
+                """,
+                row,
+            )
+        return lease
+
+    def get_lease(self, lease_id: str) -> AssignmentLease | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM delegate_leases WHERE id = ?",
+                (lease_id,),
+            ).fetchone()
+        return _row_to_lease(row) if row is not None else None
+
+    def current_lease(self, session_id: str) -> AssignmentLease | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM delegate_leases
+                WHERE session_id = ? AND released_at IS NULL AND expired_at IS NULL
+                ORDER BY heartbeat_at DESC, id DESC
+                LIMIT 1
+                """,
+                (session_id,),
+            ).fetchone()
+        return _row_to_lease(row) if row is not None else None
+
+    def latest_lease(self, session_id: str) -> AssignmentLease | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM delegate_leases
+                WHERE session_id = ?
+                ORDER BY heartbeat_at DESC, id DESC
+                LIMIT 1
+                """,
+                (session_id,),
+            ).fetchone()
+        return _row_to_lease(row) if row is not None else None
+
+    def list_leases(self, session_id: str) -> list[AssignmentLease]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM delegate_leases
+                WHERE session_id = ?
+                ORDER BY heartbeat_at DESC, id DESC
+                """,
+                (session_id,),
+            ).fetchall()
+        return [_row_to_lease(row) for row in rows]
+
+    def save_checkpoint(self, checkpoint: Checkpoint) -> Checkpoint:
+        row = (
+            checkpoint.id,
+            checkpoint.session_id,
+            _iso(checkpoint.created_at),
+            checkpoint.current_plan,
+            _json(list(checkpoint.changed_files)),
+            _json(list(checkpoint.test_commands)),
+            _json(list(checkpoint.failures_and_learnings)),
+            _json(list(checkpoint.artifact_refs)),
+            checkpoint.resume_prompt,
+            _json(checkpoint.metadata),
+        )
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO delegate_checkpoints (
+                    id, session_id, created_at, current_plan, changed_files,
+                    test_commands, failures_and_learnings, artifact_refs,
+                    resume_prompt, metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                row,
+        )
+        return checkpoint
+
+    def get_checkpoint(self, checkpoint_id: str) -> Checkpoint | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM delegate_checkpoints WHERE id = ?",
+                (checkpoint_id,),
+            ).fetchone()
+        return _row_to_checkpoint(row) if row is not None else None
+
+    def latest_checkpoint(self, session_id: str) -> Checkpoint | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM delegate_checkpoints
+                WHERE session_id = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+                """,
+                (session_id,),
+            ).fetchone()
+        return _row_to_checkpoint(row) if row is not None else None
+
+    def list_checkpoints(self, session_id: str) -> list[Checkpoint]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM delegate_checkpoints
+                WHERE session_id = ?
+                ORDER BY created_at ASC, id ASC
+                """,
+                (session_id,),
+            ).fetchall()
+        return [_row_to_checkpoint(row) for row in rows]
+
+    def save_handoff_artifact(self, artifact: HandoffArtifact) -> HandoffArtifact:
+        row = (
+            artifact.id,
+            artifact.session_id,
+            artifact.artifact_type,
+            artifact.artifact_ref,
+            artifact.summary,
+            _iso(artifact.created_at),
+            _json(artifact.metadata),
+        )
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO delegate_handoffs (
+                    id, session_id, artifact_type, artifact_ref, summary,
+                    created_at, metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                row,
+            )
+        return artifact
+
+    def list_handoff_artifacts(self, session_id: str) -> list[HandoffArtifact]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM delegate_handoffs
+                WHERE session_id = ?
+                ORDER BY created_at ASC, id ASC
+                """,
+                (session_id,),
+            ).fetchall()
+        return [_row_to_handoff_artifact(row) for row in rows]
+
+
+class DelegateLifecycleService:
+    """High-level lifecycle operations backed by a durable session store."""
+
+    def __init__(self, store: DelegateSessionStore, *, clock: Clock | None = None) -> None:
+        self._store = store
+        self._clock = clock or _utc_now
+
+    def create_session(self, session: DelegateSession) -> DelegateSession:
+        require(self._store.get_session(session.id) is None, f"session {session.id!r} already exists")
+        self._store.save_session(session)
+        return session
+
+    def get_session(self, session_id: str) -> DelegateSession | None:
+        return self._store.get_session(session_id)
+
+    def list_sessions(
+        self,
+        *,
+        limit: int = 100,
+        delegate_id: str | None = None,
+        work_item_id: str | None = None,
+        task_id: str | None = None,
+        status: DelegateSessionStatus | None = None,
+    ) -> list[DelegateSessionSnapshot]:
+        return [
+            self.snapshot(session.id)
+            for session in self._store.list_sessions(
+                limit=limit,
+                delegate_id=delegate_id,
+                work_item_id=work_item_id,
+                task_id=task_id,
+                status=status,
+            )
+        ]
+
+    def snapshot(self, session_id: str) -> DelegateSessionSnapshot:
+        session = self._require_session(session_id)
+        latest_checkpoint = (
+            self._store.get_checkpoint(session.latest_checkpoint_id)
+            if session.latest_checkpoint_id is not None
+            else self._store.latest_checkpoint(session_id)
+        )
+        return DelegateSessionSnapshot(
+            session=session,
+            active_lease=self._store.current_lease(session_id),
+            latest_checkpoint=latest_checkpoint,
+            handoff_artifacts=tuple(self._store.list_handoff_artifacts(session_id)),
+        )
+
+    def acquire_lease(
+        self,
+        session_id: str,
+        *,
+        owner_id: str,
+        ttl: timedelta,
+        recovery_policy: LeaseRecoveryPolicy = LeaseRecoveryPolicy.ABANDON,
+    ) -> AssignmentLease:
+        session = self._require_session(session_id)
+        require(
+            self._store.current_lease(session_id) is None,
+            f"session {session_id!r} already has an active lease",
+        )
+        now = self._now()
+        lease = AssignmentLease(
+            id=_lease_id(session_id, owner_id, now),
+            session_id=session_id,
+            owner_id=owner_id,
+            heartbeat_at=now,
+            expires_at=_expires_at(now, ttl),
+            recovery_policy=recovery_policy,
+        )
+        self._store.save_lease(lease)
+        leased = session.with_status(DelegateSessionStatus.LEASED, lease=lease, now=now)
+        self._store.save_session(leased)
+        return lease
+
+    def mark_running(self, session_id: str, *, owner_id: str) -> DelegateSession:
+        session = self._require_session(session_id)
+        lease = self._require_active_lease(session_id, owner_id=owner_id)
+        running = session.with_status(DelegateSessionStatus.RUNNING, lease=lease, now=self._now())
+        self._store.save_session(running)
+        return running
+
+    def heartbeat(
+        self,
+        session_id: str,
+        *,
+        owner_id: str,
+        ttl: timedelta,
+    ) -> AssignmentLease:
+        lease = self._require_active_lease(session_id, owner_id=owner_id)
+        now = self._now()
+        renewed = lease.model_copy(
+            update={
+                "heartbeat_at": now,
+                "expires_at": _expires_at(now, ttl),
+                "renewal_count": lease.renewal_count + 1,
+            }
+        )
+        self._store.save_lease(renewed)
+        session = self._require_session(session_id)
+        if session.status is DelegateSessionStatus.LEASED:
+            session = session.with_status(DelegateSessionStatus.RUNNING, lease=renewed, now=now)
+        else:
+            session = session.model_copy(update={"active_lease_id": renewed.id, "updated_at": now})
+        self._store.save_session(session)
+        return renewed
+
+    def record_checkpoint(
+        self,
+        session_id: str,
+        *,
+        current_plan: str,
+        changed_files: tuple[str, ...] = (),
+        test_commands: tuple[str, ...] = (),
+        failures_and_learnings: tuple[str, ...] = (),
+        artifact_refs: tuple[str, ...] = (),
+        resume_prompt: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> Checkpoint:
+        session = self._require_session(session_id)
+        require(
+            session.status in {DelegateSessionStatus.LEASED, DelegateSessionStatus.RUNNING, DelegateSessionStatus.PAUSED, DelegateSessionStatus.BLOCKED},
+            "checkpoint can only be recorded for an active or paused session",
+        )
+        now = self._now()
+        checkpoint = Checkpoint(
+            id=f"{session_id}:checkpoint:{len(self._store.list_checkpoints(session_id)) + 1}",
+            session_id=session_id,
+            created_at=now,
+            current_plan=current_plan,
+            changed_files=changed_files,
+            test_commands=test_commands,
+            failures_and_learnings=failures_and_learnings,
+            artifact_refs=artifact_refs,
+            resume_prompt=resume_prompt,
+            metadata=metadata or {},
+        )
+        self._store.save_checkpoint(checkpoint)
+        updated = session.model_copy(
+            update={
+                "latest_checkpoint_id": checkpoint.id,
+                "updated_at": now,
+            }
+        )
+        self._store.save_session(updated)
+        return checkpoint
+
+    def record_handoff_artifact(
+        self,
+        session_id: str,
+        *,
+        artifact_type: str,
+        artifact_ref: str,
+        summary: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> HandoffArtifact:
+        self._require_session(session_id)
+        artifact = HandoffArtifact(
+            id=f"{session_id}:handoff:{len(self._store.list_handoff_artifacts(session_id)) + 1}",
+            session_id=session_id,
+            artifact_type=artifact_type,
+            artifact_ref=artifact_ref,
+            summary=summary,
+            metadata=metadata or {},
+        )
+        self._store.save_handoff_artifact(artifact)
+        return artifact
+
+    def expire_session(self, session_id: str) -> DelegateSession:
+        session = self._require_session(session_id)
+        lease = self._store.current_lease(session_id)
+        require(lease is not None, f"session {session_id!r} does not have an active lease")
+        assert lease is not None
+        now = self._now()
+        next_status = (
+            DelegateSessionStatus.ABANDONED
+            if lease.recovery_policy is LeaseRecoveryPolicy.ABANDON
+            else DelegateSessionStatus.PAUSED
+        )
+        validate_delegate_session_transition(session.status, next_status)
+        expired = lease.model_copy(update={"expired_at": now})
+        self._store.save_lease(expired)
+        updated = session.model_copy(
+            update={
+                "status": next_status,
+                "active_lease_id": None,
+                "updated_at": now,
+            }
+        )
+        self._store.save_session(updated)
+        return updated
+
+    def recover_session(
+        self,
+        prior_session_id: str,
+        *,
+        new_session_id: str,
+        delegate_id: str | None = None,
+        owner_id: str,
+        machine_ref: str,
+        backend_ref: str,
+        ttl: timedelta,
+    ) -> tuple[DelegateSession, AssignmentLease]:
+        prior = self._require_session(prior_session_id)
+        require(
+            prior.status is DelegateSessionStatus.PAUSED,
+            "only a paused delegate session can be recovered",
+        )
+        latest_checkpoint = self._store.latest_checkpoint(prior_session_id)
+        require(
+            latest_checkpoint is not None,
+            "recovery requires at least one checkpoint",
+        )
+        assert latest_checkpoint is not None
+        now = self._now()
+        recovered = DelegateSession.recover_from(
+            prior,
+            new_session_id=new_session_id,
+            delegate_id=delegate_id or prior.delegate_id,
+            machine_ref=machine_ref,
+            backend_ref=backend_ref,
+            latest_checkpoint=latest_checkpoint,
+            now=now,
+        )
+        validate_delegate_session_transition(prior.status, DelegateSessionStatus.SUPERSEDED)
+        self._store.save_session(recovered)
+        superseded = prior.model_copy(
+            update={
+                "status": DelegateSessionStatus.SUPERSEDED,
+                "updated_at": now,
+            }
+        )
+        self._store.save_session(superseded)
+        lease = self.acquire_lease(
+            recovered.id,
+            owner_id=owner_id,
+            ttl=ttl,
+            recovery_policy=LeaseRecoveryPolicy.RECOVERABLE,
+        )
+        running = self.mark_running(recovered.id, owner_id=owner_id)
+        return running, lease
+
+    def complete_session(self, session_id: str, *, owner_id: str) -> DelegateSession:
+        session = self._require_session(session_id)
+        lease = self._require_active_lease(session_id, owner_id=owner_id)
+        now = self._now()
+        validate_delegate_session_transition(session.status, DelegateSessionStatus.COMPLETED)
+        released = lease.model_copy(update={"released_at": now})
+        self._store.save_lease(released)
+        completed = session.model_copy(
+            update={
+                "status": DelegateSessionStatus.COMPLETED,
+                "active_lease_id": None,
+                "updated_at": now,
+            }
+        )
+        self._store.save_session(completed)
+        return completed
+
+    def _require_session(self, session_id: str) -> DelegateSession:
+        session = self._store.get_session(session_id)
+        require(session is not None, f"delegate session {session_id!r} not found")
+        assert session is not None
+        return session
+
+    def _require_active_lease(self, session_id: str, *, owner_id: str) -> AssignmentLease:
+        lease = self._store.current_lease(session_id)
+        require(lease is not None, f"session {session_id!r} does not have an active lease")
+        assert lease is not None
+        require(lease.owner_id == owner_id, "only the current lease owner may update the session")
+        return lease
+
+    def _now(self) -> datetime:
+        return _normalize_datetime(self._clock())
+
+
+def _row_to_session(row: sqlite3.Row) -> DelegateSession:
+    return DelegateSession(
+        id=row["id"],
+        delegate_id=row["delegate_id"],
+        work_item_id=row["work_item_id"],
+        task_id=row["task_id"],
+        workspace_ref=row["workspace_ref"],
+        backend_ref=row["backend_ref"],
+        machine_ref=row["machine_ref"],
+        status=DelegateSessionStatus(row["status"]),
+        active_lease_id=row["active_lease_id"],
+        prior_session_id=row["prior_session_id"],
+        latest_checkpoint_id=row["latest_checkpoint_id"],
+        recovered_at=_parse_iso(row["recovered_at"]),
+        created_at=_parse_iso_required(row["created_at"]),
+        updated_at=_parse_iso_required(row["updated_at"]),
+        metadata=json.loads(row["metadata"] or "{}"),
+    )
+
+
+def _row_to_lease(row: sqlite3.Row) -> AssignmentLease:
+    return AssignmentLease(
+        id=row["id"],
+        session_id=row["session_id"],
+        owner_id=row["owner_id"],
+        heartbeat_at=_parse_iso_required(row["heartbeat_at"]),
+        expires_at=_parse_iso_required(row["expires_at"]),
+        renewal_count=row["renewal_count"],
+        recovery_policy=LeaseRecoveryPolicy(row["recovery_policy"]),
+        released_at=_parse_iso(row["released_at"]),
+        expired_at=_parse_iso(row["expired_at"]),
+        supersedes_owner_id=row["supersedes_owner_id"],
+    )
+
+
+def _row_to_checkpoint(row: sqlite3.Row) -> Checkpoint:
+    return Checkpoint(
+        id=row["id"],
+        session_id=row["session_id"],
+        created_at=_parse_iso_required(row["created_at"]),
+        current_plan=row["current_plan"],
+        changed_files=_json_tuple(row["changed_files"]),
+        test_commands=_json_tuple(row["test_commands"]),
+        failures_and_learnings=_json_tuple(row["failures_and_learnings"]),
+        artifact_refs=_json_tuple(row["artifact_refs"]),
+        resume_prompt=row["resume_prompt"],
+        metadata=json.loads(row["metadata"] or "{}"),
+    )
+
+
+def _row_to_handoff_artifact(row: sqlite3.Row) -> HandoffArtifact:
+    return HandoffArtifact(
+        id=row["id"],
+        session_id=row["session_id"],
+        artifact_type=row["artifact_type"],
+        artifact_ref=row["artifact_ref"],
+        summary=row["summary"],
+        created_at=_parse_iso_required(row["created_at"]),
+        metadata=json.loads(row["metadata"] or "{}"),
+    )

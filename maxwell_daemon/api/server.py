@@ -40,6 +40,7 @@ from maxwell_daemon.audit import AuditLogger
 from maxwell_daemon.auth import JWTConfig, Role
 from maxwell_daemon.core.actions import Action, ActionStatus
 from maxwell_daemon.core.artifacts import Artifact, ArtifactIntegrityError, ArtifactKind
+from maxwell_daemon.core.delegate_lifecycle import DelegateSessionSnapshot, DelegateSessionStatus
 from maxwell_daemon.core.work_items import (
     REPO_PATTERN,
     AcceptanceCriterion,
@@ -86,6 +87,18 @@ def _coerce_datetime_to_utc(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
+
+
+def _parse_delegate_status(value: str | None) -> DelegateSessionStatus | None:
+    if value is None:
+        return None
+    try:
+        return DelegateSessionStatus(value)
+    except ValueError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"invalid delegate session status: {value}",
+        ) from exc
 
 
 class TaskSubmit(BaseModel):
@@ -1787,6 +1800,40 @@ def create_app(
             "worker_count": state.worker_count,
             "queue_depth": state.queue_depth,
         }
+
+    @app.get(
+        "/api/v1/delegate-sessions",
+        dependencies=[Depends(_require_viewer())],
+        response_model=list[DelegateSessionSnapshot],
+    )
+    async def list_delegate_sessions(
+        limit: Annotated[int, Query(ge=1, le=200)] = 50,
+        delegate_id: Annotated[str | None, Query()] = None,
+        work_item_id: Annotated[str | None, Query()] = None,
+        task_id: Annotated[str | None, Query()] = None,
+        status: Annotated[str | None, Query()] = None,
+    ) -> list[DelegateSessionSnapshot]:
+        """List durable delegate sessions and their latest recovery evidence."""
+
+        parsed_status = _parse_delegate_status(status)
+        return daemon.delegate_lifecycle.list_sessions(
+            limit=limit,
+            delegate_id=delegate_id,
+            work_item_id=work_item_id,
+            task_id=task_id,
+            status=parsed_status,
+        )
+
+    @app.get(
+        "/api/v1/delegate-sessions/{session_id}",
+        dependencies=[Depends(_require_viewer())],
+        response_model=DelegateSessionSnapshot,
+    )
+    async def get_delegate_session(session_id: str) -> DelegateSessionSnapshot:
+        """Return one durable delegate session snapshot."""
+
+        snapshot = daemon.delegate_lifecycle.snapshot(session_id)
+        return snapshot
 
     @app.put("/api/v1/workers", dependencies=[Depends(_require_operator())])
     async def set_workers(count: int) -> dict[str, Any]:

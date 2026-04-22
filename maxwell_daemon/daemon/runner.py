@@ -42,6 +42,7 @@ from maxwell_daemon.core import (
     CostRecord,
 )
 from maxwell_daemon.core.action_store import ActionStore
+from maxwell_daemon.core.delegate_lifecycle import DelegateLifecycleService, DelegateSessionStore
 from maxwell_daemon.core.task_store import TaskStore
 from maxwell_daemon.core.work_item_store import WorkItemStore
 from maxwell_daemon.core.work_items import WorkItem, WorkItemStatus
@@ -140,6 +141,7 @@ class Daemon:
         artifact_store_path: Path | None = None,
         artifact_blob_root: Path | None = None,
         action_store_path: Path | None = None,
+        delegate_lifecycle_store_path: Path | None = None,
     ) -> None:
         self._config = config
         # Path used for hot-reload; populated by from_config_path.
@@ -182,6 +184,13 @@ class Daemon:
                 workspace_root=self._workspace_root,
             ),
             events=self._events,
+        )
+        default_delegate_store = (
+            delegate_lifecycle_store_path
+            or Path.home() / ".local/share/maxwell-daemon/delegate_sessions.db"
+        )
+        self._delegate_lifecycle = DelegateLifecycleService(
+            DelegateSessionStore(default_delegate_store)
         )
         # Memory store — co-located with the ledger for easy backup.
         from maxwell_daemon.memory import (
@@ -1199,6 +1208,11 @@ class Daemon:
     def fleet_registry(self) -> InMemoryFleetCapabilityRegistry:
         """Mutable in-memory capability registry for fleet status surfaces."""
         return self._fleet_registry
+
+    @property
+    def delegate_lifecycle(self) -> DelegateLifecycleService:
+        """Durable delegate session lifecycle service."""
+        return self._delegate_lifecycle
 
     async def _worker_loop(self, worker_id: int) -> None:
         from maxwell_daemon.logging import bind_context
