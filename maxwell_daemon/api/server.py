@@ -164,6 +164,26 @@ class CostSummary(BaseModel):
     by_backend: dict[str, float]
 
 
+class AssembleMemoryRequest(BaseModel):
+    repo: str = Field(..., min_length=1)
+    issue_title: str = ""
+    issue_body: str = ""
+    task_id: str = Field(..., min_length=1)
+    max_chars: int = 8000
+
+
+class RecordMemoryOutcome(BaseModel):
+    task_id: str = Field(..., min_length=1)
+    repo: str = Field(..., min_length=1)
+    issue_number: int
+    issue_title: str = ""
+    issue_body: str = ""
+    plan: str = ""
+    applied_diff: bool = False
+    pr_url: str = ""
+    outcome: str = ""
+
+
 class SSHConnectRequest(BaseModel):
     host: str
     port: int = 22
@@ -482,6 +502,41 @@ def create_app(
         except ValueError as e:
             raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from None
         return TaskView.from_task(cancelled)
+
+    @app.post(
+        "/api/v1/memory/assemble",
+        dependencies=[Depends(auth), Depends(_require_operator())],
+    )
+    async def assemble_memory(payload: AssembleMemoryRequest) -> dict[str, Any]:
+        """Assemble repo/task context from the coordinator's shared memory store."""
+        context = daemon._memory.assemble_context(
+            repo=payload.repo,
+            issue_title=payload.issue_title,
+            issue_body=payload.issue_body,
+            task_id=payload.task_id,
+            max_chars=payload.max_chars,
+        )
+        return {"context": context}
+
+    @app.post(
+        "/api/v1/memory/record",
+        dependencies=[Depends(auth), Depends(_require_operator())],
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def record_memory(payload: RecordMemoryOutcome) -> dict[str, Any]:
+        """Record a completed task's outcome to the coordinator's shared memory store."""
+        daemon._memory.record_outcome(
+            task_id=payload.task_id,
+            repo=payload.repo,
+            issue_number=payload.issue_number,
+            issue_title=payload.issue_title,
+            issue_body=payload.issue_body,
+            plan=payload.plan,
+            applied_diff=payload.applied_diff,
+            pr_url=payload.pr_url,
+            outcome=payload.outcome,
+        )
+        return {"status": "recorded"}
 
     @app.post(
         "/api/v1/issues",
