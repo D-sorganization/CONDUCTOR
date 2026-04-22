@@ -15,10 +15,18 @@ from maxwell_daemon.daemon import Daemon
 
 
 @pytest.fixture
-def client(minimal_config: MaxwellDaemonConfig, isolated_ledger_path: Path) -> Iterator[TestClient]:
+def client(minimal_config: MaxwellDaemonConfig, tmp_path: Path) -> Iterator[TestClient]:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    d = Daemon(minimal_config, ledger_path=isolated_ledger_path)
+    d = Daemon(
+        minimal_config,
+        ledger_path=tmp_path / "ledger.db",
+        task_store_path=tmp_path / "tasks.db",
+        work_item_store_path=tmp_path / "work_items.db",
+        artifact_store_path=tmp_path / "artifacts.db",
+        artifact_blob_root=tmp_path / "artifacts",
+        action_store_path=tmp_path / "actions.db",
+    )
     try:
         with TestClient(create_app(d)) as c:
             yield c
@@ -83,6 +91,14 @@ class TestHTMLContent:
         assert "/api/v1/events" in js or "WebSocket" in js
         assert "openCommandPalette" in js
         assert "terminal-log" in js
+
+    def test_deferred_test_output_keeps_selected_task_context(self, client: TestClient) -> None:
+        js = client.get("/ui/app.js").text
+
+        assert "const selectedAtSchedule = p.task_id;" in js
+        assert "state.selected === selectedAtSchedule" in js
+        assert 'state.testOutput.get(selectedAtSchedule) || "(no streamed output)"' in js
+        assert "state.testOutput.get(state.selected)" not in js
 
 
 class TestNewTaskDialog:
