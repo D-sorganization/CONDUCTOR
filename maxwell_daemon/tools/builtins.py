@@ -81,6 +81,15 @@ def _resolve(root: Path, rel: str) -> Path:
     return candidate
 
 
+def _is_within_root(root_resolved: Path, path: Path) -> bool:
+    """Return ``True`` when ``path`` resolves inside ``root_resolved``."""
+    try:
+        path.resolve().relative_to(root_resolved)
+    except (OSError, RuntimeError, ValueError):
+        return False
+    return True
+
+
 # ── read_file ────────────────────────────────────────────────────────────────
 def make_read_file(root: Path) -> Callable[..., str]:
     @mcp_tool(
@@ -432,6 +441,8 @@ def make_grep_files(root: Path) -> Callable[..., str]:
         scan = root_resolved.rglob(glob) if glob else root_resolved.rglob("*")
         hits: list[str] = []
         for path in scan:
+            if not _is_within_root(root_resolved, path):
+                continue
             if not path.is_file():
                 continue
             try:

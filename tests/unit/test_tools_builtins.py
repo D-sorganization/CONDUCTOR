@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -288,6 +289,24 @@ class TestGrepFiles:
         grep = make_grep_files(tmp_path)
         result = grep(pattern="zzz")
         assert "no match" in result.lower()
+
+    def test_symlink_escape_is_skipped(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        outside = tmp_path.parent / "outside.txt"
+        outside.write_text("secret needle")
+
+        escaped = MagicMock(spec=Path)
+        escaped.is_file.return_value = True
+        escaped.read_text.return_value = "secret needle"
+        escaped.resolve.return_value = outside
+        escaped.relative_to.return_value = Path("escaped.txt")
+
+        monkeypatch.setattr(Path, "rglob", lambda self, pattern: iter([escaped]))
+
+        grep = make_grep_files(tmp_path)
+        result = grep(pattern="needle")
+
+        assert "no match" in result.lower()
+        assert "escaped.txt" not in result
 
 
 # ── registry assembly ───────────────────────────────────────────────────────
