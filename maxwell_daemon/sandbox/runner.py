@@ -117,6 +117,7 @@ class SandboxCommandRunner:
             passed = result.returncode == 0
 
         evidence = (
+            *validation.evidence,
             GateEvidence("returncode", "" if result.returncode is None else str(result.returncode)),
             GateEvidence("duration_seconds", f"{result.duration_seconds:.3f}"),
             GateEvidence("summary", summary),

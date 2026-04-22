@@ -224,11 +224,7 @@ class SandboxPolicy:
                 command=command,
                 workspace_root=str(self.workspace.root),
                 cwd=str(resolved_cwd),
-                evidence=(
-                    GateEvidence("reason", reason),
-                    GateEvidence("network_enabled", str(self.network_enabled).lower()),
-                    GateEvidence("allow_gpu", str(self.allow_gpu).lower()),
-                ),
+                evidence=self._policy_evidence(reason),
             )
 
         decision = GateDecision(
@@ -241,6 +237,7 @@ class SandboxPolicy:
             evidence=(
                 GateEvidence("reason", reason),
                 GateEvidence("timeout_seconds", f"{self.timeout_seconds:g}"),
+                GateEvidence("output_summary_bytes", str(self.output_summary_bytes)),
                 GateEvidence("network_enabled", str(self.network_enabled).lower()),
                 GateEvidence("allow_gpu", str(self.allow_gpu).lower()),
             ),
@@ -274,5 +271,14 @@ class SandboxPolicy:
             command=command,
             workspace_root=str(self.workspace.root),
             cwd=str(safe_cwd or cwd or self.workspace.root),
-            evidence=(GateEvidence("reason", reason),),
+            evidence=self._policy_evidence(reason),
+        )
+
+    def _policy_evidence(self, reason: str) -> tuple[GateEvidence, ...]:
+        return (
+            GateEvidence("reason", reason),
+            GateEvidence("timeout_seconds", f"{self.timeout_seconds:g}"),
+            GateEvidence("output_summary_bytes", str(self.output_summary_bytes)),
+            GateEvidence("network_enabled", str(self.network_enabled).lower()),
+            GateEvidence("allow_gpu", str(self.allow_gpu).lower()),
         )

@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any
 
 import pytest
 
@@ -6,7 +7,7 @@ from maxwell_daemon.core.execution_sandbox import ExecutionSandbox
 
 
 @pytest.mark.asyncio
-async def test_execution_sandbox_cleanup_flags():
+async def test_execution_sandbox_cleanup_flags() -> None:
     # We test the interface and guarantee that the --rm flag is present
     sandbox = ExecutionSandbox()
 
@@ -15,18 +16,18 @@ async def test_execution_sandbox_cleanup_flags():
     class MockProcess:
         returncode = 0
 
-        async def communicate(self):
+        async def communicate(self) -> tuple[bytes, bytes]:
             return b"hello from sandbox", b""
 
     # Intercept create_subprocess_exec
     original_exec = asyncio.create_subprocess_exec
-    cmd_run = []
+    cmd_run: list[Any] = []
 
-    async def mock_exec(*args, **kwargs):
+    async def mock_exec(*args: Any, **kwargs: Any) -> MockProcess:
         cmd_run.extend(args)
         return MockProcess()
 
-    asyncio.create_subprocess_exec = mock_exec
+    asyncio.create_subprocess_exec = mock_exec  # type: ignore[assignment]
     try:
         result = await sandbox.run_command("echo hello")
 
