@@ -142,6 +142,45 @@ class TestTaskSubmission:
 
         assert r.status_code == 422
 
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"prompt": "owner/repo#123", "kind": "issue", "issue_number": 123},
+            {"prompt": "owner/repo#123", "kind": "issue", "issue_repo": "owner/repo"},
+        ],
+    )
+    def test_submit_rejects_incomplete_issue_payload(
+        self, client: TestClient, payload: dict[str, object]
+    ) -> None:
+        r = client.post("/api/v1/tasks", json=payload)
+
+        assert r.status_code == 422
+        assert "issue_repo and issue_number" in r.json()["detail"]
+
+    def test_submit_maps_issue_submission_value_error_to_422(
+        self,
+        client: TestClient,
+        daemon: Daemon,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def raise_value_error(**_: object) -> Task:
+            raise ValueError("unsupported issue mode")
+
+        monkeypatch.setattr(daemon, "submit_issue", raise_value_error)
+
+        r = client.post(
+            "/api/v1/tasks",
+            json={
+                "prompt": "owner/repo#123",
+                "kind": "issue",
+                "issue_repo": "owner/repo",
+                "issue_number": 123,
+            },
+        )
+
+        assert r.status_code == 422
+        assert r.json()["detail"] == "unsupported issue mode"
+
     def test_list_returns_all_tasks(self, client: TestClient) -> None:
         for i in range(3):
             client.post("/api/v1/tasks", json={"prompt": f"t{i}"})
