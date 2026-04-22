@@ -48,6 +48,19 @@ def test_rejects_paths_outside_workspace(tmp_path: Path) -> None:
     assert decision.passed is False
     assert decision.status == "path_denied"
     assert "escapes sandbox workspace" in (decision.evidence_value("reason") or "")
+    assert decision.evidence_value("network_enabled") == "false"
+    assert decision.evidence_value("output_summary_bytes") == "80"
+
+
+def test_resolves_relative_workspace_paths_without_escape(tmp_path: Path) -> None:
+    sandbox_policy = policy(tmp_path)
+    safe_dir = tmp_path / "nested" / "safe"
+    safe_dir.mkdir(parents=True)
+
+    resolved = sandbox_policy.workspace.resolve_inside(Path("nested") / ".." / "nested" / "safe")
+
+    assert resolved == safe_dir.resolve()
+    assert resolved is not None
 
 
 @pytest.mark.asyncio
@@ -61,6 +74,8 @@ async def test_denied_command_fails_before_execution(tmp_path: Path) -> None:
     assert decision.status == "policy_denied"
     assert executor.calls == []
     assert "command denied" in (decision.evidence_value("reason") or "")
+    assert decision.evidence_value("timeout_seconds") == "3"
+    assert decision.evidence_value("output_summary_bytes") == "80"
 
 
 @pytest.mark.asyncio
@@ -78,6 +93,7 @@ async def test_env_filtering_passes_only_allowlisted_keys(tmp_path: Path) -> Non
     assert decision.passed is True
     assert executor.calls[0][2] == {"PATH": "bin", "MAXWELL_SAFE": "1"}
     assert decision.evidence_value("env_keys") == "MAXWELL_SAFE,PATH"
+    assert decision.evidence_value("network_enabled") == "false"
 
 
 @pytest.mark.asyncio
@@ -140,3 +156,17 @@ def test_output_summary_is_truncated_after_redaction(tmp_path: Path) -> None:
     assert summary.startswith("... truncated ...")
     assert "secret-token" not in summary
     assert len(summary.encode()) < 40
+
+
+def test_network_policy_flags_are_part_of_decision_evidence(tmp_path: Path) -> None:
+    sandbox_policy = policy(
+        tmp_path,
+        network_enabled=True,
+        allow_gpu=True,
+    )
+
+    decision = sandbox_policy.validate_command(["python", "-m", "pytest"], cwd=tmp_path)
+
+    assert decision.passed is True
+    assert decision.evidence_value("network_enabled") == "true"
+    assert decision.evidence_value("allow_gpu") == "true"

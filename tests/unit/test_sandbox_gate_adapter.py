@@ -37,6 +37,9 @@ def gate(
     env: dict[str, str] | None = None,
     workspace_root: Path | None = None,
     timeout_seconds: float | None = None,
+    output_summary_bytes: int | None = None,
+    network_enabled: bool | None = None,
+    allow_gpu: bool | None = None,
 ) -> GateDefinition:
     metadata: dict[str, str] = {
         "sandbox.policy": policy,
@@ -50,6 +53,12 @@ def gate(
         metadata["sandbox.env"] = json.dumps(env)
     if timeout_seconds is not None:
         metadata["sandbox.timeout_seconds"] = str(timeout_seconds)
+    if output_summary_bytes is not None:
+        metadata["sandbox.output_summary_bytes"] = str(output_summary_bytes)
+    if network_enabled is not None:
+        metadata["sandbox.network_enabled"] = str(network_enabled).lower()
+    if allow_gpu is not None:
+        metadata["sandbox.allow_gpu"] = str(allow_gpu).lower()
     return GateDefinition(
         gate_id="gate-1",
         name="Sandbox Gate",
@@ -105,6 +114,7 @@ async def test_pass_preserves_snippets_and_redacts_secrets(tmp_path: Path) -> No
             tmp_path,
             policy="unit-tests",
             env={"MAXWELL_TOKEN": "secret-token"},
+            output_summary_bytes=80,
         )
     )
 
@@ -115,6 +125,7 @@ async def test_pass_preserves_snippets_and_redacts_secrets(tmp_path: Path) -> No
     assert "stdout=" in evidence
     assert "stderr=" in evidence
     assert "summary=" in evidence
+    assert "output_summary_bytes=80" in evidence
 
 
 @pytest.mark.asyncio
@@ -153,6 +164,8 @@ async def test_denied_command_fails_before_execution(tmp_path: Path) -> None:
     assert decision.passed is False
     assert executor.calls == []
     assert "command denied" in "\n".join(decision.evidence)
+    assert "timeout_seconds=300" in "\n".join(decision.evidence)
+    assert "network_enabled=false" in "\n".join(decision.evidence)
 
 
 @pytest.mark.asyncio
@@ -201,3 +214,23 @@ async def test_missing_custom_command_metadata_fails_closed(tmp_path: Path) -> N
     assert decision.passed is False
     assert executor.calls == []
     assert "missing command metadata" in "\n".join(decision.evidence)
+
+
+@pytest.mark.asyncio
+async def test_network_flags_flow_into_policy_evidence(tmp_path: Path) -> None:
+    executor = FakeExecutor(SandboxRunResult(returncode=0, stdout="ok"))
+    adapter = SandboxGateAdapter(executor=executor)
+
+    decision = await adapter.run(
+        gate(
+            tmp_path,
+            policy="unit-tests",
+            network_enabled=True,
+            allow_gpu=True,
+        )
+    )
+
+    evidence = "\n".join(decision.evidence)
+    assert decision.passed is True
+    assert "network_enabled=true" in evidence
+    assert "allow_gpu=true" in evidence

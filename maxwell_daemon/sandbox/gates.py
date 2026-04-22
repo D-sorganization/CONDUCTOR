@@ -27,6 +27,8 @@ _COMMAND_KEY = "sandbox.command"
 _ENV_KEY = "sandbox.env"
 _TIMEOUT_KEY = "sandbox.timeout_seconds"
 _OUTPUT_LIMIT_KEY = "sandbox.output_summary_bytes"
+_NETWORK_KEY = "sandbox.network_enabled"
+_GPU_KEY = "sandbox.allow_gpu"
 
 _PRESET_COMMANDS: dict[str, tuple[str, ...]] = {
     "unit-tests": ("python", "-m", "pytest"),
@@ -101,6 +103,8 @@ class SandboxGateAdapter:
         env = self._parse_env(gate.metadata.get(_ENV_KEY))
         timeout_seconds = self._parse_float(gate.metadata.get(_TIMEOUT_KEY), default=300.0)
         output_summary_bytes = self._parse_int(gate.metadata.get(_OUTPUT_LIMIT_KEY), default=8192)
+        network_enabled = self._parse_bool(gate.metadata.get(_NETWORK_KEY), default=False)
+        allow_gpu = self._parse_bool(gate.metadata.get(_GPU_KEY), default=False)
         cwd = self._read_metadata(gate.metadata, _CWD_KEY)
 
         try:
@@ -109,6 +113,8 @@ class SandboxGateAdapter:
                 timeout_seconds=timeout_seconds,
                 output_summary_bytes=output_summary_bytes,
                 env_allowlist=set(env),
+                network_enabled=network_enabled,
+                allow_gpu=allow_gpu,
             )
         except Exception as exc:
             return self._failure(
@@ -189,6 +195,17 @@ class SandboxGateAdapter:
             return int(value)
         except ValueError:
             return default
+
+    @staticmethod
+    def _parse_bool(value: str | None, *, default: bool) -> bool:
+        if value is None:
+            return default
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+        return default
 
     def _resolve_command(
         self, metadata: Mapping[str, str], policy_name: str
