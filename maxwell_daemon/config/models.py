@@ -183,6 +183,7 @@ class FleetConfig(BaseModel):
     discovery_method: Literal["manual", "mdns"] = "manual"
     heartbeat_seconds: int = Field(30, ge=5)
     coordinator_poll_seconds: int = Field(30, ge=5)
+    coordinator_url: str | None = Field(None, description="URL of the coordinator daemon (e.g. https://coordinator:8080)")
 
 
 class WebhookRouteConfig(BaseModel):
@@ -319,6 +320,11 @@ class MaxwellDaemonConfig(BaseModel):
     def fleet_machines(self) -> list[MachineConfig]:
         """Shortcut for ``fleet.machines``."""
         return self.fleet.machines
+
+    @property
+    def fleet_coordinator_url(self) -> str | None:
+        """Shortcut for ``fleet.coordinator_url``."""
+        return self.fleet.coordinator_url
 
     @property
     def memory_workspace_path(self) -> Path:

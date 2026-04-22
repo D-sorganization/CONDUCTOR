@@ -132,11 +132,18 @@ class Daemon:
         )
 
         default_memory = self._config.memory_workspace_path / "memory.db"
-        self._memory = MemoryManager(
-            scratchpad=ScratchPad(),
-            profile=RepoProfile(default_memory),
-            episodes=EpisodicStore(default_memory),
-        )
+        if self._config.role == "worker" and self._config.fleet_coordinator_url:
+            from maxwell_daemon.fleet.memory import RemoteMemoryManager
+            self._memory = RemoteMemoryManager(
+                coordinator_url=self._config.fleet_coordinator_url,
+                auth_token=self._config.api_auth_token,
+            )
+        else:
+            self._memory = MemoryManager(
+                scratchpad=ScratchPad(),
+                profile=RepoProfile(default_memory),
+                episodes=EpisodicStore(default_memory),
+            )
         self._tasks: dict[str, Task] = {}
         # ``_tasks`` is touched from async workers *and* from synchronous
         # callers like :meth:`submit` (typically a FastAPI request thread).
