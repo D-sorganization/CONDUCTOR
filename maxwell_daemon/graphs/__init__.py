@@ -1,21 +1,28 @@
-"""Named sub-agent task graph primitives.
+"""Named sub-agent task graph model foundation."""
 
-First production slice for issue #286:
-- Typed node roles and artifact handoff kinds.
-- Task graph DAG validation and dependency checks.
-- Built-in graph templates with simple selection policy.
-"""
+from __future__ import annotations
 
-from .types import (
-    AgentRole,
+from maxwell_daemon.graphs.types import (
     GraphTemplate,
     GraphTemplateKind,
     GraphTemplateSelectorInput,
     HandoffArtifactKind,
-    NodeRunStatus,
-    TaskGraph,
     TaskGraphNode,
     select_template_kind,
+)
+from maxwell_daemon.graphs.models import (
+    AgentRole,
+    GraphNode,
+    GraphStatus,
+    NodeRun,
+    NodeRunStatus,
+    TaskGraph,
+)
+from maxwell_daemon.graphs.templates import (
+    TaskGraphTemplate,
+    TemplateSelectionInput,
+    build_template_graph,
+    select_template,
 )
 
 __all__ = [
@@ -23,9 +30,16 @@ __all__ = [
     "GraphTemplate",
     "GraphTemplateKind",
     "GraphTemplateSelectorInput",
+    "GraphNode",
+    "GraphStatus",
     "HandoffArtifactKind",
+    "NodeRun",
     "NodeRunStatus",
     "TaskGraph",
     "TaskGraphNode",
+    "TaskGraphTemplate",
+    "TemplateSelectionInput",
+    "build_template_graph",
+    "select_template",
     "select_template_kind",
 ]
