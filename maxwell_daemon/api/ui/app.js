@@ -388,6 +388,15 @@ function renderGauntlet() {
       </li>
     `).join("");
     const routing = item.resource_routing || {};
+    const actions = (item.actions || []).map((action) => `
+      <button
+        type="button"
+        class="gate-action-btn gate-action-${escapeHtml(action.kind)}"
+        data-gate-action="${escapeHtml(action.kind)}"
+      >
+        ${escapeHtml(action.label)}
+      </button>
+    `).join("");
     section.innerHTML = `
       <div class="gauntlet-item-head">
         <div>
@@ -396,6 +405,7 @@ function renderGauntlet() {
         </div>
         <span class="decision-pill">${escapeHtml(item.final_decision)}</span>
       </div>
+      ${actions ? `<div class="gate-actions">${actions}</div>` : ""}
       <div class="gauntlet-columns">
         <section>
           <h4>Timeline</h4>
@@ -414,6 +424,13 @@ function renderGauntlet() {
         </section>
       </div>
     `;
+    section.querySelectorAll("[data-gate-action]").forEach((btn) => {
+      const action = (item.actions || []).find((candidate) => candidate.kind === btn.dataset.gateAction);
+      if (!action) return;
+      btn.addEventListener("click", () => submitGateAction(action, item).catch((error) => {
+        alert(`Gate action failed: ${error.message}`);
+      }));
+    });
     fragment.appendChild(section);
   }
   board.appendChild(fragment);
@@ -700,6 +717,39 @@ async function cancelTask(id) {
     return;
   }
   await fetchTasks();
+}
+
+async function submitGateAction(action, item) {
+  const body = {
+    target_id: action.target_id,
+    expected_status: action.expected_status,
+  };
+
+  if (action.kind === "waive") {
+    const actor = prompt(`Who is waiving ${item.title}?`, "");
+    if (!actor || !actor.trim()) return;
+    const reason = prompt(`Why is ${item.title} being waived?`, "");
+    if (!reason || !reason.trim()) return;
+    body.actor = actor.trim();
+    body.reason = reason.trim();
+  } else if (!confirm(`Retry ${item.title}?`)) {
+    return;
+  }
+
+  const r = await fetch(action.path, {
+    method: action.method || "POST",
+    headers: { "content-type": "application/json", ...headers() },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const detail = await r.text();
+    alert(`Gate action failed (${r.status}): ${detail.slice(0, 200)}`);
+    return;
+  }
+  await Promise.all([
+    fetchGauntlet().catch(console.error),
+    fetchTasks().catch(console.error),
+  ]);
 }
 
 // ---- rendering -------------------------------------------------------------

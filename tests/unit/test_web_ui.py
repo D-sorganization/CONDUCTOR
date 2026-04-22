@@ -134,6 +134,15 @@ class TestHTMLContent:
         ):
             assert expected in js
 
+    def test_gate_actions_use_server_contract(self, client: TestClient) -> None:
+        js = client.get("/ui/app.js").text
+
+        assert "submitGateAction" in js
+        assert "fetch(action.path" in js
+        assert "data-gate-action" in js
+        assert "prompt(`Who is waiving" in js
+        assert "confirm(`Retry" in js
+
     def test_deferred_test_output_keeps_selected_task_context(self, client: TestClient) -> None:
         js = client.get("/ui/app.js").text
 

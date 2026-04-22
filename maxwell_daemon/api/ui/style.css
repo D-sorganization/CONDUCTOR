@@ -607,6 +607,26 @@ kbd {
 .decision-blocked .decision-pill { color: var(--err); }
 .decision-running .decision-pill { color: var(--accent); }
 .decision-pending .decision-pill { color: var(--warn); }
+.decision-waived .decision-pill { color: var(--warn); }
+
+.gate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 14px 0;
+}
+
+.gate-action-btn {
+  min-width: 92px;
+}
+
+.gate-action-waive {
+  color: var(--warn);
+}
+
+.gate-action-retry {
+  color: var(--ok);
+}
 
 .gauntlet-columns {
   display: grid;

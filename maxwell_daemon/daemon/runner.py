@@ -96,6 +96,9 @@ class Task:
     status: TaskStatus = TaskStatus.QUEUED
     result: str | None = None
     error: str | None = None
+    waived_by: str | None = None
+    waiver_reason: str | None = None
+    waived_at: datetime | None = None
     cost_usd: float = 0.0
     pr_url: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -884,6 +887,71 @@ class Daemon:
             )
             self._bg_tasks.add(bg)
             bg.add_done_callback(self._bg_tasks.discard)
+        return task
+
+    def retry_task(self, task_id: str, *, expected_status: TaskStatus) -> Task:
+        """Requeue a failed task after checking the caller's stale-state guard."""
+        with self._tasks_lock:
+            task = self._tasks.get(task_id)
+            if task is None:
+                raise KeyError(task_id)
+            if task.status is not expected_status:
+                raise ValueError(
+                    f"task {task_id} is {task.status.value}; expected {expected_status.value}"
+                )
+            if task.status is not TaskStatus.FAILED:
+                raise ValueError(
+                    f"task {task_id} is {task.status.value}; only failed tasks can be retried"
+                )
+            task.status = TaskStatus.QUEUED
+            task.result = None
+            task.error = None
+            task.started_at = None
+            task.finished_at = None
+            task.dispatched_to = None
+            task.waived_by = None
+            task.waiver_reason = None
+            task.waived_at = None
+            self._task_store.save(task)
+        with contextlib.suppress(RuntimeError):
+            loop = asyncio.get_running_loop()
+            bg = loop.create_task(
+                self._events.publish(
+                    Event(
+                        kind=EventKind.TASK_QUEUED,
+                        payload={"id": task_id, "reason": "retry"},
+                    )
+                )
+            )
+            self._bg_tasks.add(bg)
+            bg.add_done_callback(self._bg_tasks.discard)
+        return task
+
+    def waive_task(
+        self,
+        task_id: str,
+        *,
+        expected_status: TaskStatus,
+        actor: str,
+        reason: str,
+    ) -> Task:
+        """Record an explicit gate waiver without rewriting the original failure."""
+        with self._tasks_lock:
+            task = self._tasks.get(task_id)
+            if task is None:
+                raise KeyError(task_id)
+            if task.status is not expected_status:
+                raise ValueError(
+                    f"task {task_id} is {task.status.value}; expected {expected_status.value}"
+                )
+            if task.status is not TaskStatus.FAILED:
+                raise ValueError(
+                    f"task {task_id} is {task.status.value}; only failed tasks can be waived"
+                )
+            task.waived_by = actor
+            task.waiver_reason = reason
+            task.waived_at = datetime.now(timezone.utc)
+            self._task_store.save(task)
         return task
 
     async def set_worker_count(self, n: int) -> None:

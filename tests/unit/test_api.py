@@ -347,6 +347,164 @@ class TestControlPlaneGauntlet:
         assert by_id["queued"]["critic_findings"][0]["severity"] == "note"
 
 
+class TestControlPlaneActions:
+    def test_failed_task_exposes_retry_and_waive_actions(
+        self,
+        client: TestClient,
+        daemon: Daemon,
+    ) -> None:
+        task = Task(
+            id="actionable",
+            prompt="broken task",
+            status=TaskStatus.FAILED,
+            error="unit tests failed",
+        )
+        with daemon._tasks_lock:
+            daemon._tasks[task.id] = task
+
+        r = client.get("/api/v1/control-plane/gauntlet")
+
+        assert r.status_code == 200
+        item = next(row for row in r.json() if row["task_id"] == "actionable")
+        assert [action["kind"] for action in item["actions"]] == ["retry", "waive"]
+        assert item["actions"][0]["target_id"] == "actionable"
+        assert item["actions"][1]["requires_reason"] is True
+        assert item["actions"][1]["requires_actor"] is True
+
+    def test_non_failed_task_hides_actions(
+        self,
+        client: TestClient,
+        daemon: Daemon,
+    ) -> None:
+        task = Task(
+            id="completed",
+            prompt="done",
+            status=TaskStatus.COMPLETED,
+            result="ok",
+        )
+        with daemon._tasks_lock:
+            daemon._tasks[task.id] = task
+
+        r = client.get("/api/v1/control-plane/gauntlet")
+
+        assert r.status_code == 200
+        item = next(row for row in r.json() if row["task_id"] == "completed")
+        assert item["actions"] == []
+
+    def test_retry_requeues_task_and_clears_failure_metadata(
+        self,
+        client: TestClient,
+        daemon: Daemon,
+    ) -> None:
+        task = Task(
+            id="retry-me",
+            prompt="broken task",
+            status=TaskStatus.FAILED,
+            error="unit tests failed",
+            result="traceback",
+        )
+        with daemon._tasks_lock:
+            daemon._tasks[task.id] = task
+        daemon._task_store.save(task)
+
+        r = client.post(
+            "/api/v1/control-plane/gauntlet/retry-me/retry",
+            json={"target_id": "retry-me", "expected_status": "failed"},
+        )
+
+        assert r.status_code == 200
+        body = r.json()
+        assert body["status"] == "queued"
+        assert body["actions"] == []
+        retried = daemon.get_task("retry-me")
+        assert retried is not None
+        assert retried.status is TaskStatus.QUEUED
+        assert retried.error is None
+        assert retried.result is None
+
+    def test_retry_rejects_stale_expected_state(
+        self,
+        client: TestClient,
+        daemon: Daemon,
+    ) -> None:
+        task = Task(
+            id="stale-retry",
+            prompt="queued task",
+            status=TaskStatus.QUEUED,
+        )
+        with daemon._tasks_lock:
+            daemon._tasks[task.id] = task
+
+        r = client.post(
+            "/api/v1/control-plane/gauntlet/stale-retry/retry",
+            json={"target_id": "stale-retry", "expected_status": "failed"},
+        )
+
+        assert r.status_code == 409
+        assert "expected failed" in r.json()["detail"]
+
+    def test_waive_requires_actor_and_reason(
+        self,
+        client: TestClient,
+        daemon: Daemon,
+    ) -> None:
+        task = Task(
+            id="needs-waiver",
+            prompt="broken task",
+            status=TaskStatus.FAILED,
+            error="unit tests failed",
+        )
+        with daemon._tasks_lock:
+            daemon._tasks[task.id] = task
+
+        r = client.post(
+            "/api/v1/control-plane/gauntlet/needs-waiver/waive",
+            json={
+                "target_id": "needs-waiver",
+                "expected_status": "failed",
+                "reason": "accepted risk",
+            },
+        )
+
+        assert r.status_code == 422
+
+    def test_waive_records_actor_and_reason_without_marking_passed(
+        self,
+        client: TestClient,
+        daemon: Daemon,
+    ) -> None:
+        task = Task(
+            id="waive-me",
+            prompt="broken task",
+            status=TaskStatus.FAILED,
+            error="unit tests failed",
+        )
+        with daemon._tasks_lock:
+            daemon._tasks[task.id] = task
+
+        r = client.post(
+            "/api/v1/control-plane/gauntlet/waive-me/waive",
+            json={
+                "target_id": "waive-me",
+                "expected_status": "failed",
+                "actor": "reviewer",
+                "reason": "temporary exception",
+            },
+        )
+
+        assert r.status_code == 200
+        body = r.json()
+        assert body["final_decision"] == "waived"
+        assert body["actions"] == []
+        assert body["gates"][1]["status"] == "waived"
+        assert "reviewer" in body["next_action"]
+        waived = daemon.get_task("waive-me")
+        assert waived is not None
+        assert waived.status is TaskStatus.FAILED
+        assert waived.waived_by == "reviewer"
+        assert waived.waiver_reason == "temporary exception"
+
+
 class TestCostEndpoint:
     def test_cost_summary_structure(self, client: TestClient) -> None:
         r = client.get("/api/v1/cost")

@@ -69,6 +69,9 @@ CREATE TABLE IF NOT EXISTS tasks (
     priority INTEGER NOT NULL DEFAULT 100,
     result TEXT,
     error TEXT,
+    waived_by TEXT,
+    waiver_reason TEXT,
+    waived_at TEXT,
     pr_url TEXT,
     cost_usd REAL NOT NULL DEFAULT 0,
     started_at TEXT,
@@ -95,6 +98,9 @@ _MIGRATIONS = [
     ("completed_at", "ALTER TABLE tasks ADD COLUMN completed_at TEXT"),
     ("priority", "ALTER TABLE tasks ADD COLUMN priority INTEGER NOT NULL DEFAULT 100"),
     ("dispatched_to", "ALTER TABLE tasks ADD COLUMN dispatched_to TEXT"),
+    ("waived_by", "ALTER TABLE tasks ADD COLUMN waived_by TEXT"),
+    ("waiver_reason", "ALTER TABLE tasks ADD COLUMN waiver_reason TEXT"),
+    ("waived_at", "ALTER TABLE tasks ADD COLUMN waived_at TEXT"),
 ]
 
 _TERMINAL_STATUS_VALUES = ("completed", "failed", "cancelled")
@@ -178,6 +184,9 @@ class TaskStore:
             task.priority,
             task.result,
             task.error,
+            task.waived_by,
+            task.waiver_reason,
+            _iso(task.waived_at),
             task.pr_url,
             task.cost_usd,
             _iso(task.started_at),
@@ -192,9 +201,9 @@ class TaskStore:
                     id, created_at, updated_at, kind, status, prompt,
                     repo, backend, model,
                     issue_repo, issue_number, issue_mode, ab_group,
-                    priority, result, error, pr_url, cost_usd, started_at,
+                    priority, result, error, waived_by, waiver_reason, waived_at, pr_url, cost_usd, started_at,
                     finished_at, dispatched_to, completed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     updated_at=excluded.updated_at,
                     status=excluded.status,
@@ -205,7 +214,11 @@ class TaskStore:
                     issue_mode=excluded.issue_mode,
                     ab_group=excluded.ab_group,
                     priority=excluded.priority,
-                    result=excluded.result, error=excluded.error, pr_url=excluded.pr_url,
+                    result=excluded.result, error=excluded.error,
+                    waived_by=excluded.waived_by,
+                    waiver_reason=excluded.waiver_reason,
+                    waived_at=excluded.waived_at,
+                    pr_url=excluded.pr_url,
                     cost_usd=excluded.cost_usd,
                     started_at=excluded.started_at, finished_at=excluded.finished_at,
                     dispatched_to=excluded.dispatched_to,
@@ -479,6 +492,18 @@ def _row_to_task(row: sqlite3.Row) -> Task:
         dispatched_to = row["dispatched_to"]
     except (IndexError, KeyError):
         dispatched_to = None
+    try:
+        waived_by = row["waived_by"]
+    except (IndexError, KeyError):
+        waived_by = None
+    try:
+        waiver_reason = row["waiver_reason"]
+    except (IndexError, KeyError):
+        waiver_reason = None
+    try:
+        waived_at = row["waived_at"]
+    except (IndexError, KeyError):
+        waived_at = None
 
     return Task(
         id=row["id"],
@@ -495,6 +520,9 @@ def _row_to_task(row: sqlite3.Row) -> Task:
         priority=priority if priority is not None else 100,
         result=row["result"],
         error=row["error"],
+        waived_by=waived_by,
+        waiver_reason=waiver_reason,
+        waived_at=_parse_iso(waived_at),
         pr_url=row["pr_url"],
         cost_usd=row["cost_usd"],
         created_at=_parse_iso_required(row["created_at"]),
