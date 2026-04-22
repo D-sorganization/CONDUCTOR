@@ -287,7 +287,7 @@ class CriticPanelRunner:
                 result = await asyncio.wait_for(
                     adapter.run(profile), timeout=profile.timeout_seconds
                 )
-        except TimeoutError:
+        except (TimeoutError, asyncio.TimeoutError):
             return CriticPanelRun(
                 profile=profile,
                 status="timed_out",
