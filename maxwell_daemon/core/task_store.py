@@ -12,6 +12,11 @@ know whether a previously-running task finished before the crash, so we default
 to the safe assumption — the human will see the failed task in the UI and can
 re-dispatch it if needed.
 
+Fleet ``DISPATCHED`` tasks keep their persisted worker lease and are returned
+to the daemon so a restarted coordinator can continue accounting for them. A
+legacy dispatched row with no worker identity is downgraded to ``QUEUED`` during
+recovery because there is no remote lease to monitor.
+
 Connection model
 ----------------
 Each operation opens a short-lived ``sqlite3.Connection`` with a long busy
@@ -61,12 +66,14 @@ CREATE TABLE IF NOT EXISTS tasks (
     issue_number INTEGER,
     issue_mode TEXT,
     ab_group TEXT,
+    priority INTEGER NOT NULL DEFAULT 100,
     result TEXT,
     error TEXT,
     pr_url TEXT,
     cost_usd REAL NOT NULL DEFAULT 0,
     started_at TEXT,
-    finished_at TEXT
+    finished_at TEXT,
+    dispatched_to TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at);
@@ -76,6 +83,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at);
 _SCHEMA_POST_MIGRATION = """
 CREATE INDEX IF NOT EXISTS idx_tasks_ab_group ON tasks(ab_group);
 CREATE INDEX IF NOT EXISTS idx_tasks_completed_at ON tasks(completed_at);
+CREATE INDEX IF NOT EXISTS idx_tasks_dispatched_to ON tasks(dispatched_to);
 """
 
 
@@ -85,6 +93,8 @@ CREATE INDEX IF NOT EXISTS idx_tasks_completed_at ON tasks(completed_at);
 _MIGRATIONS = [
     ("ab_group", "ALTER TABLE tasks ADD COLUMN ab_group TEXT"),
     ("completed_at", "ALTER TABLE tasks ADD COLUMN completed_at TEXT"),
+    ("priority", "ALTER TABLE tasks ADD COLUMN priority INTEGER NOT NULL DEFAULT 100"),
+    ("dispatched_to", "ALTER TABLE tasks ADD COLUMN dispatched_to TEXT"),
 ]
 
 _TERMINAL_STATUS_VALUES = ("completed", "failed", "cancelled")
@@ -165,12 +175,14 @@ class TaskStore:
             task.issue_number,
             task.issue_mode,
             task.ab_group,
+            task.priority,
             task.result,
             task.error,
             task.pr_url,
             task.cost_usd,
             _iso(task.started_at),
             _iso(task.finished_at),
+            task.dispatched_to,
             _completed_at(task),
         )
         with self._lock, self._connect() as conn:
@@ -180,9 +192,9 @@ class TaskStore:
                     id, created_at, updated_at, kind, status, prompt,
                     repo, backend, model,
                     issue_repo, issue_number, issue_mode, ab_group,
-                    result, error, pr_url, cost_usd, started_at, finished_at,
-                    completed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    priority, result, error, pr_url, cost_usd, started_at,
+                    finished_at, dispatched_to, completed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     updated_at=excluded.updated_at,
                     status=excluded.status,
@@ -192,9 +204,11 @@ class TaskStore:
                     issue_number=excluded.issue_number,
                     issue_mode=excluded.issue_mode,
                     ab_group=excluded.ab_group,
+                    priority=excluded.priority,
                     result=excluded.result, error=excluded.error, pr_url=excluded.pr_url,
                     cost_usd=excluded.cost_usd,
                     started_at=excluded.started_at, finished_at=excluded.finished_at,
+                    dispatched_to=excluded.dispatched_to,
                     completed_at=excluded.completed_at
                 """,
                 row,
@@ -288,9 +302,28 @@ class TaskStore:
                     _TaskStatus.RUNNING.value,
                 ),
             )
+            conn.execute(
+                """
+                UPDATE tasks
+                SET status = ?,
+                    dispatched_to = NULL,
+                    error = NULL,
+                    started_at = NULL,
+                    finished_at = NULL,
+                    completed_at = NULL,
+                    updated_at = ?
+                WHERE status = ?
+                  AND (dispatched_to IS NULL OR dispatched_to = '')
+                """,
+                (
+                    _TaskStatus.QUEUED.value,
+                    now,
+                    _TaskStatus.DISPATCHED.value,
+                ),
+            )
             rows = conn.execute(
-                "SELECT * FROM tasks WHERE status = ? ORDER BY created_at",
-                (_TaskStatus.QUEUED.value,),
+                "SELECT * FROM tasks WHERE status IN (?, ?) ORDER BY created_at",
+                (_TaskStatus.QUEUED.value, _TaskStatus.DISPATCHED.value),
             ).fetchall()
         return [_row_to_task(r) for r in rows]
 
@@ -438,6 +471,14 @@ def _row_to_task(row: sqlite3.Row) -> Task:
         ab_group = row["ab_group"]
     except (IndexError, KeyError):
         ab_group = None
+    try:
+        priority = row["priority"]
+    except (IndexError, KeyError):
+        priority = 100
+    try:
+        dispatched_to = row["dispatched_to"]
+    except (IndexError, KeyError):
+        dispatched_to = None
 
     return Task(
         id=row["id"],
@@ -451,6 +492,7 @@ def _row_to_task(row: sqlite3.Row) -> Task:
         issue_number=row["issue_number"],
         issue_mode=row["issue_mode"],
         ab_group=ab_group,
+        priority=priority if priority is not None else 100,
         result=row["result"],
         error=row["error"],
         pr_url=row["pr_url"],
@@ -458,4 +500,5 @@ def _row_to_task(row: sqlite3.Row) -> Task:
         created_at=_parse_iso_required(row["created_at"]),
         started_at=_parse_iso(row["started_at"]),
         finished_at=_parse_iso(row["finished_at"]),
+        dispatched_to=dispatched_to,
     )
