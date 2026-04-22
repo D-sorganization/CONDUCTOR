@@ -164,7 +164,7 @@ Use the coordinator to check the last heartbeat time, then verify the worker
 directly:
 
 ```bash
-maxwell-daemon fleet status
+curl -s localhost:8080/api/v1/fleet | jq
 curl -s http://worker-host:8080/health | jq
 ```
 
