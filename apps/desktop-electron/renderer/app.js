@@ -1,6 +1,10 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
+const notificationStateKey = "maxwell.desktop.notificationState";
+const activeTaskStatuses = new Set(["queued", "running", "dispatched"]);
+const doneTaskStatuses = new Set(["completed", "succeeded", "passed", "merged"]);
+const blockedTaskStatuses = new Set(["failed", "error", "blocked", "cancelled"]);
 
 function parseIssueRef(raw) {
   const value = String(raw || "").trim();
@@ -9,6 +13,72 @@ function parseIssueRef(raw) {
   const short = value.match(/^([A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*)#(\d+)$/);
   if (short) return { repo: short[1], number: Number(short[2]) };
   return null;
+}
+
+function taskKey(task) {
+  if (task.id) return String(task.id);
+  if (task.issue_repo && task.issue_number) return `${task.issue_repo}#${task.issue_number}`;
+  return String(task.prompt || "unknown-task");
+}
+
+function taskLabel(task) {
+  if (task.issue_repo && task.issue_number) return `${task.issue_repo}#${task.issue_number}`;
+  return String(task.prompt || task.id || "Maxwell task");
+}
+
+function loadNotificationState() {
+  try {
+    return JSON.parse(localStorage.getItem(notificationStateKey) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveNotificationState(state) {
+  localStorage.setItem(notificationStateKey, JSON.stringify(state));
+}
+
+function notificationForStatus(task) {
+  if (activeTaskStatuses.has(task.status)) {
+    return { title: "Delegate active", body: `${taskLabel(task)} is ${task.status}` };
+  }
+  if (doneTaskStatuses.has(task.status)) {
+    return { title: "Delegate completed", body: `${taskLabel(task)} finished` };
+  }
+  if (blockedTaskStatuses.has(task.status)) {
+    return { title: "Delegate needs attention", body: `${taskLabel(task)} is ${task.status}` };
+  }
+  return null;
+}
+
+function notifyForSnapshot(snapshot, offline = false) {
+  const previous = loadNotificationState();
+  const nextTasks = {};
+  const tasks = snapshot?.tasks || [];
+
+  if (offline && previous.online !== false) {
+    window.maxwellDesktop.notify({
+      title: "Maxwell-Daemon offline",
+      body: "Showing the cached desktop snapshot.",
+    });
+  } else if (!offline && previous.online === false) {
+    window.maxwellDesktop.notify({
+      title: "Maxwell-Daemon online",
+      body: "Desktop status is live again.",
+    });
+  }
+
+  for (const task of tasks) {
+    const key = taskKey(task);
+    nextTasks[key] = task.status;
+    if (!previous.tasks || previous.tasks[key] === undefined || previous.tasks[key] === task.status) {
+      continue;
+    }
+    const notification = notificationForStatus(task);
+    if (notification) window.maxwellDesktop.notify(notification);
+  }
+
+  saveNotificationState({ online: !offline, tasks: nextTasks });
 }
 
 function render(snapshot, offline = false) {
@@ -40,12 +110,11 @@ async function refresh() {
   try {
     const snapshot = await window.maxwellDesktop.snapshot();
     render(snapshot);
-    const running = snapshot.tasks.filter((task) => task.status === "running").length;
-    if (running > 0) {
-      window.maxwellDesktop.notify({ title: "Maxwell-Daemon", body: `${running} task(s) running` });
-    }
+    notifyForSnapshot(snapshot);
   } catch {
-    render(window.maxwellDesktop.cachedSnapshot(), true);
+    const cached = window.maxwellDesktop.cachedSnapshot();
+    render(cached, true);
+    notifyForSnapshot(cached, true);
   }
 }
 

@@ -43,3 +43,14 @@ def test_renderer_wires_daemon_api_offline_cache_and_drag_drop() -> None:
     assert "cachedSnapshot" in renderer
     assert "status-strip" in renderer
     assert "dataTransfer.files" in renderer
+
+
+def test_renderer_uses_event_based_notifications() -> None:
+    renderer = (APP_DIR / "renderer" / "app.js").read_text(encoding="utf-8")
+
+    assert "maxwell.desktop.notificationState" in renderer
+    assert "function notifyForSnapshot" in renderer
+    assert "previous.tasks[key] === task.status" in renderer
+    assert "Delegate needs attention" in renderer
+    assert "Maxwell-Daemon offline" in renderer
+    assert "`${running} task(s) running`" not in renderer
