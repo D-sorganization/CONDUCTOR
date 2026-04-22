@@ -47,7 +47,9 @@ class TestRegistryIntegration:
         assert caps.supports_streaming is True
         assert caps.is_local is False
 
-    def test_capabilities_uses_azure_pricing_table(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_capabilities_uses_azure_pricing_table(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         # Regression for #155: before the fix, capabilities() called
         # get_rates("openai", model) directly, so Azure always looked up OpenAI
         # prices.  After the fix it uses self.name — which means patching the

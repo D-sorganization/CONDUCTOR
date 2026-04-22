@@ -92,7 +92,7 @@ class TestShapes:
 
 
 class TestRunOnce:
-    async def test_dispatches_new_issues_from_one_repo(self) -> None:
+    async def test_dispatches_new_issues_from_one_repo(self, tmp_path: Path) -> None:
         gh = _FakeGitHub(
             {"a/b": [_issue(1, labels=["deliver"]), _issue(2, labels=["deliver"])]}
         )
@@ -108,7 +108,7 @@ class TestRunOnce:
         assert tick.dispatched == 2
         assert [s["issue_number"] for s in daemon.submitted] == [1, 2]
 
-    async def test_label_filter_drops_non_matching(self) -> None:
+    async def test_label_filter_drops_non_matching(self, tmp_path: Path) -> None:
         gh = _FakeGitHub(
             {"a/b": [_issue(1, labels=["deliver"]), _issue(2, labels=["other"])]}
         )
@@ -187,7 +187,9 @@ class TestRunOnce:
     async def test_dedup_persisted_to_disk(self, tmp_path: Path) -> None:
         """Dispatched issue numbers are written to the dedup file (#149)."""
         dedup_file = tmp_path / "dedup.json"
-        gh = _FakeGitHub({"a/b": [_issue(1, labels=["deliver"]), _issue(2, labels=["deliver"])]})
+        gh = _FakeGitHub(
+            {"a/b": [_issue(1, labels=["deliver"]), _issue(2, labels=["deliver"])]}
+        )
         daemon = _FakeDaemon()
         sched = DiscoveryScheduler(
             github=gh,
@@ -223,7 +225,9 @@ class TestRunOnce:
             dedup_path=dedup_file,
         )
         tick = await sched2.run_once()
-        assert tick.dispatched == 0, "issue already dispatched in previous run must not re-dispatch"
+        assert (
+            tick.dispatched == 0
+        ), "issue already dispatched in previous run must not re-dispatch"
         assert len(daemon2.submitted) == 0
 
 
@@ -352,7 +356,9 @@ class TestPreconditions:
 
 
 class TestDedupPersistence:
-    async def test_dedup_file_not_saved_when_nothing_dispatched(self, tmp_path: Path) -> None:
+    async def test_dedup_file_not_saved_when_nothing_dispatched(
+        self, tmp_path: Path
+    ) -> None:
         """Dedup file is only written when something is actually dispatched."""
         dedup_file = tmp_path / "dedup.json"
         gh = _FakeGitHub({"a/b": []})  # no issues
@@ -436,7 +442,9 @@ class TestSchedulerLoop:
         await sched.stop()
         assert sched._task is None
 
-    async def test_loop_continues_after_run_once_exception(self, tmp_path: Path) -> None:
+    async def test_loop_continues_after_run_once_exception(
+        self, tmp_path: Path
+    ) -> None:
         """Exceptions from run_once in _loop are swallowed — the loop keeps running."""
 
         gh = _FakeGitHub({"a/b": [_issue(1, labels=["deliver"])]})

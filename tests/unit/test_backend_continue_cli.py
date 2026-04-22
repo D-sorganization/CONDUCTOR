@@ -41,7 +41,9 @@ class _FakeProcess:
 
 
 class TestDefaultRunner:
-    def test_default_runner_invokes_subprocess(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_default_runner_invokes_subprocess(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         captured: dict[str, Any] = {}
 
         async def fake_exec(*argv: str, **kwargs: Any) -> _FakeProcess:

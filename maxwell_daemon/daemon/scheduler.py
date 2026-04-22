@@ -113,9 +113,13 @@ class DiscoveryScheduler:
             return {}
         try:
             raw = json.loads(self._dedup_path.read_text())
-            return {repo: set(nums) for repo, nums in raw.items() if isinstance(nums, list)}
+            return {
+                repo: set(nums) for repo, nums in raw.items() if isinstance(nums, list)
+            }
         except Exception:
-            log.warning("discovery dedup file unreadable; starting fresh", exc_info=True)
+            log.warning(
+                "discovery dedup file unreadable; starting fresh", exc_info=True
+            )
             return {}
 
     def _save_dedup(self) -> None:

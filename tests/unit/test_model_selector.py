@@ -78,7 +78,9 @@ class TestSelectModel:
 
 class TestIntegration:
     def test_short_body_no_keywords_is_simple(self) -> None:
-        s = score_issue(title="need help with login", body="small change needed", labels=[])
+        s = score_issue(
+            title="need help with login", body="small change needed", labels=[]
+        )
         assert s.tier is ModelTier.SIMPLE
 
     def test_end_to_end_pick(self) -> None:

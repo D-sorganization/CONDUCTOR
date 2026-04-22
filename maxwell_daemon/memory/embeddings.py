@@ -192,7 +192,9 @@ class OpenAIEmbeddingProvider:
             "text-embedding-ada-002": 1536,
         }
         self._dim = (
-            dimensions_override if dimensions_override is not None else _model_dims.get(model, 1536)
+            dimensions_override
+            if dimensions_override is not None
+            else _model_dims.get(model, 1536)
         )
 
     @property

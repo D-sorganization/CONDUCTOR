@@ -42,7 +42,9 @@ class _FakeProcess:
 
 
 class TestDefaultRunner:
-    def test_default_runner_invokes_subprocess(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_default_runner_invokes_subprocess(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         captured: dict[str, Any] = {}
 
         async def fake_exec(*argv: str, **kwargs: Any) -> _FakeProcess:
@@ -55,7 +57,9 @@ class TestDefaultRunner:
             fake_exec,
         )
 
-        rc, stdout, stderr = asyncio.run(_default_runner("claude", "-p", "hi", cwd="repo"))
+        rc, stdout, stderr = asyncio.run(
+            _default_runner("claude", "-p", "hi", cwd="repo")
+        )
 
         assert rc == 0
         assert stdout == b"stdout"

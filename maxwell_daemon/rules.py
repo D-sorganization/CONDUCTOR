@@ -114,7 +114,9 @@ def _parse_rule(path: Path) -> Rule:
     try:
         priority = int(raw_priority)
     except (TypeError, ValueError) as exc:
-        raise RuleLoadError(f"{path}: priority must be an integer, got {raw_priority!r}") from exc
+        raise RuleLoadError(
+            f"{path}: priority must be an integer, got {raw_priority!r}"
+        ) from exc
 
     body = match.group("body").strip()
     return Rule(

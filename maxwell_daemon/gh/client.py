@@ -275,9 +275,9 @@ class GitHubClient:
             err_text = err.decode(errors="replace")
 
             # Log remaining quota at DEBUG level for proactive visibility.
-            remaining_match = _RATE_REMAINING_RE.search(err_text) or _RATE_REMAINING_RE.search(
-                out.decode(errors="replace")
-            )
+            remaining_match = _RATE_REMAINING_RE.search(
+                err_text
+            ) or _RATE_REMAINING_RE.search(out.decode(errors="replace"))
             if remaining_match:
                 remaining = int(remaining_match.group(1))
                 log.debug("GitHub X-RateLimit-Remaining: %d", remaining)
@@ -306,7 +306,9 @@ class GitHubClient:
                 raise last_err
 
             # Non-rate-limit error — raise immediately.
-            raise GhCliError(f"gh {' '.join(argv)} failed (rc={rc}): {err_text.strip()}")
+            raise GhCliError(
+                f"gh {' '.join(argv)} failed (rc={rc}): {err_text.strip()}"
+            )
 
         # Unreachable, but satisfies the type checker.
         if last_err is not None:
@@ -384,7 +386,9 @@ class GitHubClient:
         (e.g. ``staging``) actually exists before we base a PR on it.
         """
         self._validate_repo(repo)
-        out = await self._request_with_retry("api", f"repos/{repo}/branches", "--paginate")
+        out = await self._request_with_retry(
+            "api", f"repos/{repo}/branches", "--paginate"
+        )
         payload = json.loads(out) if out else []
         return [str(b.get("name", "")) for b in payload if b.get("name")]
 

@@ -117,7 +117,9 @@ class Workspace:
         Uses ``git ls-remote --heads origin <branch>`` which exits 0 regardless
         of whether the branch exists; the output is empty when it does not.
         """
-        rc, out, _ = await self._run("git", "ls-remote", "--heads", "origin", branch, cwd=str(cwd))
+        rc, out, _ = await self._run(
+            "git", "ls-remote", "--heads", "origin", branch, cwd=str(cwd)
+        )
         return rc == 0 and bool(out.strip())
 
     async def create_branch(

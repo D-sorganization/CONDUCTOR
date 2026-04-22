@@ -393,7 +393,9 @@ class AgentLoopBackend(ILLMBackend):
 
             # Per-task limit from BudgetConfig (injected via budget_enforcer).
             if self._budget_enforcer is not None:
-                per_task_limit = getattr(self._budget_enforcer._config, "per_task_limit_usd", None)
+                per_task_limit = getattr(
+                    self._budget_enforcer._config, "per_task_limit_usd", None
+                )
                 if per_task_limit is not None and cumulative_cost > per_task_limit:
                     raise BudgetExceededError(
                         f"agent loop exceeded per-task budget limit "
@@ -595,7 +597,11 @@ class AgentLoopBackend(ILLMBackend):
                         continue
                     tool_use: Any = block
                     result = await tool_registry.invoke(tool_use.name, tool_use.input)
-                    content = f"ERROR: {result.content}" if result.is_error else result.content
+                    content = (
+                        f"ERROR: {result.content}"
+                        if result.is_error
+                        else result.content
+                    )
                     tool_results.append(
                         {
                             "type": "tool_result",
@@ -612,7 +618,9 @@ class AgentLoopBackend(ILLMBackend):
                 yield text_chunk
             return
 
-        raise RuntimeError(f"agent loop exceeded max_turns={effective_max_turns} without end_turn")
+        raise RuntimeError(
+            f"agent loop exceeded max_turns={effective_max_turns} without end_turn"
+        )
 
     async def health_check(self) -> bool:
         try:

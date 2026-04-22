@@ -140,7 +140,9 @@ class RepoConfig(BaseModel):
         if isinstance(v, str):
             return Path(v).expanduser()
         if not isinstance(v, Path):
-            raise ValueError(f"expected str or Path for 'path', got {type(v).__name__!r}")
+            raise ValueError(
+                f"expected str or Path for 'path', got {type(v).__name__!r}"
+            )
         return v
 
 
@@ -210,7 +212,9 @@ class APIConfig(BaseModel):
 
     def jwt_secret_value(self) -> str | None:
         """Unwrap the JWT secret SecretStr, or None if unset."""
-        return self.jwt_secret.get_secret_value() if self.jwt_secret is not None else None
+        return (
+            self.jwt_secret.get_secret_value() if self.jwt_secret is not None else None
+        )
 
 
 class MaxwellDaemonConfig(BaseModel):

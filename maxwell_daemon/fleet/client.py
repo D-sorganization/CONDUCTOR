@@ -209,7 +209,9 @@ def _extract_error_detail(response: HTTPResponseProtocol) -> str:
         return f"HTTP {status}"
 
 
-def _make_default_http(timeout_seconds: float, *, tls_verify: bool = True) -> HTTPClientProtocol:
+def _make_default_http(
+    timeout_seconds: float, *, tls_verify: bool = True
+) -> HTTPClientProtocol:
     """Create an httpx AsyncClient wrapped to match our protocol.
 
     Imported lazily so unit tests can run without httpx being functional in the

@@ -455,14 +455,18 @@ class TestMonthlyBudgetEnforcerPerTurn:
         enforcer._config = BudgetConfig()  # per_task_limit_usd=None → no per-task cap
 
         (tmp_path / "f").write_text("x")
-        backend = AgentLoopBackend(workspace_dir=str(tmp_path), budget_enforcer=enforcer)
+        backend = AgentLoopBackend(
+            workspace_dir=str(tmp_path), budget_enforcer=enforcer
+        )
         _install_mock_client(
             backend,
             [
                 _response(
                     stop_reason="tool_use",
                     text=None,
-                    tool_calls=[{"id": "t1", "name": "read_file", "input": {"path": "f"}}],
+                    tool_calls=[
+                        {"id": "t1", "name": "read_file", "input": {"path": "f"}}
+                    ],
                 ),
                 _response(text="done"),
             ],
@@ -485,7 +489,9 @@ class TestMonthlyBudgetEnforcerPerTurn:
         enforcer._config = BudgetConfig()  # per_task_limit_usd=None
 
         (tmp_path / "f").write_text("x")
-        backend = AgentLoopBackend(workspace_dir=str(tmp_path), budget_enforcer=enforcer)
+        backend = AgentLoopBackend(
+            workspace_dir=str(tmp_path), budget_enforcer=enforcer
+        )
         # Even if the API would return a clean end_turn on the second call, the enforcer
         # fires after the first turn and the loop must not proceed to the second call.
         turn_1 = _response(
@@ -521,7 +527,9 @@ class TestPerTaskLimitUsd:
         enforcer._config = config
 
         (tmp_path / "f").write_text("x")
-        backend = AgentLoopBackend(workspace_dir=str(tmp_path), budget_enforcer=enforcer)
+        backend = AgentLoopBackend(
+            workspace_dir=str(tmp_path), budget_enforcer=enforcer
+        )
         # Expensive turn: 1M input tokens → $3.00 >> $0.001 limit.
         expensive = _response(
             stop_reason="tool_use",
@@ -543,7 +551,9 @@ class TestPerTaskLimitUsd:
         enforcer.require_under_budget = MagicMock()
         enforcer._config = config
 
-        backend = AgentLoopBackend(workspace_dir=str(tmp_path), budget_enforcer=enforcer)
+        backend = AgentLoopBackend(
+            workspace_dir=str(tmp_path), budget_enforcer=enforcer
+        )
         pricey = _response(input_tokens=5_000_000, output_tokens=5_000_000)
         _install_mock_client(backend, [pricey])
         out = await backend.complete(_user("hi"), model="claude-sonnet-4-6")
@@ -558,7 +568,9 @@ class TestPerTaskLimitUsd:
         enforcer.require_under_budget = MagicMock()
         enforcer._config = config
 
-        backend = AgentLoopBackend(workspace_dir=str(tmp_path), budget_enforcer=enforcer)
+        backend = AgentLoopBackend(
+            workspace_dir=str(tmp_path), budget_enforcer=enforcer
+        )
         cheap = _response(input_tokens=10, output_tokens=5)
         _install_mock_client(backend, [cheap])
         out = await backend.complete(_user("hi"), model="claude-sonnet-4-6")

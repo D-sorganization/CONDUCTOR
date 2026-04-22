@@ -209,7 +209,11 @@ class TestState:
             assert d.state().version == expected
             assert d.state().version == maxwell_daemon.__version__
 
-        _run(_with_daemon(minimal_config, isolated_ledger_path, worker_count=1, body=body))
+        _run(
+            _with_daemon(
+                minimal_config, isolated_ledger_path, worker_count=1, body=body
+            )
+        )
 
     def test_from_config_path_roundtrip(
         self,
@@ -258,7 +262,9 @@ class TestRunningStatusResilience:
                 task = d.submit("hi")
                 # First update_status(RUNNING) raises -> task re-queued.
                 # Second attempt succeeds -> task eventually completes.
-                final = await _wait_for_status(d, task.id, TaskStatus.COMPLETED, timeout=10.0)
+                final = await _wait_for_status(
+                    d, task.id, TaskStatus.COMPLETED, timeout=10.0
+                )
                 assert final.status == TaskStatus.COMPLETED
                 # Must have been called at least twice (one fail, one success).
                 assert store.running_call_count >= 2
@@ -336,7 +342,9 @@ class TestRunningStatusResilience:
             try:
                 with caplog.at_level(logging.ERROR, logger="maxwell_daemon.daemon"):
                     task = d.submit("log test")
-                    await _wait_for_status(d, task.id, TaskStatus.COMPLETED, timeout=10.0)
+                    await _wait_for_status(
+                        d, task.id, TaskStatus.COMPLETED, timeout=10.0
+                    )
                 matched = [r for r in caplog.records if "re-queuing" in r.getMessage()]
                 assert matched, "expected re-queuing log message"
             finally:
@@ -357,7 +365,9 @@ class TestRunningStatusResilience:
                 await d.start(worker_count=1)
                 try:
                     task = d.submit("log test")
-                    await _wait_for_status(d, task.id, TaskStatus.COMPLETED, timeout=10.0)
+                    await _wait_for_status(
+                        d, task.id, TaskStatus.COMPLETED, timeout=10.0
+                    )
                 finally:
                     await d.stop()
 
@@ -397,7 +407,11 @@ class TestSubmitThreadsafe:
             assert d._loop is not None
             assert d._loop is asyncio.get_running_loop()
 
-        _run(_with_daemon(minimal_config, isolated_ledger_path, worker_count=1, body=body))
+        _run(
+            _with_daemon(
+                minimal_config, isolated_ledger_path, worker_count=1, body=body
+            )
+        )
 
     def test_submit_threadsafe_from_background_thread_enqueues_task(
         self, minimal_config: MaxwellDaemonConfig, isolated_ledger_path: Path
@@ -420,7 +434,11 @@ class TestSubmitThreadsafe:
             final = await _wait_for_status(d, task.id, TaskStatus.COMPLETED)
             assert final.result == "ok"
 
-        _run(_with_daemon(minimal_config, isolated_ledger_path, worker_count=1, body=body))
+        _run(
+            _with_daemon(
+                minimal_config, isolated_ledger_path, worker_count=1, body=body
+            )
+        )
         assert result["task"] is not None
 
     def test_submit_threadsafe_task_is_processed(
@@ -436,7 +454,11 @@ class TestSubmitThreadsafe:
             final = await _wait_for_status(d, task.id, TaskStatus.COMPLETED)
             assert final.status == TaskStatus.COMPLETED
 
-        _run(_with_daemon(minimal_config, isolated_ledger_path, worker_count=1, body=body))
+        _run(
+            _with_daemon(
+                minimal_config, isolated_ledger_path, worker_count=1, body=body
+            )
+        )
 
     def test_submit_threadsafe_returns_task_object(
         self, minimal_config: MaxwellDaemonConfig, isolated_ledger_path: Path
@@ -457,7 +479,11 @@ class TestSubmitThreadsafe:
             )
             await _wait_for_status(d, task.id, TaskStatus.COMPLETED)
 
-        _run(_with_daemon(minimal_config, isolated_ledger_path, worker_count=1, body=body))
+        _run(
+            _with_daemon(
+                minimal_config, isolated_ledger_path, worker_count=1, body=body
+            )
+        )
 
     def test_state_version_is_string(
         self, minimal_config: MaxwellDaemonConfig, isolated_ledger_path: Path
@@ -467,7 +493,11 @@ class TestSubmitThreadsafe:
             assert isinstance(state.version, str)
             assert len(state.version) > 0
 
-        _run(_with_daemon(minimal_config, isolated_ledger_path, worker_count=1, body=body))
+        _run(
+            _with_daemon(
+                minimal_config, isolated_ledger_path, worker_count=1, body=body
+            )
+        )
 
     def test_state_version_matches_package_version(
         self, minimal_config: MaxwellDaemonConfig, isolated_ledger_path: Path
@@ -478,7 +508,11 @@ class TestSubmitThreadsafe:
             state = d.state()
             assert state.version == __version__
 
-        _run(_with_daemon(minimal_config, isolated_ledger_path, worker_count=1, body=body))
+        _run(
+            _with_daemon(
+                minimal_config, isolated_ledger_path, worker_count=1, body=body
+            )
+        )
 
 
 class TestPackageVersion:
@@ -506,7 +540,11 @@ class TestWorkerRescaling:
             await d.set_worker_count(4)
             assert len(d._workers) == 4
 
-        _run(_with_daemon(minimal_config, isolated_ledger_path, worker_count=2, body=body))
+        _run(
+            _with_daemon(
+                minimal_config, isolated_ledger_path, worker_count=2, body=body
+            )
+        )
 
     def test_set_worker_count_down(
         self, minimal_config: MaxwellDaemonConfig, isolated_ledger_path: Path
@@ -518,7 +556,11 @@ class TestWorkerRescaling:
             await d.set_worker_count(1)
             assert len(d._workers) == 1
 
-        _run(_with_daemon(minimal_config, isolated_ledger_path, worker_count=3, body=body))
+        _run(
+            _with_daemon(
+                minimal_config, isolated_ledger_path, worker_count=3, body=body
+            )
+        )
 
     def test_set_worker_count_same(
         self, minimal_config: MaxwellDaemonConfig, isolated_ledger_path: Path
@@ -530,7 +572,11 @@ class TestWorkerRescaling:
             await d.set_worker_count(2)
             assert len(d._workers) == 2
 
-        _run(_with_daemon(minimal_config, isolated_ledger_path, worker_count=2, body=body))
+        _run(
+            _with_daemon(
+                minimal_config, isolated_ledger_path, worker_count=2, body=body
+            )
+        )
 
     def test_set_worker_count_zero_raises(
         self, minimal_config: MaxwellDaemonConfig, isolated_ledger_path: Path
@@ -543,7 +589,11 @@ class TestWorkerRescaling:
             with pytest.raises(ValueError):
                 await d.set_worker_count(0)
 
-        _run(_with_daemon(minimal_config, isolated_ledger_path, worker_count=2, body=body))
+        _run(
+            _with_daemon(
+                minimal_config, isolated_ledger_path, worker_count=2, body=body
+            )
+        )
 
     def test_state_queue_depth_reflects_qsize(
         self, minimal_config: MaxwellDaemonConfig, isolated_ledger_path: Path
@@ -553,7 +603,11 @@ class TestWorkerRescaling:
         async def body(d: Daemon) -> None:
             assert d.state().queue_depth == 0
 
-        _run(_with_daemon(minimal_config, isolated_ledger_path, worker_count=1, body=body))
+        _run(
+            _with_daemon(
+                minimal_config, isolated_ledger_path, worker_count=1, body=body
+            )
+        )
 
     def test_state_worker_count_reflects_workers(
         self, minimal_config: MaxwellDaemonConfig, isolated_ledger_path: Path
@@ -563,7 +617,11 @@ class TestWorkerRescaling:
         async def body(d: Daemon) -> None:
             assert d.state().worker_count == 3
 
-        _run(_with_daemon(minimal_config, isolated_ledger_path, worker_count=3, body=body))
+        _run(
+            _with_daemon(
+                minimal_config, isolated_ledger_path, worker_count=3, body=body
+            )
+        )
 
     def test_state_worker_count_after_rescale(
         self, minimal_config: MaxwellDaemonConfig, isolated_ledger_path: Path
@@ -577,4 +635,8 @@ class TestWorkerRescaling:
             await d.set_worker_count(1)
             assert d.state().worker_count == 1
 
-        _run(_with_daemon(minimal_config, isolated_ledger_path, worker_count=2, body=body))
+        _run(
+            _with_daemon(
+                minimal_config, isolated_ledger_path, worker_count=2, body=body
+            )
+        )

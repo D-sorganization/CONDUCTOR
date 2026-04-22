@@ -89,7 +89,9 @@ class _FakeOpenAIStream:
             raise StopAsyncIteration
         part = self._parts[self._i]
         self._i += 1
-        return SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=part))])
+        return SimpleNamespace(
+            choices=[SimpleNamespace(delta=SimpleNamespace(content=part))]
+        )
 
 
 class TestRequestPaths:
@@ -98,7 +100,9 @@ class TestRequestPaths:
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
 
     @pytest.mark.asyncio
-    async def test_complete_maps_response_and_params(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_complete_maps_response_and_params(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         calls: list[dict[str, object]] = []
 
         async def fake_create(**kwargs: object) -> object:
@@ -110,7 +114,9 @@ class TestRequestPaths:
                         finish_reason=None,
                     )
                 ],
-                usage=SimpleNamespace(prompt_tokens=11, completion_tokens=7, total_tokens=18),
+                usage=SimpleNamespace(
+                    prompt_tokens=11, completion_tokens=7, total_tokens=18
+                ),
                 model="gpt-4o-mini",
                 model_dump=lambda: {"ok": True},
             )
@@ -142,7 +148,9 @@ class TestRequestPaths:
         assert calls[0]["top_p"] == 0.5
 
     @pytest.mark.asyncio
-    async def test_stream_and_health_check_paths(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_stream_and_health_check_paths(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         calls: list[dict[str, object]] = []
 
         async def fake_create(**kwargs: object) -> object:

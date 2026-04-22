@@ -227,7 +227,9 @@ class TestPostconditionDecoratorAsync:
 
         assert asyncio.run(positive()) == 42
 
-    def test_async_skipped_when_contracts_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_async_skipped_when_contracts_disabled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         import asyncio
 
         monkeypatch.setenv("MAXWELL_CONTRACTS", "off")
@@ -262,7 +264,9 @@ class TestInvariantAsyncMethods:
         with pytest.raises(ContractViolation, match="non-negative"):
             asyncio.run(c.break_invariant())
 
-    def test_async_invariant_skipped_when_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_async_invariant_skipped_when_disabled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         import asyncio
 
         monkeypatch.setenv("MAXWELL_CONTRACTS", "off")

@@ -190,7 +190,9 @@ class TestApprovalTierEnforcement:
             return "should not run"
 
         reg = ToolRegistry(approval_tier="suggest")
-        reg.register(ToolSpec(name="t", description="d", params=[], handler=_side_effect))
+        reg.register(
+            ToolSpec(name="t", description="d", params=[], handler=_side_effect)
+        )
         result = await reg.invoke("t", {})
         assert result.is_error is True
         assert "approval" in result.content.lower()
