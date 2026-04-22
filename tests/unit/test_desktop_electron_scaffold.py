@@ -42,6 +42,15 @@ def test_electron_main_process_wires_taskbar_status() -> None:
     assert "mainWindow.setProgressBar(-1)" in main
 
 
+def test_renderer_tracks_system_light_and_dark_theme() -> None:
+    styles = (APP_DIR / "renderer" / "styles.css").read_text(encoding="utf-8")
+
+    assert "color-scheme: light dark" in styles
+    assert "@media (prefers-color-scheme: light)" in styles
+    assert "--bg: #f6f7f9" in styles
+    assert "--panel: #ffffff" in styles
+
+
 def test_renderer_wires_daemon_api_offline_cache_and_drag_drop() -> None:
     preload = (APP_DIR / "preload.js").read_text(encoding="utf-8")
     renderer = (APP_DIR / "renderer" / "app.js").read_text(encoding="utf-8")

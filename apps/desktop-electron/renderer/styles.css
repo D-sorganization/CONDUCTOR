@@ -8,6 +8,17 @@
   --accent: #3f7ad9;
 }
 
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --text: #171a21;
+    --muted: #5c6470;
+    --border: #d5dae3;
+    --accent: #235fb3;
+  }
+}
+
 body {
   margin: 0;
   min-height: 100vh;
