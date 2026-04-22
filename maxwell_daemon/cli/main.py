@@ -19,6 +19,7 @@ from maxwell_daemon.cli.issues import issue_app
 from maxwell_daemon.cli.session import session_app
 from maxwell_daemon.cli.spec import spec_app
 from maxwell_daemon.cli.tasks import tasks_app
+from maxwell_daemon.cli.visualize import app as visualize_app
 from maxwell_daemon.config import (
     MaxwellDaemonConfig,
     load_config,
@@ -37,6 +38,7 @@ app.add_typer(issue_app, name="issue")
 app.add_typer(spec_app, name="spec")
 app.add_typer(session_app, name="session")
 app.add_typer(tasks_app, name="tasks")
+app.add_typer(visualize_app, name="visualize")
 console = Console()
 
 
