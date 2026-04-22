@@ -24,6 +24,7 @@ from maxwell_daemon.cli.issues import issue_app
 from maxwell_daemon.cli.memory import memory_app
 from maxwell_daemon.cli.session import session_app
 from maxwell_daemon.cli.spec import spec_app
+from maxwell_daemon.cli.task_graphs import task_graph_app
 from maxwell_daemon.cli.tasks import tasks_app
 from maxwell_daemon.cli.work_items import work_item_app
 from maxwell_daemon.config import (
@@ -46,6 +47,7 @@ app.add_typer(eval_app, name="eval")
 app.add_typer(spec_app, name="spec")
 app.add_typer(session_app, name="session")
 app.add_typer(tasks_app, name="tasks")
+app.add_typer(task_graph_app, name="task-graph")
 app.add_typer(memory_app, name="memory")
 app.add_typer(work_item_app, name="work-item")
 app.add_typer(action_app, name="action")
