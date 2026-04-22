@@ -54,6 +54,26 @@ class TestExternalAgentPluginDescriptor:
         with pytest.raises(PluginDescriptorError, match="must look like 'module:attribute'"):
             ExternalAgentPluginDescriptor.from_mapping(descriptor_payload)
 
+    def test_direct_descriptor_construction_validates_required_text(self) -> None:
+        with pytest.raises(PluginDescriptorError, match="field 'name' cannot be empty"):
+            ExternalAgentPluginDescriptor(
+                name=" ",
+                kind="external-agent",
+                entrypoint="maxwell_daemon.external_agents.aider:AiderAdapter",
+                version="1",
+                capabilities=("diff",),
+            )
+
+    def test_direct_descriptor_construction_validates_capability_names(self) -> None:
+        with pytest.raises(PluginDescriptorError, match="capability names cannot be empty"):
+            ExternalAgentPluginDescriptor(
+                name="aider-cli",
+                kind="external-agent",
+                entrypoint="maxwell_daemon.external_agents.aider:AiderAdapter",
+                version="1",
+                capabilities=("diff", " "),
+            )
+
 
 class TestExternalAgentPluginRegistry:
     def test_registry_rejects_duplicate_names(self, descriptor_payload: dict[str, object]) -> None:

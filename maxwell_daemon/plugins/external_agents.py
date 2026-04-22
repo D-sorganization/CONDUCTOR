@@ -102,6 +102,12 @@ class ExternalAgentPluginDescriptor:
         )
 
     def _validate(self, source: str) -> None:
+        for field_name, value in (
+            ("name", self.name),
+            ("version", self.version),
+        ):
+            if not value.strip():
+                raise PluginDescriptorError(f"{source}: field '{field_name}' cannot be empty")
         if self.kind != "external-agent":
             raise PluginDescriptorError(
                 f"{source}: field 'kind' must be 'external-agent', got {self.kind!r}"
@@ -110,6 +116,8 @@ class ExternalAgentPluginDescriptor:
             raise PluginDescriptorError(
                 f"{source}: field 'entrypoint' must look like 'module:attribute'"
             )
+        if any(not capability.strip() for capability in self.capabilities):
+            raise PluginDescriptorError(f"{source}: capability names cannot be empty")
 
 
 class ExternalAgentPluginRegistry:
