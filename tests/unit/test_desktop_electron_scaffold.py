@@ -31,6 +31,23 @@ def test_electron_main_process_wires_native_desktop_features() -> None:
     assert "autoUpdater.checkForUpdates" in main
 
 
+def test_electron_auto_updater_streams_lifecycle_to_renderer() -> None:
+    main = (APP_DIR / "main.js").read_text(encoding="utf-8")
+    preload = (APP_DIR / "preload.js").read_text(encoding="utf-8")
+    renderer = (APP_DIR / "renderer" / "app.js").read_text(encoding="utf-8")
+    html = (APP_DIR / "renderer" / "index.html").read_text(encoding="utf-8")
+
+    assert "function registerAutoUpdaterEvents" in main
+    assert 'autoUpdater.on("update-downloaded"' in main
+    assert 'mainWindow?.webContents.send("desktop:updateStatus"' in main
+    assert "autoUpdater.quitAndInstall(false, true)" in main
+    assert "desktop:installUpdate" in preload
+    assert "onUpdateStatus(callback)" in preload
+    assert "function renderUpdateStatus" in renderer
+    assert "install-update" in html
+    assert "update-state" in html
+
+
 def test_electron_main_process_wires_taskbar_status() -> None:
     main = (APP_DIR / "main.js").read_text(encoding="utf-8")
 

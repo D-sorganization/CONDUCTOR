@@ -8,6 +8,9 @@ The tray tooltip, dock/taskbar badge, and taskbar progress indicator all mirror
 the same active-task and connectivity snapshot so the desktop shell remains
 useful when the main window is hidden.
 
+Update checks stream their lifecycle into the renderer. When an update is ready,
+the shell shows an install action and sends a native desktop notification.
+
 ## Commands
 
 ```bash
