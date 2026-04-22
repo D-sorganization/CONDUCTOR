@@ -5,10 +5,14 @@ Routes memory operations to the coordinator's HTTP API.
 
 from __future__ import annotations
 
-import httpx
-from maxwell_daemon.memory.scratchpad import ScratchPad
+import contextlib
 
-class RemoteMemoryManager:
+import httpx
+
+from maxwell_daemon.memory import MemoryManager, ScratchPad
+
+
+class RemoteMemoryManager(MemoryManager):
     def __init__(self, coordinator_url: str, auth_token: str | None = None) -> None:
         self._url = coordinator_url.rstrip("/")
         self._headers = {"Content-Type": "application/json"}
@@ -40,10 +44,12 @@ class RemoteMemoryManager:
                     timeout=10.0,
                 )
                 resp.raise_for_status()
-                base_context = resp.json().get("context", "")
+                data = resp.json()
+                context = data.get("context", "") if isinstance(data, dict) else ""
+                base_context = context if isinstance(context, str) else str(context)
             except Exception:
                 base_context = ""
-        
+
         # Merge local scratchpad
         scratch_text = self.scratchpad.render(task_id, max_chars=max_chars // 4)
         if scratch_text:
@@ -63,24 +69,21 @@ class RemoteMemoryManager:
         pr_url: str,
         outcome: str,
     ) -> None:
-        with httpx.Client() as client:
-            try:
-                client.post(
-                    f"{self._url}/api/v1/memory/record",
-                    json={
-                        "task_id": task_id,
-                        "repo": repo,
-                        "issue_number": issue_number,
-                        "issue_title": issue_title,
-                        "issue_body": issue_body,
-                        "plan": plan,
-                        "applied_diff": applied_diff,
-                        "pr_url": pr_url,
-                        "outcome": outcome,
-                    },
-                    headers=self._headers,
-                    timeout=10.0,
-                )
-            except Exception:
-                pass
+        with httpx.Client() as client, contextlib.suppress(Exception):
+            client.post(
+                f"{self._url}/api/v1/memory/record",
+                json={
+                    "task_id": task_id,
+                    "repo": repo,
+                    "issue_number": issue_number,
+                    "issue_title": issue_title,
+                    "issue_body": issue_body,
+                    "plan": plan,
+                    "applied_diff": applied_diff,
+                    "pr_url": pr_url,
+                    "outcome": outcome,
+                },
+                headers=self._headers,
+                timeout=10.0,
+            )
         self.scratchpad.clear(task_id)

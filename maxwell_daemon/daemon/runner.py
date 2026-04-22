@@ -132,8 +132,10 @@ class Daemon:
         )
 
         default_memory = self._config.memory_workspace_path / "memory.db"
+        self._memory: MemoryManager
         if self._config.role == "worker" and self._config.fleet_coordinator_url:
             from maxwell_daemon.fleet.memory import RemoteMemoryManager
+
             self._memory = RemoteMemoryManager(
                 coordinator_url=self._config.fleet_coordinator_url,
                 auth_token=self._config.api_auth_token,
