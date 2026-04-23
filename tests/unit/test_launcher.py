@@ -72,7 +72,9 @@ def test_open_dashboard_when_ready_uses_browser_opener(monkeypatch) -> None:
         def __exit__(self, exc_type, exc, tb) -> None:
             return None
 
-    monkeypatch.setattr("maxwell_daemon.launcher.request.urlopen", lambda *args, **kwargs: _Response())
+    monkeypatch.setattr(
+        "maxwell_daemon.launcher.request.urlopen", lambda *args, **kwargs: _Response()
+    )
 
     _open_dashboard_when_ready(
         "http://127.0.0.1:8080/ui/",
@@ -89,8 +91,12 @@ def test_execute_plan_can_skip_browser_open(monkeypatch, tmp_path: Path) -> None
     calls: list[tuple[str, ...]] = []
 
     monkeypatch.setattr("maxwell_daemon.launcher.ensure_venv", lambda _plan: None)
-    monkeypatch.setattr("maxwell_daemon.launcher._launch_dashboard_thread", lambda _plan: calls.append(("browser",)))
-    monkeypatch.setattr("maxwell_daemon.launcher._run", lambda args, *, cwd: calls.append(tuple(args)))
+    monkeypatch.setattr(
+        "maxwell_daemon.launcher._launch_dashboard_thread", lambda _plan: calls.append(("browser",))
+    )
+    monkeypatch.setattr(
+        "maxwell_daemon.launcher._run", lambda args, *, cwd: calls.append(tuple(args))
+    )
 
     execute_plan(plan, skip_install=True, open_browser=False)
 
