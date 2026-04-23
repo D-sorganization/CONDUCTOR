@@ -30,7 +30,9 @@ __all__ = ["Workspace", "WorkspaceError"]
 # Must match maxwell_daemon.gh.client._REPO_RE exactly — kept in sync by the test suite.
 _REPO_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$")
 # Task ids are short hex / dash identifiers (uuid4().hex[:12] by default).
-_TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{2,63}$")
+# Keep path separators out of task ids so they cannot become traversal inputs
+# when joined into checkout paths.
+_TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{2,63}$")
 
 RunnerFn = Callable[..., Awaitable[tuple[int, bytes, bytes]]]
 

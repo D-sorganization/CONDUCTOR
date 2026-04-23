@@ -149,6 +149,13 @@ class TestPathFor:
         with pytest.raises(WorkspaceError, match="Invalid task"):
             ws.path_for("owner/repo", task_id="../../etc/passwd")
 
+    def test_task_id_rejects_path_like_chars(self, tmp_path: Path) -> None:
+        ws = Workspace(root=tmp_path)
+        with pytest.raises(WorkspaceError, match="Invalid task"):
+            ws.path_for("owner/repo", task_id="task_id")
+        with pytest.raises(WorkspaceError, match="Invalid task"):
+            ws.path_for("owner/repo", task_id="task/../id")
+
     def test_path_escape_raises(self, tmp_path: Path) -> None:
         ws = Workspace(root=tmp_path)
         # Craft task_id that after joining & resolving escapes the root.
