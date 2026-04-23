@@ -82,6 +82,7 @@ nav:
       - Action ledger: reference/action-ledger.md
       - REST API: reference/api.md
       - OpenAPI: reference/openapi.md
+      - gRPC status: reference/grpc.md
       - Configuration: reference/configuration.md
   - Development:
       - Agentic orchestrator strategy: development/planning/orchestrator_market_comparison.md

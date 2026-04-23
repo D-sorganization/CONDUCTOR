@@ -11,8 +11,8 @@ future agents can advance the remaining gaps without duplicating shipped work.
 | --- | --- | --- | --- |
 | Getting started | `getting-started/quickstart.md`, `configuration.md`, `autonomous-workflow.md`, `examples.md`, `troubleshooting.md` | Shipped | Keep examples aligned with CLI/API changes. |
 | Architecture guide | `architecture/overview.md`, `backends.md`, `contracts.md` | Partial | Add a dedicated fleet architecture page for conductor/worker dispatch, shared memory, critic panels, and gauntlet gates. |
-| REST API reference | `reference/api.md` | Partial | Export and publish the generated OpenAPI schema, then document every `/api/v1/*` route from the schema. |
-| gRPC reference | `pyproject.toml` exposes the optional `grpc` extra | Not started | Add protocol definitions or explicitly document that gRPC is roadmap-only. |
+| REST API reference | `reference/api.md`, `reference/openapi.md`, `tests/unit/test_docs_site_contract.py` | Shipped | Keep the OpenAPI route inventory test green whenever HTTP routes change. |
+| gRPC reference | `reference/grpc.md`, `pyproject.toml` exposes the optional `grpc` extra | Partial | Add protocol definitions and generated-client guidance before claiming supported gRPC. |
 | Deployment guide | `operations/deployment.md`, `ansible.md`, `webhooks.md` | Partial | Prove a fresh deploy path in under 30 minutes and add Tailscale-specific security guidance. |
 | Configuration reference | `getting-started/configuration.md`, `reference/configuration.md` | Shipped | Add a config drift test when new top-level config sections are introduced. |
 | Development guide | `contributing.md`, `architecture/backends.md`, `architecture/contracts.md` | Partial | Add extension/tool authoring docs, MCP status boundaries, and local test harness guidance. |
@@ -28,6 +28,8 @@ Do not close issue #19 until all of these gates are true:
 - Every feature named in the issue has a discoverable page in `mkdocs.yml`.
 - The REST API reference is generated from, or checked against, the live OpenAPI
   schema.
+- The gRPC reference either publishes supported proto definitions or explicitly
+  documents that gRPC is roadmap-only.
 - Deployment documentation includes a timed fresh-install proof for the target
   home-user path.
 - The video tutorial requirement is either satisfied or replaced by an explicit,
