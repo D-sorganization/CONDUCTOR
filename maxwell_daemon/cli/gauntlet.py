@@ -55,7 +55,11 @@ def _load_control_plane_rows(
     payload = response.json()
     if not isinstance(payload, list):
         _fail("unexpected gauntlet response shape")
-    return cast(list[dict[str, Any]], payload)
+    rows: list[dict[str, Any]] = []
+    for item in payload:
+        if isinstance(item, dict):
+            rows.append(cast(dict[str, Any], item))
+    return rows
 
 
 @gauntlet_app.command("list")
@@ -208,8 +212,8 @@ def waive_gauntlet(
     task_id: Annotated[
         str, typer.Argument(help="Task id to waive without rewriting failure state")
     ],
-    actor: Annotated[str, typer.Option("--actor")],
-    reason: Annotated[str, typer.Option("--reason")],
+    actor: Annotated[str, typer.Option("--actor")] = cast(str, ...),
+    reason: Annotated[str, typer.Option("--reason")] = cast(str, ...),
     expected_status: Annotated[str, typer.Option("--expected-status")] = "failed",
     daemon_url: Annotated[
         str, typer.Option("--daemon-url", envvar="MAXWELL_DAEMON_URL")

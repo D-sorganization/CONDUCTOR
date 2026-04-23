@@ -57,3 +57,6 @@ Do not close issue #19 until all of these gates are true:
 
 Use `Refs #19` for partial documentation coverage PRs. Use `Closes #19` only
 when the full matrix is green.
+
+Tailscale-specific security guidance is shipped and includes least-privilege
+policy guidance, application-auth requirements, and validation commands.
