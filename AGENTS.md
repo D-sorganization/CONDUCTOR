@@ -138,6 +138,7 @@ maxwell_daemon/
 ## 🏗️ Architecture Notes
 
 - **FastAPI + vanilla JS**: The UI (`maxwell_daemon/api/ui/`) is a plain JS SPA — no build step required. Do not introduce npm dependencies.
+- **Canonical desktop shell**: Treat the browser-served `/ui/` control plane as the single shipped operator UI. Electron may wrap it, but do not reintroduce the retired PyQt desktop stub.
 - **SQLite cost ledger**: Costs are tracked in a WAL-mode SQLite file. Never replace it with an ORM-based abstraction without a migration.
 - **WebSocket events**: Agent progress is streamed via `GET /api/v1/events` (SSE) and `WS /api/v1/ws`. Always test event propagation when modifying the daemon loop.
 - **Fleet manifest**: `fleet.yaml` defines repos and agent slots. Validate with `maxwell_daemon/fleet/config.py` before modifying the schema.
