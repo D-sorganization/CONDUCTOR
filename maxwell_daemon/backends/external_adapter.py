@@ -24,10 +24,16 @@ from maxwell_daemon.backends.base import (
     Message,
     MessageRole,
 )
+from maxwell_daemon.backends.claude_code import ClaudeCodeCLIBackend
 from maxwell_daemon.backends.codex_cli import CodexCLIBackend
+from maxwell_daemon.backends.continue_cli import ContinueCLIBackend
+from maxwell_daemon.backends.jules_cli import JulesCLIBackend
 
 __all__ = [
+    "BackendReadOnlyExternalAgentAdapter",
+    "ClaudeCodeCLIExternalAgentAdapter",
     "CodexCLIExternalAgentAdapter",
+    "ContinueCLIExternalAgentAdapter",
     "ExternalAgentAdapterBase",
     "ExternalAgentAdapterError",
     "ExternalAgentAdapterProtocol",
@@ -39,6 +45,7 @@ __all__ = [
     "ExternalAgentRunContext",
     "ExternalAgentRunResult",
     "ExternalAgentRunStatus",
+    "JulesCLIExternalAgentAdapter",
     "UnavailableExternalAgentAdapter",
     "redact_secrets",
 ]
@@ -605,67 +612,77 @@ class ExternalAgentAdapterRegistry:
         return sorted(self._adapters)
 
 
-class CodexCLIExternalAgentAdapter(ExternalAgentAdapterBase):
-    """Expose the existing Codex CLI backend through the external-agent contract."""
+_READ_ONLY_EXTERNAL_OPERATIONS = frozenset(
+    {
+        ExternalAgentOperation.PROBE,
+        ExternalAgentOperation.PLAN,
+        ExternalAgentOperation.REVIEW,
+        ExternalAgentOperation.VALIDATE,
+        ExternalAgentOperation.CHECKPOINT,
+        ExternalAgentOperation.CANCEL,
+        ExternalAgentOperation.READ,
+    }
+)
+
+
+class BackendReadOnlyExternalAgentAdapter(ExternalAgentAdapterBase):
+    """Expose an existing ``ILLMBackend`` as a read-only external-agent adapter."""
 
     def __init__(
         self,
         *,
-        backend: ILLMBackend | None = None,
-        model: str = "gpt-5-codex",
-        adapter_id: str = "codex-cli",
+        backend: ILLMBackend,
+        adapter_id: str,
+        display_name: str,
+        model: str,
+        command_hint: str,
         version: str | None = None,
-        command_hint: str | None = None,
+        probe_info: tuple[str, ...] = (),
+        supported_roles: frozenset[str] | None = None,
+        capability_tags: frozenset[str] | None = None,
+        cost_model: str | None = None,
+        quota_model: str | None = None,
+        required_credentials: tuple[str, ...] = (),
+        required_binaries: tuple[str, ...] = (),
+        workspace_requirements: tuple[str, ...] = ("workspace optional for read-only runs",),
+        safety_notes: tuple[str, ...] = (),
     ) -> None:
         if not adapter_id.strip():
             raise ExternalAgentAdapterError("Adapter id cannot be empty")
         self.adapter_id = adapter_id
-        self._backend = backend if backend is not None else CodexCLIBackend(approval="suggest")
+        self._backend = backend
         self._model = model
         self._version = version
-        self._command_hint = command_hint or f"codex exec --approval suggest --model {model}"
+        self._command_hint = command_hint
         backend_caps = self._backend.capabilities(model)
         self.capabilities = ExternalAgentCapability(
             adapter_id=adapter_id,
-            display_name="Codex CLI",
+            display_name=display_name,
             version=version,
-            probe_info=("codex --version",),
-            supported_roles=frozenset({"planner", "reviewer", "validator", "checkpoint"}),
-            supported_operations=frozenset(
-                {
-                    ExternalAgentOperation.PROBE,
-                    ExternalAgentOperation.PLAN,
-                    ExternalAgentOperation.REVIEW,
-                    ExternalAgentOperation.VALIDATE,
-                    ExternalAgentOperation.CHECKPOINT,
-                    ExternalAgentOperation.CANCEL,
-                    ExternalAgentOperation.READ,
-                }
-            ),
+            probe_info=probe_info,
+            supported_roles=supported_roles
+            or frozenset({"planner", "reviewer", "validator", "checkpoint"}),
+            supported_operations=_READ_ONLY_EXTERNAL_OPERATIONS,
             read_only_operations=frozenset(
-                {
-                    ExternalAgentOperation.PROBE,
-                    ExternalAgentOperation.PLAN,
-                    ExternalAgentOperation.REVIEW,
-                    ExternalAgentOperation.VALIDATE,
-                    ExternalAgentOperation.CHECKPOINT,
-                    ExternalAgentOperation.READ,
-                }
+                operation
+                for operation in _READ_ONLY_EXTERNAL_OPERATIONS
+                if operation is not ExternalAgentOperation.CANCEL
             ),
             write_operations=frozenset(),
-            capability_tags=frozenset({"cli", "codex", "llm", "non-interactive"}),
+            capability_tags=capability_tags or frozenset({"cli", "llm", "non-interactive"}),
             context_limits={"max_context_tokens": backend_caps.max_context_tokens},
-            cost_model="uses the caller's Codex/OpenAI account; exact cost may be unavailable",
-            quota_model="delegated to Codex CLI authentication and provider quota",
-            required_credentials=("codex login or equivalent CLI authentication",),
-            required_binaries=("codex",),
-            workspace_requirements=("workspace optional for read-only suggest-mode runs",),
+            cost_model=cost_model,
+            quota_model=quota_model,
+            required_credentials=required_credentials,
+            required_binaries=required_binaries,
+            workspace_requirements=workspace_requirements,
             can_edit_files=False,
             can_run_tests=False,
             supports_background=True,
             supports_cancellation=True,
             safety_notes=(
-                "Default wrapper uses Codex CLI suggest mode and must not edit files.",
+                *safety_notes,
+                "Read-only wrapper must not edit files or merge PRs.",
                 "Gate decisions, merges, and policy approvals remain outside the adapter.",
             ),
         )
@@ -677,13 +694,17 @@ class CodexCLIExternalAgentAdapter(ExternalAgentAdapterBase):
         except BackendUnavailableError as exc:
             return ExternalAgentProbeResult(
                 adapter_id=self.adapter_id,
-                summary=f"Codex CLI backend unavailable: {exc}",
+                summary=f"{self.capabilities.display_name} backend unavailable: {exc}",
                 version=self._version,
                 details=(self._command_hint,),
                 metadata={"backend": self._backend.name, "model": self._model},
                 available=False,
             )
-        summary = "Codex CLI backend available" if available else "Codex CLI backend unavailable"
+        summary = (
+            f"{self.capabilities.display_name} backend available"
+            if available
+            else f"{self.capabilities.display_name} backend unavailable"
+        )
         return ExternalAgentProbeResult(
             adapter_id=self.adapter_id,
             summary=summary,
@@ -719,7 +740,7 @@ class CodexCLIExternalAgentAdapter(ExternalAgentAdapterBase):
             return ExternalAgentRunResult.unavailable(
                 adapter_id=self.adapter_id,
                 operation=context.operation,
-                reason=f"Codex CLI backend unavailable: {exc}",
+                reason=f"{self.capabilities.display_name} backend unavailable: {exc}",
                 commands_run=(self._command_hint,),
                 stderr_snippet=str(exc),
             )
@@ -769,4 +790,123 @@ class CodexCLIExternalAgentAdapter(ExternalAgentAdapterBase):
                 "model": response.model,
                 "raw": response.raw,
             },
+        )
+
+
+class CodexCLIExternalAgentAdapter(BackendReadOnlyExternalAgentAdapter):
+    """Expose the existing Codex CLI backend through the external-agent contract."""
+
+    def __init__(
+        self,
+        *,
+        backend: ILLMBackend | None = None,
+        model: str = "gpt-5-codex",
+        adapter_id: str = "codex-cli",
+        version: str | None = None,
+        command_hint: str | None = None,
+    ) -> None:
+        super().__init__(
+            backend=backend if backend is not None else CodexCLIBackend(approval="suggest"),
+            adapter_id=adapter_id,
+            display_name="Codex CLI",
+            model=model,
+            version=version,
+            command_hint=command_hint or f"codex exec --approval suggest --model {model}",
+            probe_info=("codex --version",),
+            capability_tags=frozenset({"cli", "codex", "llm", "non-interactive"}),
+            cost_model="uses the caller's Codex/OpenAI account; exact cost may be unavailable",
+            quota_model="delegated to Codex CLI authentication and provider quota",
+            required_credentials=("codex login or equivalent CLI authentication",),
+            required_binaries=("codex",),
+            workspace_requirements=("workspace optional for read-only suggest-mode runs",),
+            safety_notes=("Default wrapper uses Codex CLI suggest mode and must not edit files.",),
+        )
+
+
+class ContinueCLIExternalAgentAdapter(BackendReadOnlyExternalAgentAdapter):
+    """Expose Continue's ``cn`` CLI backend as a read-only external agent."""
+
+    def __init__(
+        self,
+        *,
+        backend: ILLMBackend | None = None,
+        model: str = "continue-cli-config",
+        adapter_id: str = "continue-cli",
+        version: str | None = None,
+        command_hint: str | None = None,
+    ) -> None:
+        super().__init__(
+            backend=backend if backend is not None else ContinueCLIBackend(),
+            adapter_id=adapter_id,
+            display_name="Continue CLI",
+            model=model,
+            version=version,
+            command_hint=command_hint or "cn ask <prompt>",
+            probe_info=("cn --version",),
+            capability_tags=frozenset({"cli", "continue", "llm", "non-interactive"}),
+            cost_model="delegated to Continue configuration and selected model provider",
+            quota_model="delegated to Continue assistant configuration",
+            required_credentials=("Continue CLI configured with a local assistant",),
+            required_binaries=("cn",),
+            safety_notes=("Continue model/provider choice is owned by local Continue config.",),
+        )
+
+
+class ClaudeCodeCLIExternalAgentAdapter(BackendReadOnlyExternalAgentAdapter):
+    """Expose Claude Code CLI as a read-only external agent."""
+
+    def __init__(
+        self,
+        *,
+        backend: ILLMBackend | None = None,
+        model: str = "claude-sonnet-4-6",
+        adapter_id: str = "claude-code-cli",
+        version: str | None = None,
+        command_hint: str | None = None,
+    ) -> None:
+        super().__init__(
+            backend=backend if backend is not None else ClaudeCodeCLIBackend(),
+            adapter_id=adapter_id,
+            display_name="Claude Code CLI",
+            model=model,
+            version=version,
+            command_hint=command_hint or f"claude -p <prompt> --model {model} --output-format json",
+            probe_info=("claude --version",),
+            capability_tags=frozenset({"cli", "claude", "llm", "vision", "non-interactive"}),
+            cost_model="uses the caller's Claude Code subscription or Anthropic account",
+            quota_model="delegated to Claude Code authentication and provider quota",
+            required_credentials=("claude login or equivalent CLI authentication",),
+            required_binaries=("claude",),
+            safety_notes=(
+                "Read-only wrapper uses prompt mode and must not grant write authority.",
+            ),
+        )
+
+
+class JulesCLIExternalAgentAdapter(BackendReadOnlyExternalAgentAdapter):
+    """Expose Jules CLI as a read-only external agent."""
+
+    def __init__(
+        self,
+        *,
+        backend: ILLMBackend | None = None,
+        model: str = "jules-cli-default",
+        adapter_id: str = "jules-cli",
+        version: str | None = None,
+        command_hint: str | None = None,
+    ) -> None:
+        super().__init__(
+            backend=backend if backend is not None else JulesCLIBackend(),
+            adapter_id=adapter_id,
+            display_name="Jules CLI",
+            model=model,
+            version=version,
+            command_hint=command_hint or "jules ask <prompt> --output-format json",
+            probe_info=("jules --version",),
+            capability_tags=frozenset({"cli", "jules", "llm", "non-interactive"}),
+            cost_model="uses the caller's Jules account or local CLI configuration",
+            quota_model="delegated to Jules CLI authentication and provider quota",
+            required_credentials=("jules CLI authentication",),
+            required_binaries=("jules",),
+            safety_notes=("Jules wrapper is read-only until write-capable policy exists.",),
         )

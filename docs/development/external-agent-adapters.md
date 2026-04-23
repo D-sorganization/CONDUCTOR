@@ -125,6 +125,27 @@ Use `CodexCLIExternalAgentAdapter` as the reference wrapper for an existing
 Maxwell backend. It exposes the existing `CodexCLIBackend` in safe suggest mode
 without changing backend behavior or granting write access.
 
+## Built-In CLI Wrapper Matrix
+
+The built-in wrappers intentionally start read-only. They let Maxwell plan,
+review, validate, checkpoint, and inspect with market tools while the daemon
+keeps ownership of workspaces, gates, approvals, and merges.
+
+| Adapter id | Backend | Default binary | Read-only operations | Write support | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `codex-cli` | `CodexCLIBackend` | `codex` | `plan`, `review`, `validate`, `checkpoint`, `read`, `probe` | No | Uses Codex suggest mode by default. |
+| `continue-cli` | `ContinueCLIBackend` | `cn` | `plan`, `review`, `validate`, `checkpoint`, `read`, `probe` | No | Uses the user's local Continue assistant configuration. |
+| `claude-code-cli` | `ClaudeCodeCLIBackend` | `claude` | `plan`, `review`, `validate`, `checkpoint`, `read`, `probe` | No | Uses `claude -p` JSON output and the caller's CLI auth. |
+| `jules-cli` | `JulesCLIBackend` | `jules` | `plan`, `review`, `validate`, `checkpoint`, `read`, `probe` | No | Uses the caller's Jules CLI configuration. |
+| `aider-cli` | Local plugin descriptor | `aider` | Not built in | Not built in | Add as a local plugin once a workspace-safe write policy exists. |
+| `openhands` | Local plugin descriptor | varies | Not built in | Not built in | Register through a local descriptor when a stable local interface is available. |
+| `cline` | Local plugin descriptor | varies | Not built in | Not built in | Keep unsupported unless a stable CLI/core execution interface exists. |
+
+Use `BackendReadOnlyExternalAgentAdapter` when an existing `ILLMBackend` can
+answer read-only agent operations without learning a new contract. Implement a
+dedicated adapter only when the external tool needs richer session, diff,
+resume, or artifact behavior than a completion backend can expose.
+
 ## Local Plugin Descriptors
 
 Maxwell can load external-agent adapters from local JSON or TOML descriptor
