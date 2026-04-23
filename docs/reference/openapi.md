@@ -60,7 +60,7 @@ The schema includes these route families:
 
 - Health and readiness: `/health`, `/readyz`
 - Auth and RBAC identity: `/api/v1/auth/token`, `/api/v1/auth/me`
-- Backends and task execution: `/api/v1/backends`, `/api/v1/tasks`
+- Backends and task execution: `/api/v1/backends`, `/api/v1/backends/available`, `/api/v1/tasks`
 - Gate control plane: `/api/v1/control-plane/gauntlet`
 - Actions, work items, task graphs, and artifacts
 - Issue dispatch and batch dispatch
@@ -91,6 +91,7 @@ This inventory is checked against `create_app(...).openapi()` by `tests/unit/tes
 | `/api/v1/auth/me` | `GET` | Auth |
 | `/api/v1/auth/token` | `POST` | Auth |
 | `/api/v1/backends` | `GET` | Backends |
+| `/api/v1/backends/available` | `GET` | Backends |
 | `/api/v1/control-plane/gauntlet` | `GET` | Gate runtime |
 | `/api/v1/control-plane/gauntlet/{task_id}/cancel` | `POST` | Gate runtime |
 | `/api/v1/control-plane/gauntlet/{task_id}/retry` | `POST` | Gate runtime |

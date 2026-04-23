@@ -13,11 +13,12 @@ from maxwell_daemon.backends.base import (
     MessageRole,
     TokenUsage,
 )
-from maxwell_daemon.backends.registry import BackendRegistry, registry
+from maxwell_daemon.backends.registry import BackendManifest, BackendRegistry, registry
 
 __all__ = [
     "BackendCapabilities",
     "BackendError",
+    "BackendManifest",
     "BackendRegistry",
     "BackendResponse",
     "BackendUnavailableError",
