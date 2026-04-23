@@ -87,6 +87,7 @@ class Task:
     repo: str | None = None
     backend: str | None = None
     model: str | None = None
+    route_reason: str | None = None
     # Issue-specific fields (set when kind == ISSUE).
     issue_repo: str | None = None
     issue_number: int | None = None
@@ -1285,8 +1286,16 @@ class Daemon:
                 backend_override=task.backend,
                 model_override=task.model,
             )
-            decision_backend = decision.backend_name
-            decision_model = decision.model
+            task.backend = decision.backend_name
+            task.route_reason = decision.reason
+            if task.kind is not TaskKind.ISSUE:
+                task.model = decision.model
+            decision_backend = task.backend
+            decision_model = task.model or decision.model
+            try:
+                self._task_store.save(task)
+            except Exception:
+                log.exception("task store write failed while recording route for task=%s", task.id)
 
             if task.kind is TaskKind.ISSUE:
                 await self._execute_issue(task, decision)
@@ -1338,9 +1347,11 @@ class Daemon:
             log.warning("task %s refused: %s", task.id, e)
             task.status = TaskStatus.FAILED
             task.error = str(e)
+            active_backend = task.backend or decision_backend
+            active_model = task.model or decision_model
             record_request(
-                backend=decision_backend,
-                model=decision_model,
+                backend=active_backend,
+                model=active_model,
                 status="budget_exceeded",
             )
             await self._events.publish(
@@ -1353,8 +1364,8 @@ class Daemon:
                             "reason": "budget_exceeded",
                         },
                         task_id=task.id,
-                        backend=decision_backend,
-                        model=decision_model,
+                        backend=active_backend,
+                        model=active_model,
                     ),
                 )
             )
@@ -1362,15 +1373,17 @@ class Daemon:
             log.exception("task %s failed", task.id)
             task.status = TaskStatus.FAILED
             task.error = str(e)
-            record_request(backend=decision_backend, model=decision_model, status="error")
+            active_backend = task.backend or decision_backend
+            active_model = task.model or decision_model
+            record_request(backend=active_backend, model=active_model, status="error")
             await self._events.publish(
                 Event(
                     kind=EventKind.TASK_FAILED,
                     payload=attach_observability(
                         {"id": task.id, "error": str(e)},
                         task_id=task.id,
-                        backend=decision_backend,
-                        model=decision_model,
+                        backend=active_backend,
+                        model=active_model,
                     ),
                 )
             )
@@ -1452,6 +1465,16 @@ class Daemon:
                 # to the default model so the task still proceeds.
                 log.warning("model-select failed for task=%s; using default", task.id)
 
+        task.backend = decision.backend_name
+        task.model = effective_model
+        task.route_reason = decision.reason
+        try:
+            self._task_store.save(task)
+        except Exception:
+            log.exception(
+                "task store write failed while recording issue routing for task=%s", task.id
+            )
+
         async def _emit_test_output(chunk: str, stream: str) -> None:
             await self._events.publish(
                 Event(
@@ -1485,7 +1508,7 @@ class Daemon:
         # a usage object.
         record_request(
             backend=decision.backend_name,
-            model=decision.model,
+            model=effective_model,
             status="success",
         )
         await self._events.publish(
@@ -1501,7 +1524,7 @@ class Daemon:
                     },
                     task_id=task.id,
                     backend=decision.backend_name,
-                    model=decision.model,
+                    model=effective_model,
                 ),
             )
         )

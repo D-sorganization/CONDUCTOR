@@ -174,6 +174,8 @@ class TestHTMLContent:
             "openArtifactsForControlPlaneItem",
             "delegate.latest_checkpoint",
             "delegate.duration_seconds",
+            "routing.selected_model",
+            "routing.selection_reason",
             'data-review="${t.id}"',
             'data-open-artifacts="gate"',
             'data-open-artifacts="finding"',
@@ -193,6 +195,7 @@ class TestHTMLContent:
             "evidence-list",
             "evidence-actions",
             "inline-artifact-btn",
+            "routing-detail",
         ):
             assert expected in css
 

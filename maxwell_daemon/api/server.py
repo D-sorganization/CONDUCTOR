@@ -375,6 +375,7 @@ class TaskView(BaseModel):
     repo: str | None
     backend: str | None
     model: str | None
+    route_reason: str | None = None
     issue_repo: str | None = None
     issue_number: int | None = None
     issue_mode: str | None = None
@@ -401,6 +402,7 @@ class TaskView(BaseModel):
             repo=t.repo,
             backend=t.backend,
             model=t.model,
+            route_reason=t.route_reason,
             issue_repo=t.issue_repo,
             issue_number=t.issue_number,
             issue_mode=t.issue_mode,
@@ -452,6 +454,8 @@ class DelegateSessionView(BaseModel):
 
 class ResourceRoutingView(BaseModel):
     selected_backend: str | None
+    selected_model: str | None = None
+    selection_reason: str | None = None
     alternatives_considered: tuple[str, ...] = ()
     warning: str | None = None
 
@@ -929,7 +933,7 @@ def _control_plane_view_from_task(daemon: Daemon, task: Task) -> ControlPlaneWor
         "dispatched": "Wait for the assigned worker heartbeat or recovery timeout",
         "queued": "Assign or wait for an available delegate",
     }
-    backend = task.backend or task.model
+    backend = task.backend
     return ControlPlaneWorkItemView(
         work_item_id=work_item_id,
         work_item_status=work_item_status,
@@ -944,6 +948,8 @@ def _control_plane_view_from_task(daemon: Daemon, task: Task) -> ControlPlaneWor
         delegates=_delegate_views_for_task(daemon, task, snapshots),
         resource_routing=ResourceRoutingView(
             selected_backend=backend,
+            selected_model=task.model,
+            selection_reason=task.route_reason,
             alternatives_considered=(),
             warning=None if backend else "No backend has been selected yet",
         ),
