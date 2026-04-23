@@ -3,6 +3,7 @@
 Endpoints (v1):
     GET  /health
     GET  /api/v1/backends
+    GET  /api/v1/backends/available
     POST /api/v1/tasks           — submit a task
     GET  /api/v1/tasks           — list tasks
     GET  /api/v1/tasks/{id}      — fetch a task
@@ -38,6 +39,7 @@ from pydantic import BaseModel, Field, field_validator
 from maxwell_daemon import __version__
 from maxwell_daemon.audit import AuditLogger
 from maxwell_daemon.auth import JWTConfig, Role
+from maxwell_daemon.backends import BackendManifest, registry
 from maxwell_daemon.core.actions import Action, ActionStatus
 from maxwell_daemon.core.artifacts import Artifact, ArtifactIntegrityError, ArtifactKind
 from maxwell_daemon.core.delegate_lifecycle import DelegateSessionSnapshot, DelegateSessionStatus
@@ -420,6 +422,51 @@ class TaskView(BaseModel):
             started_at=t.started_at,
             finished_at=t.finished_at,
         )
+
+
+class BackendCatalogEntryView(BaseModel):
+    name: str
+    display_name: str
+    description: str
+    requires_api_key: bool
+    local_only: bool
+    default_endpoint: str | None = None
+    api_key_env_var: str | None = None
+    endpoint_env_var: str | None = None
+    install_extra: str | None = None
+    command: str | None = None
+    configured_aliases: tuple[str, ...] = ()
+    loaded: bool
+    connected: bool
+
+    @classmethod
+    def from_manifest(
+        cls,
+        manifest: BackendManifest,
+        *,
+        configured_aliases: tuple[str, ...],
+        loaded: bool,
+        connected: bool,
+    ) -> BackendCatalogEntryView:
+        return cls(
+            name=manifest.name,
+            display_name=manifest.display_name,
+            description=manifest.description,
+            requires_api_key=manifest.requires_api_key,
+            local_only=manifest.local_only,
+            default_endpoint=manifest.default_endpoint,
+            api_key_env_var=manifest.api_key_env_var,
+            endpoint_env_var=manifest.endpoint_env_var,
+            install_extra=manifest.install_extra,
+            command=manifest.command,
+            configured_aliases=configured_aliases,
+            loaded=loaded,
+            connected=connected,
+        )
+
+
+class BackendCatalogResponse(BaseModel):
+    backends: tuple[BackendCatalogEntryView, ...]
 
 
 class GateTimelineEntry(BaseModel):
@@ -1119,6 +1166,32 @@ def create_app(
     @app.get("/api/v1/backends", dependencies=[Depends(_require_viewer())])
     async def list_backends() -> dict[str, Any]:
         return {"backends": daemon.state().backends_available}
+
+    @app.get(
+        "/api/v1/backends/available",
+        dependencies=[Depends(_require_viewer())],
+        response_model=BackendCatalogResponse,
+    )
+    async def list_available_backends() -> BackendCatalogResponse:
+        configured_aliases_by_type: dict[str, list[str]] = {}
+        for alias, backend_cfg in daemon._config.backends.items():
+            configured_aliases_by_type.setdefault(backend_cfg.type, []).append(alias)
+
+        connected_aliases = set(daemon.state().backends_available)
+        loaded_backend_types = set(registry.available())
+        catalog = tuple(
+            BackendCatalogEntryView.from_manifest(
+                manifest,
+                configured_aliases=tuple(sorted(configured_aliases_by_type.get(manifest.name, ()))),
+                loaded=manifest.name in loaded_backend_types,
+                connected=any(
+                    alias in connected_aliases
+                    for alias in configured_aliases_by_type.get(manifest.name, ())
+                ),
+            )
+            for manifest in registry.catalog()
+        )
+        return BackendCatalogResponse(backends=catalog)
 
     @app.post(
         "/api/v1/tasks",

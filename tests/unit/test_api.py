@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,6 +13,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 from maxwell_daemon.api import create_app
+from maxwell_daemon.api import server as api_server
+from maxwell_daemon.backends import (
+    BackendCapabilities,
+    BackendRegistry,
+    BackendResponse,
+    ILLMBackend,
+    Message,
+    TokenUsage,
+)
 from maxwell_daemon.config import MaxwellDaemonConfig
 from maxwell_daemon.core.actions import ActionKind
 from maxwell_daemon.core.artifacts import ArtifactKind
@@ -107,6 +116,75 @@ class TestBackends:
         r = client.get("/api/v1/backends")
         assert r.status_code == 200
         assert "primary" in r.json()["backends"]
+
+    def test_available_returns_backend_catalog_for_onboarding(
+        self,
+        client: TestClient,
+        daemon: Daemon,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        class CatalogBackend(ILLMBackend):
+            async def complete(
+                self,
+                messages: list[Message],
+                *,
+                model: str,
+                **_: Any,
+            ) -> BackendResponse:
+                return BackendResponse(
+                    content="ok",
+                    finish_reason="stop",
+                    usage=TokenUsage(total_tokens=1),
+                    model=model,
+                    backend="catalog-test",
+                )
+
+            async def stream(
+                self,
+                messages: list[Message],
+                *,
+                model: str,
+                **_: Any,
+            ) -> AsyncIterator[str]:
+                if False:
+                    yield model
+
+            async def health_check(self) -> bool:
+                return True
+
+            def capabilities(self, model: str) -> BackendCapabilities:
+                return BackendCapabilities()
+
+        daemon._config = MaxwellDaemonConfig.model_validate(
+            {
+                "backends": {
+                    "cloud": {"type": "claude", "model": "claude-sonnet-4-6"},
+                    "local": {"type": "ollama", "model": "llama3.2"},
+                },
+                "agent": {"default_backend": "cloud"},
+            }
+        )
+        fake_registry = BackendRegistry()
+        fake_registry.register("claude", CatalogBackend)
+        fake_registry.register("ollama", CatalogBackend)
+        monkeypatch.setattr(api_server, "registry", fake_registry)
+        monkeypatch.setattr(daemon, "state", lambda: SimpleNamespace(backends_available=["cloud"]))
+
+        response = client.get("/api/v1/backends/available")
+
+        assert response.status_code == 200
+        catalog = {item["name"]: item for item in response.json()["backends"]}
+        assert catalog["claude"]["configured_aliases"] == ["cloud"]
+        assert catalog["claude"]["loaded"] is True
+        assert catalog["claude"]["connected"] is True
+        assert catalog["claude"]["api_key_env_var"] == "ANTHROPIC_API_KEY"
+        assert catalog["ollama"]["configured_aliases"] == ["local"]
+        assert catalog["ollama"]["loaded"] is True
+        assert catalog["ollama"]["connected"] is False
+        assert catalog["ollama"]["default_endpoint"] == "http://localhost:11434"
+        assert catalog["openai"]["configured_aliases"] == []
+        assert catalog["openai"]["loaded"] is False
+        assert catalog["openai"]["connected"] is False
 
 
 class TestTaskSubmission:

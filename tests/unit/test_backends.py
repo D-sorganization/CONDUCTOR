@@ -14,6 +14,7 @@ import pytest
 from maxwell_daemon.backends import (
     BackendCapabilities,
     BackendError,
+    BackendManifest,
     BackendRegistry,
     BackendResponse,
     ILLMBackend,
@@ -108,6 +109,48 @@ class TestBackendRegistry:
         reg.register("zulu", FakeBackend)
         reg.register("alpha", FakeBackend)
         assert reg.available() == ["alpha", "zulu"]
+
+    def test_catalog_includes_builtin_manifest_metadata(self) -> None:
+        reg = BackendRegistry()
+
+        catalog = {entry.name: entry for entry in reg.catalog()}
+
+        assert catalog["claude"] == BackendManifest(
+            module_name="claude",
+            name="claude",
+            display_name="Anthropic Claude",
+            description="Anthropic-hosted Claude models over the public API.",
+            requires_api_key=True,
+            local_only=False,
+            default_endpoint=None,
+            api_key_env_var="ANTHROPIC_API_KEY",
+            endpoint_env_var=None,
+            install_extra=None,
+            command=None,
+        )
+        assert catalog["ollama"].local_only is True
+        assert catalog["ollama"].default_endpoint == "http://localhost:11434"
+        assert catalog["codex-cli"].command == "codex"
+
+    def test_catalog_appends_runtime_registered_backends(self) -> None:
+        reg = BackendRegistry()
+        reg.register("custom-backend", FakeBackend)
+
+        catalog = {entry.name: entry for entry in reg.catalog()}
+
+        assert catalog["custom-backend"] == BackendManifest(
+            module_name=None,
+            name="custom-backend",
+            display_name="Custom Backend",
+            description="Runtime-registered backend.",
+            requires_api_key=False,
+            local_only=False,
+            default_endpoint=None,
+            api_key_env_var=None,
+            endpoint_env_var=None,
+            install_extra=None,
+            command=None,
+        )
 
 
 class TestCostEstimation:
