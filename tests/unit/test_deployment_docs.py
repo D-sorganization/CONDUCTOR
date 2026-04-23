@@ -23,11 +23,13 @@ def test_deployment_guide_covers_launcher_first_run_path() -> None:
         "Launch-Maxwell.command",
         "Launch-Maxwell.sh",
         "python -m maxwell_daemon.launcher --repo-root . --port 8080",
+        "python -m maxwell_daemon.launcher --repo-root . --port 8080 --no-open-browser",
         "Create a local `.venv`",
         "`maxwell-daemon doctor`",
         "`maxwell-daemon serve`",
         "GET /health",
         "GET /docs",
+        "GET /ui/",
     ):
         assert required in doc
 

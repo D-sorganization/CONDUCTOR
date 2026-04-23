@@ -2,12 +2,12 @@
 
 > **Your Autonomous Software Engineering Team in a Box.**
 
-Maxwell-Daemon is a professionally packaged, autonomous desktop application that orchestrates an entire AI development team to build, test, and ship your software.
+Maxwell-Daemon is a professionally packaged, autonomous local control plane that orchestrates an entire AI development team to build, test, and ship your software.
 
-Unlike existing tools that are locked to the terminal, Maxwell-Daemon provides a stunning **Native Desktop GUI**, strict **Test-Driven Development (TDD)** enforcement, and **Bring-Your-Own-CLI (BYO-CLI)** flexibility. It ensures you never burn an API token on tasks you don't need to.
+Unlike existing tools that are locked to the terminal, Maxwell-Daemon ships a browser-served **gate-aware dashboard** at `/ui/`, strict **Test-Driven Development (TDD)** enforcement, and **Bring-Your-Own-CLI (BYO-CLI)** flexibility. It ensures you never burn an API token on tasks you don't need to.
 
 ## 🚀 Why Maxwell-Daemon?
-- **Professional Desktop Application**: Use `Launch-Maxwell.bat`, `Launch-Maxwell.command`, or `Launch-Maxwell.sh` from a source checkout to bootstrap Maxwell-Daemon on Windows, macOS, or Linux.
+- **Canonical Dashboard Launcher**: Use `Launch-Maxwell.bat`, `Launch-Maxwell.command`, or `Launch-Maxwell.sh` from a source checkout to bootstrap Maxwell-Daemon and open the shipped `/ui/` dashboard on Windows, macOS, or Linux.
 - **The Cognitive Pipeline**: A state-machine orchestrated team:
   - 🧠 **Strategist**: Formulates architectural plans using the compressed `RepoSchematic`.
   - 💻 **Implementer**: Generates code and runs validation through a policy-gated `ExecutionSandbox`.
@@ -37,7 +37,8 @@ Use the launcher for your platform:
 
 The launchers create a local `.venv`, install the runtime package without
 developer extras, create a starter config if needed, run `maxwell-daemon
-doctor`, and then start `maxwell-daemon serve`.
+doctor`, start `maxwell-daemon serve`, and open the canonical dashboard at
+`http://127.0.0.1:8080/ui/` by default.
 
 **Developer setup**
 Contributors can install the development extras explicitly:

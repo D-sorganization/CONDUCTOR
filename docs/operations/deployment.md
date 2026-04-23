@@ -26,6 +26,7 @@ first-run sequence:
 3. Create a starter config if the selected config path is missing.
 4. Run `maxwell-daemon doctor`.
 5. Start `maxwell-daemon serve`.
+6. Open the canonical dashboard at `/ui/` unless `--no-open-browser` is set.
 
 If you need the exact wrapper behavior without the platform-specific shell
 wrapper, run the launcher module directly from the checkout:
@@ -34,12 +35,21 @@ wrapper, run the launcher module directly from the checkout:
 python -m maxwell_daemon.launcher --repo-root . --port 8080
 ```
 
+For headless or remote sessions, disable the browser handoff explicitly:
+
+```bash
+python -m maxwell_daemon.launcher --repo-root . --port 8080 --no-open-browser
+```
+
 Then verify the API surface that the wrapper is expected to bring up:
 
 ```bash
 curl -fsS http://127.0.0.1:8080/health
 curl -fsS http://127.0.0.1:8080/docs > /dev/null
+curl -fsS http://127.0.0.1:8080/ui/ > /dev/null
 ```
+
+Those checks correspond to `GET /health`, `GET /docs`, and `GET /ui/`.
 
 Keep secrets in the environment or your OS secret manager. Do not commit API
 keys to `maxwell-daemon.yaml`.
