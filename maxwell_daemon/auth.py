@@ -22,6 +22,7 @@ The module is intentionally decoupled from FastAPI: ``JWTConfig`` and
 
 from __future__ import annotations
 
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -33,6 +34,15 @@ __all__ = [
     "TokenClaims",
     "require_role",
 ]
+
+log = logging.getLogger(__name__)
+
+# Only HMAC-based symmetric algorithms are permitted.  Asymmetric or "none"
+# algorithms open the door to algorithm-confusion attacks.
+_ALLOWED_JWT_ALGORITHMS: frozenset[str] = frozenset({"HS256", "HS384", "HS512"})
+
+# Clock drift leeway applied to all jwt.decode calls (seconds).
+_LEEWAY_SECONDS: int = 30
 
 
 class Role(str, Enum):
@@ -70,9 +80,9 @@ class JWTConfig:
         HMAC-SHA256 signing secret.  Generate with
         ``secrets.token_hex(32)`` and store in your config file.
     algorithm:
-        JWT signing algorithm.  HS256 is the default and is suitable
-        for single-server deployments where the daemon both issues and
-        validates tokens.
+        JWT signing algorithm.  Must be one of HS256, HS384, or HS512.
+        HS256 is the default and is suitable for single-server deployments
+        where the daemon both issues and validates tokens.
     expiry_seconds:
         Default token lifetime.  Callers may override per-token.
     """
@@ -86,6 +96,11 @@ class JWTConfig:
     ) -> None:
         if not secret:
             raise ValueError("JWT secret must be non-empty")
+        if algorithm not in _ALLOWED_JWT_ALGORITHMS:
+            raise ValueError(
+                f"JWT algorithm {algorithm!r} is not in the allowed set "
+                f"{_ALLOWED_JWT_ALGORITHMS}. Use HS256, HS384, or HS512."
+            )
         self.secret = secret
         self.algorithm = algorithm
         self.expiry_seconds = expiry_seconds
@@ -126,7 +141,13 @@ class JWTConfig:
         """
         import jwt  # PyJWT
 
-        payload = jwt.decode(token, self.secret, algorithms=[self.algorithm])
+        payload = jwt.decode(
+            token,
+            self.secret,
+            algorithms=[self.algorithm],
+            leeway=timedelta(seconds=_LEEWAY_SECONDS),
+            options={"require": ["exp", "iat", "sub"]},
+        )
         sub: str = payload.get("sub", "")
         raw_role: str = payload.get("role", "")
         try:
@@ -148,9 +169,10 @@ def require_role(minimum: Role, jwt_config: JWTConfig) -> Any:
     The request must carry ``Authorization: Bearer <JWT>``.  Returns the
     decoded ``TokenClaims`` (so callers can inspect ``claims.sub`` etc.).
     """
-    from fastapi import Header, HTTPException, status
+    from fastapi import Header, HTTPException, Request, status
 
     async def _dep(
+        request: Request,
         authorization: Annotated[str | None, Header()] = None,
     ) -> TokenClaims:
         if authorization is None or not authorization.startswith("Bearer "):
@@ -159,7 +181,23 @@ def require_role(minimum: Role, jwt_config: JWTConfig) -> Any:
         try:
             claims = jwt_config.decode_token(raw)
         except Exception as exc:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, f"invalid token: {exc}") from exc
+            import jwt
+
+            if isinstance(exc, jwt.PyJWTError):
+                log.warning(
+                    "Auth failure for endpoint %s: %s",
+                    request.url.path,
+                    exc,
+                    exc_info=False,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Authentication failed",  # generic — don't leak exc details
+                ) from exc
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication failed",
+            ) from exc
         if not claims.has_role(minimum):
             raise HTTPException(
                 status.HTTP_403_FORBIDDEN,
@@ -171,6 +209,7 @@ def require_role(minimum: Role, jwt_config: JWTConfig) -> Any:
     # annotations). Without this, `get_type_hints(_dep)` raises NameError because `Header` is
     # local to require_role and not in auth.py's module globals.
     _dep.__annotations__ = {
+        "request": Request,
         "authorization": Annotated[str | None, Header()],
         "return": TokenClaims,
     }
