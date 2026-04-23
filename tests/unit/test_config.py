@@ -11,6 +11,20 @@ from maxwell_daemon.config import MaxwellDaemonConfig, load_config, save_config
 from maxwell_daemon.config.loader import _substitute_env
 
 
+class InMemorySecretStore:
+    def __init__(self) -> None:
+        self.values: dict[str, str] = {}
+
+    def get(self, name: str) -> str | None:
+        return self.values.get(name)
+
+    def set(self, name: str, value: str) -> None:
+        self.values[name] = value
+
+    def delete(self, name: str) -> None:
+        self.values.pop(name, None)
+
+
 class TestEnvSubstitution:
     def test_replaces_set_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("TEST_KEY", "secret-value")
@@ -81,6 +95,84 @@ class TestConfigLoad:
         # api_key is a SecretStr so it doesn't leak in repr / JSON dumps.
         assert cfg.backends["claude"].api_key_value() == "sk-test-123"
         assert "sk-test-123" not in repr(cfg.backends["claude"])
+
+    def test_load_migrates_plaintext_backend_api_key_into_secret_ref(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.yaml"
+        path.write_text(
+            yaml.safe_dump(
+                {
+                    "backends": {
+                        "claude": {
+                            "type": "claude",
+                            "model": "claude-sonnet-4-6",
+                            "api_key": "sk-live-123",
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        store = InMemorySecretStore()
+
+        cfg = load_config(path, secret_store=store)
+
+        assert cfg.backends["claude"].api_key_value() == "sk-live-123"
+        assert cfg.backends["claude"].api_key_secret_ref == "maxwell-daemon/backends/claude/api_key"
+        assert store.get("maxwell-daemon/backends/claude/api_key") == "sk-live-123"
+        rewritten = yaml.safe_load(path.read_text(encoding="utf-8"))
+        assert rewritten["backends"]["claude"]["api_key_secret_ref"] == (
+            "maxwell-daemon/backends/claude/api_key"
+        )
+        assert "api_key" not in rewritten["backends"]["claude"]
+
+    def test_load_resolves_backend_api_key_secret_ref(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.yaml"
+        path.write_text(
+            yaml.safe_dump(
+                {
+                    "backends": {
+                        "claude": {
+                            "type": "claude",
+                            "model": "claude-sonnet-4-6",
+                            "api_key_secret_ref": "maxwell-daemon/backends/claude/api_key",
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        store = InMemorySecretStore()
+        store.set("maxwell-daemon/backends/claude/api_key", "sk-secret-ref")
+
+        cfg = load_config(path, secret_store=store)
+
+        assert cfg.backends["claude"].api_key_value() == "sk-secret-ref"
+        assert cfg.backends["claude"].api_key_secret_ref == "maxwell-daemon/backends/claude/api_key"
+
+    def test_save_config_does_not_write_plaintext_when_secret_ref_is_present(
+        self, tmp_path: Path
+    ) -> None:
+        cfg = MaxwellDaemonConfig.model_validate(
+            {
+                "backends": {
+                    "claude": {
+                        "type": "claude",
+                        "model": "claude-sonnet-4-6",
+                        "api_key": "sk-test-123",
+                        "api_key_secret_ref": "maxwell-daemon/backends/claude/api_key",
+                    }
+                }
+            }
+        )
+        path = tmp_path / "saved.yaml"
+
+        save_config(cfg, path)
+
+        saved = yaml.safe_load(path.read_text(encoding="utf-8"))
+        assert saved["backends"]["claude"]["api_key_secret_ref"] == (
+            "maxwell-daemon/backends/claude/api_key"
+        )
+        assert "api_key" not in saved["backends"]["claude"]
 
     def test_default_backend_must_exist(self) -> None:
         from pydantic import ValidationError
@@ -163,7 +255,7 @@ class TestDefaultConfigPath:
 class TestAPIConfigJWT:
     """Issue #230 — jwt_secret must be wired from config into JWTConfig."""
 
-    def _base_cfg(self) -> dict:
+    def _base_cfg(self) -> dict[str, object]:
         return {"backends": {"claude": {"type": "claude", "model": "claude-sonnet-4-6"}}}
 
     def test_jwt_secret_defaults_to_none(self) -> None:

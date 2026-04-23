@@ -31,6 +31,10 @@ class BackendConfig(BaseModel):
         description="API key (supports ${ENV_VAR} substitution). "
         "Wrapped in SecretStr so it won't leak via repr() or model_dump().",
     )
+    api_key_secret_ref: str | None = Field(
+        None,
+        description="OS-backed secret reference for the backend API key.",
+    )
     base_url: str | None = None
     enabled: bool = True
     tier_map: dict[str, str] = Field(

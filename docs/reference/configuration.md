@@ -8,6 +8,11 @@ Environment references in the form `${VAR}` and `${VAR:-default}` are expanded
 before validation. The loader validates the resulting document against the
 Pydantic config models and rejects unknown fields.
 
+For provider API keys, Maxwell also supports `api_key_secret_ref`. When the
+loader sees a literal plaintext `backends.<name>.api_key`, it migrates that
+value into the OS keyring, rewrites the YAML to `api_key_secret_ref`, and keeps
+the raw key out of subsequent saves.
+
 ## Minimal Configuration
 
 ```yaml
@@ -50,6 +55,7 @@ following fields.
 | `type` | string | required | Backend adapter name, such as `claude`, `openai`, `ollama`, `google`, or `azure`. |
 | `model` | string | required | Default provider model identifier. |
 | `api_key` | string | `null` | Secret token, usually loaded from an environment variable. |
+| `api_key_secret_ref` | string | `null` | Keyring-backed secret reference used instead of storing the raw key in YAML. |
 | `base_url` | string | `null` | Base endpoint for local or OpenAI-compatible providers. |
 | `enabled` | boolean | `true` | Set `false` to keep a backend configured but unavailable. |
 | `tier_map` | map | `{}` | Maps model tiers such as `simple`, `moderate`, and `complex` to provider model ids. |
@@ -63,7 +69,7 @@ backends:
   claude:
     type: claude
     model: claude-sonnet-4-6
-    api_key: ${ANTHROPIC_API_KEY}
+    api_key_secret_ref: maxwell-daemon/backends/claude/api_key
     tier_map:
       simple: claude-haiku-4-5
       complex: claude-opus-4-7

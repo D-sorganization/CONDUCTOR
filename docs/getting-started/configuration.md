@@ -3,6 +3,8 @@
 `~/.config/maxwell-daemon/maxwell-daemon.yaml` (override with `MAXWELL_CONFIG=...`).
 
 All `${VAR}` and `${VAR:-default}` references are expanded at load time against the environment.
+Provider API keys can also be stored in the OS keyring via
+`api_key_secret_ref`; plaintext `api_key` values are migrated there on load.
 
 ## Minimal
 
@@ -12,7 +14,7 @@ backends:
   claude:
     type: claude
     model: claude-sonnet-4-6
-    api_key: ${ANTHROPIC_API_KEY}
+    api_key_secret_ref: maxwell-daemon/backends/claude/api_key
 agent:
   default_backend: claude
 ```
