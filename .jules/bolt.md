@@ -5,3 +5,7 @@
 ## 2024-10-24 - Layout Thrashing on WebSocket Event Streams
 **Learning:** Synchronous layout thrashing from rapidly updating DOM properties like `el.scrollTop = el.scrollHeight` and `el.textContent` during rapid WebSocket event streams causes severe UI lag and blocks the main thread.
 **Action:** Always use `requestAnimationFrame` to batch visual DOM manipulations (especially layout triggers like `scrollHeight`) resulting from rapid event streams, ensuring at most one layout calculation per visual frame.
+
+## 2024-10-25 - Redundant Data Fetching on Event Streams
+**Learning:** Fetching heavy detailed state for a resource (e.g. `fetchTaskDetail`) on every background event for that resource—regardless of whether it's currently visible in the UI—causes redundant API requests and wasteful re-renders. A global list fetch often handles the high-level status updates needed for hidden resources.
+**Action:** Always verify if a resource is actively being viewed (e.g. `state.selected === id`) before firing off detailed fetch operations in response to background event streams.

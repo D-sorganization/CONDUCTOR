@@ -1084,12 +1084,16 @@ function handleEvent(evt) {
     return;
   }
   if (p.id) {
-    // Debounce detail fetch per task ID
-    clearTimeout(_fetchTaskDetailTimers.get(p.id));
-    _fetchTaskDetailTimers.set(
-      p.id,
-      setTimeout(() => fetchTaskDetail(p.id).catch(() => {}), 300)
-    );
+    // ⚡ Bolt: Only fetch detailed task updates for the task actively being viewed.
+    // If a task is not selected, we don't need its heavy detailed state fetched
+    // on every event (the global tasks list fetch handles high-level status).
+    if (state.selected === p.id) {
+      clearTimeout(_fetchTaskDetailTimers.get(p.id));
+      _fetchTaskDetailTimers.set(
+        p.id,
+        setTimeout(() => fetchTaskDetail(p.id).catch(() => {}), 300)
+      );
+    }
 
     // Debounce global tasks list fetch
     clearTimeout(_fetchTasksTimer);
