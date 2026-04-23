@@ -359,3 +359,33 @@ class TestMcpToolDecorator:
         reg = ToolRegistry()
         with pytest.raises(ToolRegistryError, match="not decorated"):
             reg.register_from_function(plain)
+
+
+class TestUnclassifiedToolDenial:
+    """Issue #537: unclassified tools should be denied under capability allowlists."""
+
+    async def test_unclassified_tool_denied_under_readonly_allowlist(self) -> None:
+        store = ToolInvocationStore()
+        reg = ToolRegistry(
+            policy=ToolPolicy.readonly_default(),
+            invocation_store=store,
+        )
+        reg.register(
+            ToolSpec(
+                name="unclassified_tool",
+                description="tool with no capabilities",
+                params=[],
+                handler=lambda: "result",
+                capabilities=frozenset(),  # Empty capabilities
+                risk_level="read_only",
+            )
+        )
+
+        result = await reg.invoke("unclassified_tool", {})
+
+        assert result.is_error is True
+        assert "unclassified" in result.content
+        assert "capability allowlist" in result.content
+        [record] = store.records
+        assert record.status == "denied"
+        assert "unclassified" in (record.error or "")

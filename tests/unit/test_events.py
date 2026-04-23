@@ -172,3 +172,14 @@ class TestAttachObservability:
         assert payload == original
         assert "observability" not in payload
         assert "observability" not in original
+
+    def test_task_completion_event_includes_effective_model(self) -> None:
+        """Issue #539: task completion events must report the effective model used."""
+        payload = attach_observability(
+            {"id": "task-123", "kind": "issue"},
+            task_id="task-123",
+            backend="claude",
+            model="claude-3-5-sonnet",
+        )
+        assert payload["observability"]["model"] == "claude-3-5-sonnet"
+        assert payload["observability"]["backend"] == "claude"
