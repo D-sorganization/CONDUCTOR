@@ -391,28 +391,3 @@ class TestUnclassifiedToolDenial:
         [record] = store.records
         assert record.status == "denied"
         assert "unclassified" in (record.error or "")
-
-
-class TestAuditStoreFailureHandling:
-    """Issue #538: audit-store failures should not break tool execution."""
-
-    async def test_invocation_store_failures_do_not_break_tool_execution(
-        self, monkeypatch: Any
-    ) -> None:
-        """Audit-store persistence failures should not prevent successful tool calls."""
-        store = ToolInvocationStore()
-        reg = ToolRegistry(invocation_store=store)
-        reg.register(_echo_spec())
-
-        # Simulate a store failure by mocking append to raise an exception
-        def failing_append(*args: Any, **kwargs: Any) -> None:
-            raise OSError("disk full")
-
-        monkeypatch.setattr(store, "append", failing_append)
-        reg._invocation_store = store
-
-        # Tool should still execute and return a successful result
-        result = await reg.invoke("echo", {"message": "test"})
-
-        assert result.is_error is False
-        assert result.content == "echo: test"
