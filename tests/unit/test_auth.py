@@ -162,6 +162,26 @@ class TestJWTConfig:
         # The raw exception text must NOT appear in the response detail.
         assert "Signature has expired" not in str(exc_info.value.detail)
 
+    def test_auth_non_pyjwt_error_message(self, cfg: JWTConfig) -> None:
+        """A non-PyJWT exception must still surface as a generic 401."""
+        import asyncio
+        from unittest.mock import patch
+
+        from fastapi import HTTPException
+
+        from maxwell_daemon.auth import require_role
+
+        dep = require_role(Role.viewer, cfg)
+
+        with (
+            patch.object(cfg, "decode_token", side_effect=RuntimeError("boom")),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            asyncio.run(dep(request=_make_request(), authorization="Bearer fake.token.here"))
+
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.detail == "Authentication failed"
+
     # --- Fix 2 & Fix 3: Clock drift leeway ---
 
     def test_auth_clock_skew_leeway_accepts_recently_expired(self) -> None:
@@ -198,7 +218,12 @@ class TestJWTConfig:
         """Tokens without a 'sub' claim must be rejected."""
         import jwt
 
-        payload = {"role": "viewer", "iat": int(time.time()), "exp": int(time.time()) + 3600, "jti": "test-jti"}
+        payload = {
+            "role": "viewer",
+            "iat": int(time.time()),
+            "exp": int(time.time()) + 3600,
+            "jti": "test-jti",
+        }
         token = jwt.encode(payload, cfg.secret, algorithm=cfg.algorithm)
         with pytest.raises(jwt.InvalidTokenError):
             cfg.decode_token(token)
@@ -207,7 +232,12 @@ class TestJWTConfig:
         """Tokens without a 'jti' claim must be rejected."""
         import jwt
 
-        payload = {"sub": "alice", "role": "viewer", "iat": int(time.time()), "exp": int(time.time()) + 3600}
+        payload = {
+            "sub": "alice",
+            "role": "viewer",
+            "iat": int(time.time()),
+            "exp": int(time.time()) + 3600,
+        }
         token = jwt.encode(payload, cfg.secret, algorithm=cfg.algorithm)
         with pytest.raises(jwt.InvalidTokenError):
             cfg.decode_token(token)

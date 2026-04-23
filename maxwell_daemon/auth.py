@@ -129,7 +129,9 @@ class JWTConfig:
         if extra_claims is not None:
             reserved = _RESERVED_CLAIMS.intersection(extra_claims)
             if reserved:
-                raise ValueError(f"extra_claims may not override reserved claims: {sorted(reserved)!r}")
+                raise ValueError(
+                    f"extra_claims may not override reserved claims: {sorted(reserved)!r}"
+                )
         ttl = expiry_seconds if expiry_seconds is not None else self.expiry_seconds
         now = datetime.now(timezone.utc)
         payload: dict[str, Any] = {
@@ -165,10 +167,6 @@ class JWTConfig:
             role = Role(raw_role)
         except ValueError as exc:
             raise jwt.InvalidTokenError(f"unknown role {raw_role!r}") from exc
-        if not sub:
-            raise jwt.InvalidTokenError("missing subject")
-        if not jti:
-            raise jwt.InvalidTokenError("missing jti")
         iat_ts: int | float = payload.get("iat", 0)
         exp_ts: int | float = payload.get("exp", 0)
         iat = datetime.fromtimestamp(iat_ts, tz=timezone.utc)
