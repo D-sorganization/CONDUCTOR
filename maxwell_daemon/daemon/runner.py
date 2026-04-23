@@ -8,7 +8,6 @@ External callers (CLI, REST API, gRPC) interact through `Daemon.submit()` and
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import signal
 import threading
@@ -536,7 +535,7 @@ class Daemon:
         # Fire-and-forget: if there's no running loop yet (e.g. sync test
         # submits before start()), skip the event — the queued state is
         # observable via get_task().
-        with contextlib.suppress(RuntimeError):
+        try:
             loop = asyncio.get_running_loop()
             # Task kept alive via strong reference in _bg_tasks.
             bg = loop.create_task(
@@ -552,6 +551,10 @@ class Daemon:
             )
             self._bg_tasks.add(bg)
             bg.add_done_callback(self._bg_tasks.discard)
+        except RuntimeError:
+            # No running event loop — called from a sync context before start().
+            # The task is already enqueued; the missing event is acceptable here.
+            pass
         return task
 
     def submit_threadsafe(
@@ -626,7 +629,7 @@ class Daemon:
             self._task_store.save(task)
             self._tasks[task.id] = task
             self._queue.put_nowait((task.priority, task))
-        with contextlib.suppress(RuntimeError):
+        try:
             loop = asyncio.get_running_loop()
             bg = loop.create_task(
                 self._events.publish(
@@ -643,6 +646,10 @@ class Daemon:
             )
             self._bg_tasks.add(bg)
             bg.add_done_callback(self._bg_tasks.discard)
+        except RuntimeError:
+            # No running event loop — called from a sync context before start().
+            # The task is already enqueued; the missing event is acceptable here.
+            pass
         return task
 
     def submit_issue_ab(
@@ -886,7 +893,7 @@ class Daemon:
                 f"task {task_id} is {task.status.value}; only queued tasks can be cancelled"
             )
         self._task_store.update_status(task.id, TaskStatus.CANCELLED, finished_at=task.finished_at)
-        with contextlib.suppress(RuntimeError):
+        try:
             loop = asyncio.get_running_loop()
             bg = loop.create_task(
                 self._events.publish(
@@ -898,6 +905,10 @@ class Daemon:
             )
             self._bg_tasks.add(bg)
             bg.add_done_callback(self._bg_tasks.discard)
+        except RuntimeError:
+            # No running event loop — sync cancellation before daemon start.
+            # The status change is already persisted; the missing event is acceptable.
+            pass
         return task
 
     def retry_task(self, task_id: str, *, expected_status: TaskStatus) -> Task:
@@ -924,7 +935,7 @@ class Daemon:
             task.waiver_reason = None
             task.waived_at = None
             self._task_store.save(task)
-        with contextlib.suppress(RuntimeError):
+        try:
             loop = asyncio.get_running_loop()
             bg = loop.create_task(
                 self._events.publish(
@@ -936,6 +947,10 @@ class Daemon:
             )
             self._bg_tasks.add(bg)
             bg.add_done_callback(self._bg_tasks.discard)
+        except RuntimeError:
+            # No running event loop — sync retry before daemon start.
+            # The task is already re-queued; the missing event is acceptable.
+            pass
         return task
 
     def waive_task(
@@ -1167,8 +1182,15 @@ class Daemon:
                 assigned_task.status = TaskStatus.DISPATCHED
                 assigned_task.dispatched_to = machine.name
                 log.info("dispatched task %s to machine %s", assigned_task.id, machine.name)
-                with contextlib.suppress(Exception):
+                try:
                     self._task_store.save(assigned_task)
+                except Exception as exc:
+                    log.warning(
+                        "Failed to persist DISPATCHED state for task %s: %s",
+                        assigned_task.id,
+                        exc,
+                        exc_info=True,
+                    )
             else:
                 log.warning(
                     "machine %s rejected task %s: %s",
@@ -1376,22 +1398,30 @@ class Daemon:
             )
         finally:
             task.finished_at = datetime.now(timezone.utc)
-            with contextlib.suppress(Exception):
+            try:
                 self._memory.scratchpad.clear(task.id)
+            except Exception as exc:
+                log.warning("scratchpad clear failed for task %s: %s", task.id, exc, exc_info=True)
             # Persist the final task state so restarts see exactly what the
             # daemon saw. Save rather than update_status because status may
             # have flipped more than once through the try/except chain.
             try:
                 self._task_store.save(task)
             except Exception:
+                # The task completed in-memory; log so operators can investigate
+                # disk/lock issues, but don't alter the in-memory status because
+                # the work result is already recorded on the Task object.
                 log.exception("task store write failed for task=%s", task.id)
             if (
                 self._memory is not None
                 and hasattr(self._memory, "scratchpad")
                 and getattr(self._memory, "scratchpad", None) is not None
             ):
-                with contextlib.suppress(AttributeError):
+                try:
                     self._memory.scratchpad.clear(task.id)
+                except AttributeError:
+                    # Scratchpad API mismatch — log but don't crash the task.
+                    log.warning("scratchpad.clear API not available for task %s", task.id)
 
     async def _execute_issue(self, task: Task, decision: Any) -> None:
         """Run the issue → PR flow. Called with status already RUNNING."""

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import logging
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -13,6 +14,14 @@ from maxwell_daemon.core.action_policy import ActionPolicy, PolicyDecision
 from maxwell_daemon.core.action_store import ActionStore
 from maxwell_daemon.core.actions import Action, ActionKind, ActionRiskLevel, ActionStatus
 from maxwell_daemon.events import Event, EventBus, EventKind, attach_observability
+
+log = logging.getLogger(__name__)
+
+_ACTION_EXECUTOR_TIMEOUT_SECONDS = 120.0
+
+
+class ActionTimeoutError(Exception):
+    """Raised when an action executor exceeds its allotted wall-clock time."""
 
 
 class ActionService:
@@ -81,7 +90,19 @@ class ActionService:
         try:
             result = runner()
             if inspect.isawaitable(result):
-                result = await result
+                try:
+                    result = await asyncio.wait_for(
+                        result, timeout=_ACTION_EXECUTOR_TIMEOUT_SECONDS
+                    )
+                except asyncio.TimeoutError:
+                    log.error(
+                        "Action %s timed out after %.0fs",
+                        action.id,
+                        _ACTION_EXECUTOR_TIMEOUT_SECONDS,
+                    )
+                    raise ActionTimeoutError(
+                        f"Action {action.id} exceeded {_ACTION_EXECUTOR_TIMEOUT_SECONDS:.0f}s timeout"
+                    ) from None
             return self.mark_applied(running.id, result=result)
         except Exception as exc:
             return self.mark_failed(running.id, error=str(exc))
