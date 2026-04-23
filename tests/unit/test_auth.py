@@ -59,6 +59,12 @@ class TestJWTConfig:
         claims = cfg.decode_token(token)
         assert claims.sub == "alice"
         assert claims.role == Role.operator
+        assert claims.jti
+
+    def test_create_token_assigns_unique_jti(self, cfg: JWTConfig) -> None:
+        first = cfg.decode_token(cfg.create_token("alice", Role.viewer))
+        second = cfg.decode_token(cfg.create_token("alice", Role.viewer))
+        assert first.jti != second.jti
 
     def test_wrong_secret_raises(self, cfg: JWTConfig) -> None:
         import jwt
@@ -89,6 +95,10 @@ class TestJWTConfig:
         raw = _jwt.decode(token, cfg.secret, algorithms=[cfg.algorithm])
         assert raw["org"] == "D-sorg"
 
+    def test_reserved_extra_claims_rejected(self, cfg: JWTConfig) -> None:
+        with pytest.raises(ValueError, match="reserved claims"):
+            cfg.create_token("alice", Role.admin, extra_claims={"exp": 0})
+
     def test_unknown_role_in_payload_raises(self, cfg: JWTConfig) -> None:
         import jwt
 
@@ -97,6 +107,7 @@ class TestJWTConfig:
             "role": "superadmin",
             "iat": int(time.time()),
             "exp": int(time.time()) + 3600,
+            "jti": "test-jti",
         }
         token = jwt.encode(payload, cfg.secret, algorithm=cfg.algorithm)
         with pytest.raises(jwt.InvalidTokenError):
@@ -151,6 +162,26 @@ class TestJWTConfig:
         # The raw exception text must NOT appear in the response detail.
         assert "Signature has expired" not in str(exc_info.value.detail)
 
+    def test_auth_non_pyjwt_error_message(self, cfg: JWTConfig) -> None:
+        """A non-PyJWT exception must still surface as a generic 401."""
+        import asyncio
+        from unittest.mock import patch
+
+        from fastapi import HTTPException
+
+        from maxwell_daemon.auth import require_role
+
+        dep = require_role(Role.viewer, cfg)
+
+        with (
+            patch.object(cfg, "decode_token", side_effect=RuntimeError("boom")),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            asyncio.run(dep(request=_make_request(), authorization="Bearer fake.token.here"))
+
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.detail == "Authentication failed"
+
     # --- Fix 2 & Fix 3: Clock drift leeway ---
 
     def test_auth_clock_skew_leeway_accepts_recently_expired(self) -> None:
@@ -178,7 +209,7 @@ class TestJWTConfig:
         """Tokens without an 'exp' claim must be rejected."""
         import jwt
 
-        payload = {"sub": "alice", "role": "viewer", "iat": int(time.time())}
+        payload = {"sub": "alice", "role": "viewer", "iat": int(time.time()), "jti": "test-jti"}
         token = jwt.encode(payload, cfg.secret, algorithm=cfg.algorithm)
         with pytest.raises(jwt.InvalidTokenError):
             cfg.decode_token(token)
@@ -187,7 +218,26 @@ class TestJWTConfig:
         """Tokens without a 'sub' claim must be rejected."""
         import jwt
 
-        payload = {"role": "viewer", "iat": int(time.time()), "exp": int(time.time()) + 3600}
+        payload = {
+            "role": "viewer",
+            "iat": int(time.time()),
+            "exp": int(time.time()) + 3600,
+            "jti": "test-jti",
+        }
+        token = jwt.encode(payload, cfg.secret, algorithm=cfg.algorithm)
+        with pytest.raises(jwt.InvalidTokenError):
+            cfg.decode_token(token)
+
+    def test_decode_rejects_token_missing_jti(self, cfg: JWTConfig) -> None:
+        """Tokens without a 'jti' claim must be rejected."""
+        import jwt
+
+        payload = {
+            "sub": "alice",
+            "role": "viewer",
+            "iat": int(time.time()),
+            "exp": int(time.time()) + 3600,
+        }
         token = jwt.encode(payload, cfg.secret, algorithm=cfg.algorithm)
         with pytest.raises(jwt.InvalidTokenError):
             cfg.decode_token(token)
