@@ -12,10 +12,14 @@ import argparse
 import os
 import subprocess
 import sys
+import threading
+import time
 import venv
-from collections.abc import Sequence
+import webbrowser
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from urllib import error, parse, request
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +32,7 @@ class LauncherPlan:
     doctor_args: tuple[str, ...]
     serve_args: tuple[str, ...]
     config_path: Path
+    ui_url: str
 
 
 def _venv_python(venv_path: Path) -> Path:
@@ -87,6 +92,7 @@ def build_plan(
             str(port),
         ),
         config_path=config,
+        ui_url=f"http://127.0.0.1:{port}/ui/",
     )
 
 
@@ -119,7 +125,41 @@ def ensure_venv(plan: LauncherPlan) -> None:
     builder.create(plan.venv_path)
 
 
-def execute_plan(plan: LauncherPlan, *, skip_install: bool = False) -> None:
+def _open_dashboard_when_ready(
+    ui_url: str,
+    *,
+    opener: Callable[[str], bool] = webbrowser.open_new_tab,
+    attempts: int = 40,
+    delay_seconds: float = 0.25,
+) -> None:
+    parsed = parse.urlparse(ui_url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"Unsafe URL scheme: {parsed.scheme}")
+
+    for _ in range(attempts):
+        try:
+            with request.urlopen(ui_url, timeout=0.5) as _:  # nosec B310
+                opener(ui_url)
+                return
+        except (error.URLError, TimeoutError, OSError):
+            time.sleep(delay_seconds)
+
+
+def _launch_dashboard_thread(plan: LauncherPlan) -> None:
+    threading.Thread(
+        target=_open_dashboard_when_ready,
+        args=(plan.ui_url,),
+        daemon=True,
+        name="maxwell-dashboard-launcher",
+    ).start()
+
+
+def execute_plan(
+    plan: LauncherPlan,
+    *,
+    skip_install: bool = False,
+    open_browser: bool = True,
+) -> None:
     ensure_venv(plan)
     if not skip_install:
         _run(plan.install_args, cwd=plan.repo_root)
@@ -127,6 +167,8 @@ def execute_plan(plan: LauncherPlan, *, skip_install: bool = False) -> None:
         plan.config_path.parent.mkdir(parents=True, exist_ok=True)
         _run(plan.init_args, cwd=plan.repo_root)
     _run(plan.doctor_args, cwd=plan.repo_root)
+    if open_browser:
+        _launch_dashboard_thread(plan)
     _run(plan.serve_args, cwd=plan.repo_root)
 
 
@@ -142,6 +184,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--port", type=int, default=8080, help="API port for maxwell-daemon serve.")
     parser.add_argument("--dev", action="store_true", help="Install developer extras.")
     parser.add_argument("--skip-install", action="store_true", help="Skip pip install.")
+    parser.add_argument(
+        "--no-open-browser",
+        action="store_true",
+        help="Do not open the canonical /ui/ dashboard in a browser.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print the launch plan and exit.")
     args = parser.parse_args(argv)
 
@@ -159,9 +206,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"init={' '.join(plan.init_args)}")
         print(f"doctor={' '.join(plan.doctor_args)}")
         print(f"serve={' '.join(plan.serve_args)}")
+        print(f"ui={plan.ui_url}")
         return 0
 
-    execute_plan(plan, skip_install=args.skip_install)
+    execute_plan(plan, skip_install=args.skip_install, open_browser=not args.no_open_browser)
     return 0
 
 

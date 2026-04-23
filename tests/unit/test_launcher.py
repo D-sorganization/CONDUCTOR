@@ -5,7 +5,13 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from maxwell_daemon.launcher import _subprocess_env, build_plan, default_config_path
+from maxwell_daemon.launcher import (
+    _open_dashboard_when_ready,
+    _subprocess_env,
+    build_plan,
+    default_config_path,
+    execute_plan,
+)
 
 
 def test_runtime_install_is_default(tmp_path: Path) -> None:
@@ -38,6 +44,7 @@ def test_plan_runs_doctor_before_serve(tmp_path: Path) -> None:
     assert plan.init_args[-2:] == ("--path", str(config))
     assert plan.doctor_args[-2:] == ("--config", str(config))
     assert plan.serve_args[-4:] == ("--config", str(config), "--port", "9090")
+    assert plan.ui_url == "http://127.0.0.1:9090/ui/"
 
 
 def test_default_config_path_is_platform_specific() -> None:
@@ -53,6 +60,56 @@ def test_root_wrappers_delegate_to_python_launcher() -> None:
     assert "maxwell_daemon.launcher" in (repo / "Launch-Maxwell.bat").read_text()
     assert "maxwell_daemon.launcher" in (repo / "Launch-Maxwell.sh").read_text()
     assert "maxwell_daemon.launcher" in (repo / "Launch-Maxwell.command").read_text()
+
+
+def test_open_dashboard_when_ready_uses_browser_opener(monkeypatch) -> None:
+    opened: list[str] = []
+
+    class _Response:
+        def __enter__(self) -> _Response:
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "maxwell_daemon.launcher.request.urlopen", lambda *args, **kwargs: _Response()
+    )
+
+    _open_dashboard_when_ready(
+        "http://127.0.0.1:8080/ui/",
+        opener=opened.append,
+        attempts=1,
+        delay_seconds=0,
+    )
+
+    assert opened == ["http://127.0.0.1:8080/ui/"]
+
+
+def test_execute_plan_can_skip_browser_open(monkeypatch, tmp_path: Path) -> None:
+    plan = build_plan(repo_root=tmp_path)
+    calls: list[tuple[str, ...]] = []
+
+    monkeypatch.setattr("maxwell_daemon.launcher.ensure_venv", lambda _plan: None)
+    monkeypatch.setattr(
+        "maxwell_daemon.launcher._launch_dashboard_thread", lambda _plan: calls.append(("browser",))
+    )
+    monkeypatch.setattr(
+        "maxwell_daemon.launcher._run", lambda args, *, cwd: calls.append(tuple(args))
+    )
+
+    execute_plan(plan, skip_install=True, open_browser=False)
+
+    assert ("browser",) not in calls
+    assert plan.doctor_args in calls
+    assert plan.serve_args in calls
+
+
+def test_pyproject_no_longer_advertises_pyqt_desktop_extra() -> None:
+    pyproject = Path("pyproject.toml").read_text(encoding="utf-8")
+
+    assert 'desktop = ["PyQt6>=6.7.0"]' not in pyproject
+    assert "PyQt6>=" not in pyproject
 
 
 def test_launcher_subprocess_env_defaults_to_utf8(monkeypatch) -> None:
