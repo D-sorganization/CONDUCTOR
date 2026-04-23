@@ -514,6 +514,8 @@ function renderGauntlet() {
           <ul class="delegate-list">${delegates}</ul>
           <h4>Routing</h4>
           <p>${escapeHtml(routing.selected_backend || "No backend selected")}</p>
+          ${routing.selected_model ? `<p class="routing-detail">model: ${escapeHtml(routing.selected_model)}</p>` : ""}
+          ${routing.selection_reason ? `<p class="routing-detail">${escapeHtml(routing.selection_reason)}</p>` : ""}
           ${routing.warning ? `<p class="routing-warning">${escapeHtml(routing.warning)}</p>` : ""}
         </section>
       </div>

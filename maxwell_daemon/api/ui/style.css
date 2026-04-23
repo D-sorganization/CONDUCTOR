@@ -710,6 +710,12 @@ kbd {
   font-size: 12px;
 }
 
+.routing-detail {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .finding-blocker strong { color: var(--err); }
 .finding-warning strong { color: var(--warn); }
 .finding-note strong { color: var(--muted); }

@@ -135,6 +135,9 @@ class TestTaskExecution:
             assert final.cost_usd > 0
             assert final.started_at is not None
             assert final.finished_at is not None
+            assert final.backend == minimal_config.agent.default_backend
+            assert final.model == minimal_config.backends[final.backend].model
+            assert final.route_reason == "global default"
 
         _run(_with_daemon(minimal_config, isolated_ledger_path, worker_count=1, body=body))
 

@@ -90,6 +90,11 @@ class TestIssueDispatch:
                 assert final.status is TaskStatus.COMPLETED
                 assert final.pr_url == "https://github.com/owner/repo/pull/999"
                 assert "#42" in final.result
+                assert final.backend == daemon_with_fake_executor._config.agent.default_backend
+                assert (
+                    final.model == daemon_with_fake_executor._config.backends[final.backend].model
+                )
+                assert final.route_reason == "global default"
             finally:
                 await daemon_with_fake_executor.stop()
 

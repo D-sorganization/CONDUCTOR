@@ -32,7 +32,12 @@ def store(tmp_path: Path) -> TaskStore:
 
 class TestSaveAndGet:
     def test_roundtrip(self, store: TaskStore) -> None:
-        task = _fresh_task(prompt="do the thing")
+        task = _fresh_task(
+            prompt="do the thing",
+            backend="primary",
+            model="gpt-4.1",
+            route_reason="repo override for owner/repo",
+        )
         store.save(task)
         loaded = store.get(task.id)
         assert loaded is not None
@@ -40,6 +45,9 @@ class TestSaveAndGet:
         assert loaded.prompt == "do the thing"
         assert loaded.kind is TaskKind.PROMPT
         assert loaded.status is TaskStatus.QUEUED
+        assert loaded.backend == "primary"
+        assert loaded.model == "gpt-4.1"
+        assert loaded.route_reason == "repo override for owner/repo"
 
     def test_get_missing_returns_none(self, store: TaskStore) -> None:
         assert store.get("nope") is None

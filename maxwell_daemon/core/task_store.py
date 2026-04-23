@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     repo TEXT,
     backend TEXT,
     model TEXT,
+    route_reason TEXT,
     issue_repo TEXT,
     issue_number INTEGER,
     issue_mode TEXT,
@@ -101,6 +102,7 @@ _MIGRATIONS = [
     ("waived_by", "ALTER TABLE tasks ADD COLUMN waived_by TEXT"),
     ("waiver_reason", "ALTER TABLE tasks ADD COLUMN waiver_reason TEXT"),
     ("waived_at", "ALTER TABLE tasks ADD COLUMN waived_at TEXT"),
+    ("route_reason", "ALTER TABLE tasks ADD COLUMN route_reason TEXT"),
 ]
 
 _TERMINAL_STATUS_VALUES = ("completed", "failed", "cancelled")
@@ -177,6 +179,7 @@ class TaskStore:
             task.repo,
             task.backend,
             task.model,
+            task.route_reason,
             task.issue_repo,
             task.issue_number,
             task.issue_mode,
@@ -199,16 +202,19 @@ class TaskStore:
                 """
                 INSERT INTO tasks (
                     id, created_at, updated_at, kind, status, prompt,
-                    repo, backend, model,
+                    repo, backend, model, route_reason,
                     issue_repo, issue_number, issue_mode, ab_group,
                     priority, result, error, waived_by, waiver_reason, waived_at, pr_url, cost_usd, started_at,
                     finished_at, dispatched_to, completed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     updated_at=excluded.updated_at,
                     status=excluded.status,
                     prompt=excluded.prompt,
-                    repo=excluded.repo, backend=excluded.backend, model=excluded.model,
+                    repo=excluded.repo,
+                    backend=excluded.backend,
+                    model=excluded.model,
+                    route_reason=excluded.route_reason,
                     issue_repo=excluded.issue_repo,
                     issue_number=excluded.issue_number,
                     issue_mode=excluded.issue_mode,
@@ -493,6 +499,10 @@ def _row_to_task(row: sqlite3.Row) -> Task:
     except (IndexError, KeyError):
         dispatched_to = None
     try:
+        route_reason = row["route_reason"]
+    except (IndexError, KeyError):
+        route_reason = None
+    try:
         waived_by = row["waived_by"]
     except (IndexError, KeyError):
         waived_by = None
@@ -513,6 +523,7 @@ def _row_to_task(row: sqlite3.Row) -> Task:
         repo=row["repo"],
         backend=row["backend"],
         model=row["model"],
+        route_reason=route_reason,
         issue_repo=row["issue_repo"],
         issue_number=row["issue_number"],
         issue_mode=row["issue_mode"],

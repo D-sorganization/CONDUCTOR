@@ -308,6 +308,8 @@ class TestControlPlaneGauntlet:
             issue_number=7,
             status=TaskStatus.RUNNING,
             backend="primary",
+            model="gpt-4.1",
+            route_reason="repo override for owner/repo",
             started_at=datetime.now(timezone.utc),
         )
         with daemon._tasks_lock:
@@ -323,6 +325,8 @@ class TestControlPlaneGauntlet:
         assert [gate["status"] for gate in item["gates"]] == ["passed", "running", "blocked"]
         assert item["delegates"][0]["status"] == "running"
         assert item["resource_routing"]["selected_backend"] == "primary"
+        assert item["resource_routing"]["selected_model"] == "gpt-4.1"
+        assert item["resource_routing"]["selection_reason"] == "repo override for owner/repo"
 
     def test_failed_task_surfaces_blocker_before_notes(
         self,
