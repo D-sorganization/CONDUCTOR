@@ -17,7 +17,10 @@ from maxwell_daemon.backends.base import (
     TokenUsage,
 )
 from maxwell_daemon.backends.external_adapter import (
+    BackendReadOnlyExternalAgentAdapter,
+    ClaudeCodeCLIExternalAgentAdapter,
     CodexCLIExternalAgentAdapter,
+    ContinueCLIExternalAgentAdapter,
     ExternalAgentAdapterBase,
     ExternalAgentAdapterError,
     ExternalAgentAdapterRegistry,
@@ -28,6 +31,7 @@ from maxwell_daemon.backends.external_adapter import (
     ExternalAgentRunContext,
     ExternalAgentRunResult,
     ExternalAgentRunStatus,
+    JulesCLIExternalAgentAdapter,
     UnavailableExternalAgentAdapter,
 )
 
@@ -520,3 +524,88 @@ class TestCodexCLIExternalAgentAdapter:
         assert result.status is ExternalAgentRunStatus.UNAVAILABLE
         assert result.summary == "Codex CLI backend unavailable: token=***"
         assert result.stderr_snippet == "token=***"
+
+
+class TestReadOnlyBackendExternalAgentAdapters:
+    def test_generic_wrapper_exposes_backend_as_read_only_agent(self) -> None:
+        backend = FakeLLMBackend()
+        adapter = BackendReadOnlyExternalAgentAdapter(
+            backend=backend,
+            adapter_id="fake-cli",
+            display_name="Fake CLI",
+            model="fake-model",
+            command_hint="fake run <prompt>",
+            probe_info=("fake --version",),
+            capability_tags=frozenset({"cli", "fake"}),
+            required_binaries=("fake",),
+        )
+
+        assert adapter.capabilities.adapter_id == "fake-cli"
+        assert adapter.capabilities.supports(ExternalAgentOperation.REVIEW) is True
+        assert adapter.capabilities.supports(ExternalAgentOperation.IMPLEMENT) is False
+        assert adapter.capabilities.can_edit_files is False
+        assert adapter.capabilities.required_binaries == ("fake",)
+
+    @pytest.mark.parametrize(
+        ("factory", "adapter_id", "expected_hint"),
+        (
+            (ContinueCLIExternalAgentAdapter, "continue-cli", "cn ask <prompt>"),
+            (
+                ClaudeCodeCLIExternalAgentAdapter,
+                "claude-code-cli",
+                "claude -p <prompt> --model test-model --output-format json",
+            ),
+            (JulesCLIExternalAgentAdapter, "jules-cli", "jules ask <prompt> --output-format json"),
+        ),
+    )
+    def test_cli_wrappers_run_read_only_operations_through_backend(
+        self,
+        factory: type[BackendReadOnlyExternalAgentAdapter],
+        adapter_id: str,
+        expected_hint: str,
+    ) -> None:
+        backend = FakeLLMBackend()
+        adapter = factory(backend=backend, model="test-model")
+
+        result = adapter.run(
+            ExternalAgentRunContext(
+                adapter_id=adapter_id,
+                operation=ExternalAgentOperation.REVIEW,
+                prompt="review the patch",
+            )
+        )
+
+        assert result.status is ExternalAgentRunStatus.COMPLETED
+        assert result.read_only is True
+        assert result.changed_files == ()
+        assert result.commands_run == (expected_hint,)
+        assert backend.seen_messages[0][0].role.value == "system"
+        assert "Do not edit files" in backend.seen_messages[0][0].content
+
+    @pytest.mark.parametrize(
+        ("factory", "adapter_id"),
+        (
+            (ContinueCLIExternalAgentAdapter, "continue-cli"),
+            (ClaudeCodeCLIExternalAgentAdapter, "claude-code-cli"),
+            (JulesCLIExternalAgentAdapter, "jules-cli"),
+        ),
+    )
+    def test_cli_wrappers_reject_write_operations_until_policy_exists(
+        self,
+        factory: type[BackendReadOnlyExternalAgentAdapter],
+        adapter_id: str,
+        tmp_path: Path,
+    ) -> None:
+        adapter = factory(backend=FakeLLMBackend())
+
+        result = adapter.run(
+            ExternalAgentRunContext(
+                adapter_id=adapter_id,
+                operation=ExternalAgentOperation.IMPLEMENT,
+                prompt="edit files",
+                workspace=tmp_path,
+            )
+        )
+
+        assert result.status is ExternalAgentRunStatus.UNAVAILABLE
+        assert result.unavailable_reason == "unsupported operation: implement"
