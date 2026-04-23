@@ -492,13 +492,24 @@ class ToolRegistry:
     ) -> None:
         if self._invocation_store is None:
             return
-        self._invocation_store.append(
-            tool_name=tool_name,
-            arguments=arguments,
-            status=status,
-            result_summary=result_summary,
-            error=error,
-        )
+        try:
+            self._invocation_store.append(
+                tool_name=tool_name,
+                arguments=arguments,
+                status=status,
+                result_summary=result_summary,
+                error=error,
+            )
+        except Exception as exc:
+            import structlog
+
+            log = structlog.get_logger(__name__)
+            log.warning(
+                "failed to record tool invocation",
+                tool_name=tool_name,
+                status=status,
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
 
 def mcp_tool(

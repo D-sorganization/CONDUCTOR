@@ -359,3 +359,28 @@ class TestMcpToolDecorator:
         reg = ToolRegistry()
         with pytest.raises(ToolRegistryError, match="not decorated"):
             reg.register_from_function(plain)
+
+
+class TestAuditStoreFailureHandling:
+    """Issue #538: audit-store failures should not break tool execution."""
+
+    async def test_invocation_store_failures_do_not_break_tool_execution(self) -> None:
+        """Audit-store persistence failures should not prevent successful tool calls."""
+        from typing import Any
+
+        store = ToolInvocationStore()
+        reg = ToolRegistry(invocation_store=store)
+        reg.register(_echo_spec())
+
+        # Simulate a store failure by making append raise an exception
+        class FailingStore(ToolInvocationStore):
+            def append(self, *args: Any, **kwargs: Any) -> None:
+                raise OSError("disk full")
+
+        reg._invocation_store = FailingStore()
+
+        # Tool should still execute and return a successful result
+        result = await reg.invoke("echo", {"message": "test"})
+
+        assert result.is_error is False
+        assert result.content == "echo: test"
