@@ -59,6 +59,12 @@ class TestJWTConfig:
         claims = cfg.decode_token(token)
         assert claims.sub == "alice"
         assert claims.role == Role.operator
+        assert claims.jti
+
+    def test_create_token_assigns_unique_jti(self, cfg: JWTConfig) -> None:
+        first = cfg.decode_token(cfg.create_token("alice", Role.viewer))
+        second = cfg.decode_token(cfg.create_token("alice", Role.viewer))
+        assert first.jti != second.jti
 
     def test_wrong_secret_raises(self, cfg: JWTConfig) -> None:
         import jwt
@@ -89,6 +95,10 @@ class TestJWTConfig:
         raw = _jwt.decode(token, cfg.secret, algorithms=[cfg.algorithm])
         assert raw["org"] == "D-sorg"
 
+    def test_reserved_extra_claims_rejected(self, cfg: JWTConfig) -> None:
+        with pytest.raises(ValueError, match="reserved claims"):
+            cfg.create_token("alice", Role.admin, extra_claims={"exp": 0})
+
     def test_unknown_role_in_payload_raises(self, cfg: JWTConfig) -> None:
         import jwt
 
@@ -97,6 +107,7 @@ class TestJWTConfig:
             "role": "superadmin",
             "iat": int(time.time()),
             "exp": int(time.time()) + 3600,
+            "jti": "test-jti",
         }
         token = jwt.encode(payload, cfg.secret, algorithm=cfg.algorithm)
         with pytest.raises(jwt.InvalidTokenError):
@@ -178,7 +189,7 @@ class TestJWTConfig:
         """Tokens without an 'exp' claim must be rejected."""
         import jwt
 
-        payload = {"sub": "alice", "role": "viewer", "iat": int(time.time())}
+        payload = {"sub": "alice", "role": "viewer", "iat": int(time.time()), "jti": "test-jti"}
         token = jwt.encode(payload, cfg.secret, algorithm=cfg.algorithm)
         with pytest.raises(jwt.InvalidTokenError):
             cfg.decode_token(token)
@@ -187,7 +198,16 @@ class TestJWTConfig:
         """Tokens without a 'sub' claim must be rejected."""
         import jwt
 
-        payload = {"role": "viewer", "iat": int(time.time()), "exp": int(time.time()) + 3600}
+        payload = {"role": "viewer", "iat": int(time.time()), "exp": int(time.time()) + 3600, "jti": "test-jti"}
+        token = jwt.encode(payload, cfg.secret, algorithm=cfg.algorithm)
+        with pytest.raises(jwt.InvalidTokenError):
+            cfg.decode_token(token)
+
+    def test_decode_rejects_token_missing_jti(self, cfg: JWTConfig) -> None:
+        """Tokens without a 'jti' claim must be rejected."""
+        import jwt
+
+        payload = {"sub": "alice", "role": "viewer", "iat": int(time.time()), "exp": int(time.time()) + 3600}
         token = jwt.encode(payload, cfg.secret, algorithm=cfg.algorithm)
         with pytest.raises(jwt.InvalidTokenError):
             cfg.decode_token(token)

@@ -27,6 +27,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Annotated, Any
+from uuid import uuid4
 
 __all__ = [
     "JWTConfig",
@@ -43,6 +44,8 @@ _ALLOWED_JWT_ALGORITHMS: frozenset[str] = frozenset({"HS256", "HS384", "HS512"})
 
 # Clock drift leeway applied to all jwt.decode calls (seconds).
 _LEEWAY_SECONDS: int = 30
+_REQUIRED_JWT_CLAIMS = ("exp", "iat", "sub", "role", "jti")
+_RESERVED_CLAIMS = frozenset(_REQUIRED_JWT_CLAIMS)
 
 
 class Role(str, Enum):
@@ -62,10 +65,12 @@ class Role(str, Enum):
 class TokenClaims:
     """Decoded, validated JWT claims."""
 
-    def __init__(self, sub: str, role: Role, exp: datetime) -> None:
+    def __init__(self, sub: str, role: Role, exp: datetime, *, iat: datetime, jti: str) -> None:
         self.sub = sub
         self.role = role
         self.exp = exp
+        self.iat = iat
+        self.jti = jti
 
     def has_role(self, minimum: Role) -> bool:
         return self.role.can(minimum)
@@ -121,6 +126,10 @@ class JWTConfig:
         """Issue a signed JWT for *subject* with *role*."""
         import jwt  # PyJWT
 
+        if extra_claims is not None:
+            reserved = _RESERVED_CLAIMS.intersection(extra_claims)
+            if reserved:
+                raise ValueError(f"extra_claims may not override reserved claims: {sorted(reserved)!r}")
         ttl = expiry_seconds if expiry_seconds is not None else self.expiry_seconds
         now = datetime.now(timezone.utc)
         payload: dict[str, Any] = {
@@ -128,6 +137,7 @@ class JWTConfig:
             "role": role.value,
             "iat": now,
             "exp": now + timedelta(seconds=ttl),
+            "jti": uuid4().hex,
             **(extra_claims or {}),
         }
         result: str = jwt.encode(payload, self.secret, algorithm=self.algorithm)
@@ -146,17 +156,24 @@ class JWTConfig:
             self.secret,
             algorithms=[self.algorithm],
             leeway=timedelta(seconds=_LEEWAY_SECONDS),
-            options={"require": ["exp", "iat", "sub"]},
+            options={"require": list(_REQUIRED_JWT_CLAIMS)},
         )
         sub: str = payload.get("sub", "")
         raw_role: str = payload.get("role", "")
+        jti: str = payload.get("jti", "")
         try:
             role = Role(raw_role)
         except ValueError as exc:
             raise jwt.InvalidTokenError(f"unknown role {raw_role!r}") from exc
+        if not sub:
+            raise jwt.InvalidTokenError("missing subject")
+        if not jti:
+            raise jwt.InvalidTokenError("missing jti")
+        iat_ts: int | float = payload.get("iat", 0)
         exp_ts: int | float = payload.get("exp", 0)
+        iat = datetime.fromtimestamp(iat_ts, tz=timezone.utc)
         exp = datetime.fromtimestamp(exp_ts, tz=timezone.utc)
-        return TokenClaims(sub=sub, role=role, exp=exp)
+        return TokenClaims(sub=sub, role=role, exp=exp, iat=iat, jti=jti)
 
 
 def require_role(minimum: Role, jwt_config: JWTConfig) -> Any:
