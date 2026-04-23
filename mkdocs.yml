@@ -52,6 +52,7 @@ nav:
       - Configuration: getting-started/configuration.md
       - Autonomous workflow: getting-started/autonomous-workflow.md
       - Examples: getting-started/examples.md
+      - Tutorials: getting-started/tutorials.md
       - Fleet gauntlet walkthrough: getting-started/fleet-gauntlet-walkthrough.md
       - Resource-aware routing: getting-started/resource-aware-routing.md
       - Fleet issue queue: getting-started/fleet-issue-queue.md

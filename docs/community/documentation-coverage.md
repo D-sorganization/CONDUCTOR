@@ -17,7 +17,7 @@ future agents can advance the remaining gaps without duplicating shipped work.
 | Configuration reference | `getting-started/configuration.md`, `reference/configuration.md` | Shipped | Add a config drift test when new top-level config sections are introduced. |
 | Development guide | `contributing.md`, `architecture/backends.md`, `architecture/contracts.md`, `development/backend-extension-guide.md`, `development/tool-authoring-guide.md`, `development/external-agent-adapters.md` | Shipped | Keep extension docs aligned with backend, external-agent, tool, and MCP transport changes. |
 | Examples | `getting-started/examples.md`, `troubleshooting.md`, `fleet-gauntlet-walkthrough.md`, `resource-aware-routing.md`, `fleet-issue-queue.md` | Shipped | Fleet/shared-memory/critic-gauntlet walkthrough is shipped; resource-aware routing walkthrough is shipped; fleet issue queue walkthrough is shipped. Keep examples aligned with CLI/API changes. |
-| Video tutorials | None in repo | Not started | Publish 10 short tutorials or replace this requirement with a written tutorial acceptance gate. |
+| Tutorials | `getting-started/tutorials.md` | Shipped | Keep tutorial commands aligned with launcher, issue dispatch, and docs-gate workflows. |
 | Docs publishing | `.github/workflows/docs.yml`, `mkdocs.yml` | Shipped | Keep `mkdocs build --strict` green on every docs PR. |
 
 ## Completion Rules
@@ -52,8 +52,8 @@ Do not close issue #19 until all of these gates are true:
   extensions, external-agent adapters, deterministic tool authoring, current MCP
   status boundaries, and the local test harness expected for new extension
   surfaces.
-- The video tutorial requirement is either satisfied or replaced by an explicit,
-  accepted written-docs alternative.
+- The tutorial requirement is discoverable from `mkdocs.yml` and stays backed by
+  explicit written operator tutorials until a richer media format is adopted.
 
 Use `Refs #19` for partial documentation coverage PRs. Use `Closes #19` only
 when the full matrix is green.
