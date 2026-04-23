@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -56,6 +57,9 @@ def select_profile(
             key = (profile.id, policy.required_benchmark_suite)
             if key not in scores:
                 rejections.append(ProfileRejection(profile.id, "missing_required_benchmark"))
+                continue
+            if not math.isfinite(scores[key]):
+                rejections.append(ProfileRejection(profile.id, "invalid_benchmark_score"))
                 continue
             if scores[key] < policy.min_benchmark_score:
                 rejections.append(ProfileRejection(profile.id, "benchmark_below_threshold"))

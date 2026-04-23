@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import pytest
 from pydantic import ValidationError
 
@@ -12,7 +14,7 @@ from maxwell_daemon.model_routing.models import (
     ModelRoutingPolicy,
     TaskType,
 )
-from maxwell_daemon.model_routing.router import select_profile
+from maxwell_daemon.model_routing.router import ProfileRejection, select_profile
 
 
 def _profile(
@@ -153,6 +155,27 @@ def test_benchmark_gate_escalates_to_qualified_remote() -> None:
     assert any(
         r.profile_id == "local.devstral" and r.reason == "benchmark_below_threshold"
         for r in decision.rejections
+    )
+
+
+@pytest.mark.parametrize("invalid_score", [math.nan, math.inf, -math.inf])
+def test_benchmark_gate_rejects_non_finite_scores(invalid_score: float) -> None:
+    policy = ModelRoutingPolicy(
+        task_type=TaskType.ISSUE_TRIAGE,
+        required_benchmark_suite="maxwell.context_recall",
+        min_benchmark_score=0.80,
+    )
+    decision = select_profile(
+        profiles=[_profile("local.devstral")],
+        policy=policy,
+        benchmark_scores={
+            ("local.devstral", "maxwell.context_recall"): invalid_score,
+        },
+    )
+    assert decision.selected_profile_id is None
+    assert decision.candidate_profile_ids == ()
+    assert decision.rejections == (
+        ProfileRejection("local.devstral", "invalid_benchmark_score"),
     )
 
 
