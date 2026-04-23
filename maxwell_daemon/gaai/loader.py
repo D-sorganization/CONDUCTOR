@@ -100,7 +100,9 @@ def _load_markdown_metadata(path: Path) -> dict[str, Any]:
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
         raise ValueError("Markdown GAAI metadata requires YAML front matter")
-    end_index = next((index for index in range(1, len(lines)) if lines[index].strip() == "---"), -1)
+    end_index: int = next(
+        (index for index in range(1, len(lines)) if lines[index].strip() == "---"), -1
+    )
     if end_index < 0:
         raise ValueError("Markdown GAAI metadata front matter is not closed")
     front_matter = "\n".join(lines[1:end_index])
