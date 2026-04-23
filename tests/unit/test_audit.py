@@ -162,6 +162,43 @@ class TestAuditLogger:
 
         assert verify_chain(path) == []
 
+    def test_rotate_drops_malformed_lines_and_keeps_unparseable_timestamps(
+        self, logger: AuditLogger, log_path: Path
+    ) -> None:
+        from datetime import datetime, timedelta, timezone
+
+        logger = AuditLogger(log_path, retention_days=7)
+        old_ts = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+        old_obj = {
+            "timestamp": old_ts,
+            "event_type": "api_call",
+            "method": "GET",
+            "path": "/old",
+            "status": 200,
+            "user": None,
+            "request_id": None,
+            "details": {},
+            "prev_hash": "0" * 64,
+            "entry_hash": "deadbeef" * 8,
+        }
+        logger.log_api_call(method="GET", path="/keep", status=200)
+        log_path.write_text(
+            json.dumps(old_obj) + "\n" + '{"timestamp":"not-a-timestamp","event_type":"api_call",'
+            '"method":"GET","path":"/keep-ts","status":200,'
+            '"user":null,"request_id":null,"details":{},'
+            '"prev_hash":"0"}\n' + "this is not json\n",
+            encoding="utf-8",
+        )
+        logger._last_hash = None  # force a tail re-read during rotation
+
+        removed = logger.rotate()
+
+        assert removed == 1
+        entries = logger.entries()
+        assert any(entry.get("path") == "/keep-ts" for entry in entries)
+        assert "this is not json" not in log_path.read_text(encoding="utf-8")
+        assert verify_chain(log_path) == []
+
     def test_new_logger_reads_tail_from_file(self, log_path: Path) -> None:
         """A fresh AuditLogger instance reads the existing tail hash."""
         logger1 = AuditLogger(log_path)
@@ -197,6 +234,76 @@ class TestBearerTokenRedaction:
         )
         obj = json.loads(log_path.read_text())
         assert obj["details"]["auth"] == "Bearer ***"
+
+    def test_nested_sensitive_details_are_redacted(
+        self, logger: AuditLogger, log_path: Path
+    ) -> None:
+        details = {
+            "request": {
+                "headers": {
+                    "Authorization": "Bearer super-secret-token",
+                    "X-Api-Key": "api-key-value",
+                },
+                "payload": {
+                    "password": "super-secret-password",
+                    "safe": "value",
+                },
+            }
+        }
+
+        logger.log_api_call(
+            method="POST",
+            path="/api/v1/tasks",
+            status=202,
+            details=details,
+        )
+
+        obj = json.loads(log_path.read_text())
+        assert obj["details"]["request"]["headers"]["Authorization"] == "***"
+        assert obj["details"]["request"]["headers"]["X-Api-Key"] == "***"
+        assert obj["details"]["request"]["payload"]["password"] == "***"
+        assert obj["details"]["request"]["payload"]["safe"] == "value"
+        assert details["request"]["headers"]["Authorization"] == "Bearer super-secret-token"
+
+    def test_nested_bearer_values_inside_lists_are_redacted(
+        self, logger: AuditLogger, log_path: Path
+    ) -> None:
+        logger.log_api_call(
+            method="POST",
+            path="/api/v1/tasks",
+            status=202,
+            details={
+                "events": [
+                    {"auth": "Bearer should-be-gone"},
+                    {"auth": "safe"},
+                ]
+            },
+        )
+
+        obj = json.loads(log_path.read_text())
+        assert obj["details"]["events"][0]["auth"] == "Bearer ***"
+        assert obj["details"]["events"][1]["auth"] == "safe"
+
+    def test_nested_sensitive_tuples_are_redacted(
+        self, logger: AuditLogger, log_path: Path
+    ) -> None:
+        logger.log_api_call(
+            method="POST",
+            path="/api/v1/tasks",
+            status=202,
+            details={
+                "events": (
+                    {"token": "secret-token"},
+                    {"auth": "Bearer should-be-gone"},
+                    {"auth": "safe"},
+                )
+            },
+        )
+
+        obj = json.loads(log_path.read_text())
+        assert obj["details"]["events"][0]["token"] == "***"
+        assert obj["details"]["events"][1]["auth"] == "Bearer ***"
+        assert obj["details"]["events"][2]["auth"] == "safe"
 
     def test_non_sensitive_details_pass_through(self, logger: AuditLogger, log_path: Path) -> None:
         logger.log_api_call(
