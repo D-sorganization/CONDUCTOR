@@ -1714,6 +1714,7 @@ def create_app(
                 task_status = TaskStatus(status_filter)
             except ValueError as exc:
                 from fastapi import status as http_status
+
                 raise HTTPException(
                     http_status.HTTP_422_UNPROCESSABLE_ENTITY,
                     f"invalid task status: {status_filter}",
