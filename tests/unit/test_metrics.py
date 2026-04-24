@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from unittest.mock import Mock
+
 from fastapi.testclient import TestClient
 from prometheus_client import CollectorRegistry
 
+from maxwell_daemon import metrics as metrics_mod
 from maxwell_daemon.metrics import (
     MAXWELL_FREE_REQUESTS_TOTAL,
     MAXWELL_REQUEST_COST,
@@ -131,3 +134,40 @@ class TestBuildRegistry:
     def test_returns_collector_registry(self) -> None:
         reg = build_registry()
         assert isinstance(reg, CollectorRegistry)
+
+
+class TestGateAndQueueMetrics:
+    def test_record_cache_hit_sets_gauge(self, monkeypatch) -> None:
+        gauge = Mock()
+        monkeypatch.setattr(metrics_mod, "MAXWELL_CACHE_HIT_RATE", gauge)
+
+        metrics_mod.record_cache_hit(0.42)
+
+        gauge.set.assert_called_once_with(0.42)
+
+    def test_record_gate_verdict_increments_labeled_counter(self, monkeypatch) -> None:
+        counter = Mock()
+        labels = Mock()
+        counter.labels.return_value = labels
+        monkeypatch.setattr(metrics_mod, "MAXWELL_GATE_VERDICTS_TOTAL", counter)
+
+        metrics_mod.record_gate_verdict("blocked", "p1")
+
+        counter.labels.assert_called_once_with(verdict="blocked", severity="p1")
+        labels.inc.assert_called_once_with()
+
+    def test_record_queue_depth_sets_gauge(self, monkeypatch) -> None:
+        gauge = Mock()
+        monkeypatch.setattr(metrics_mod, "MAXWELL_QUEUE_DEPTH", gauge)
+
+        metrics_mod.record_queue_depth(7)
+
+        gauge.set.assert_called_once_with(7)
+
+    def test_record_queue_latency_observes_histogram(self, monkeypatch) -> None:
+        histogram = Mock()
+        monkeypatch.setattr(metrics_mod, "MAXWELL_QUEUE_LATENCY_MS", histogram)
+
+        metrics_mod.record_queue_latency(12.5)
+
+        histogram.observe.assert_called_once_with(12.5)

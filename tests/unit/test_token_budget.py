@@ -122,6 +122,28 @@ def test_check_budget_tight_status(mock_config: Any, mock_ledger: CostLedger) ->
     assert status.recommended_model == "claude-sonnet-4-6"
 
 
+def test_check_budget_exhausted_status(mock_config: Any, mock_ledger: CostLedger) -> None:
+    """Test budget check when the monthly limit has been exhausted."""
+    from maxwell_daemon.backends import TokenUsage
+
+    now = datetime.now(timezone.utc)
+    record = CostRecord(
+        ts=now,
+        backend="anthropic",
+        model="claude-opus-4-7",
+        usage=TokenUsage(prompt_tokens=20000, completion_tokens=5000),
+        cost_usd=100.0,
+    )
+    mock_ledger.record(record)
+
+    allocator = TokenBudgetAllocator(mock_config, mock_ledger)
+    status = allocator.check_budget()
+
+    assert status.status == "exhausted"
+    assert status.utilization_percent == 100.0
+    assert status.recommended_model == "claude-haiku-4-5"
+
+
 def test_check_budget_no_limit(mock_ledger: CostLedger) -> None:
     """Test budget check when no limit is set."""
     unlimited_config: Any = Mock(

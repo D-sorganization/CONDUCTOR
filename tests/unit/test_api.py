@@ -312,6 +312,12 @@ class TestTaskSubmission:
         body = r.json()
         assert [task["id"] for task in body] == ["match"]
 
+    def test_list_rejects_invalid_status(self, client: TestClient) -> None:
+        r = client.get("/api/v1/tasks?status=not-a-real-status")
+
+        assert r.status_code == 422
+        assert r.json()["detail"] == "invalid task status: not-a-real-status"
+
     def test_list_filters_by_completed_before(self, client: TestClient, daemon: Daemon) -> None:
         old_done = Task(
             id="old-done",

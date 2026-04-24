@@ -13,7 +13,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from maxwell_daemon.api import create_app
-from maxwell_daemon.auth import JWTConfig, Role, require_role
+from maxwell_daemon.auth import JWTConfig, Role, is_jwt_auth_failure, require_role
 from maxwell_daemon.config import MaxwellDaemonConfig
 from maxwell_daemon.daemon import Daemon
 
@@ -97,3 +97,14 @@ def test_api_rbac_returns_401_when_pyjwt_is_unavailable(
 
     assert response.status_code == 401
     assert response.json()["detail"] == "Authentication failed"
+
+
+def test_is_jwt_auth_failure_detects_missing_pyjwt_module() -> None:
+    error = ModuleNotFoundError("No module named 'jwt'")
+    error.name = "jwt"
+
+    assert is_jwt_auth_failure(error) is True
+
+
+def test_is_jwt_auth_failure_ignores_unrelated_errors() -> None:
+    assert is_jwt_auth_failure(ValueError("boom")) is False
