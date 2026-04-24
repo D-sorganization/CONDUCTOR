@@ -61,6 +61,9 @@ def configure_logging(
     if json_format is None:
         json_format = not sys.stderr.isatty()
 
+    is_test = bool(os.environ.get("PYTEST_CURRENT_TEST"))
+    cache_logger = not is_test
+
     shared_processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
@@ -105,7 +108,7 @@ def configure_logging(
             ),
             context_class=dict,
             logger_factory=structlog.stdlib.LoggerFactory(),
-            cache_logger_on_first_use=True,
+            cache_logger_on_first_use=cache_logger,
         )
     else:
         structlog.configure(
@@ -115,7 +118,7 @@ def configure_logging(
             ),
             context_class=dict,
             logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
-            cache_logger_on_first_use=True,
+            cache_logger_on_first_use=cache_logger,
         )
 
         # Bridge stdlib logging through structlog so library logs pick up our format.
