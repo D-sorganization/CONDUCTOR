@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Literal
 
-from maxwell_daemon.config import BudgetConfig, MaxwellDaemonConfig
+from maxwell_daemon.config import MaxwellDaemonConfig
 from maxwell_daemon.core.ledger import CostLedger
 
 __all__ = [
