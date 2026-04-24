@@ -10,15 +10,14 @@ Builds on CostLedger to provide higher-level analytics:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Final
+from datetime import datetime, timezone
 
-from maxwell_daemon.core.ledger import CostLedger, CostRecord
+from maxwell_daemon.core.ledger import CostLedger
 
 __all__ = [
+    "CacheHitMetrics",
     "CostAnalytics",
     "CostSummary",
-    "CacheHitMetrics",
 ]
 
 

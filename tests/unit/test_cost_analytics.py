@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from maxwell_daemon.backends import TokenUsage
-from maxwell_daemon.core.cost_analytics import CostAnalytics, CostSummary
+from maxwell_daemon.core.cost_analytics import CostAnalytics
 from maxwell_daemon.core.ledger import CostLedger, CostRecord
 
 
