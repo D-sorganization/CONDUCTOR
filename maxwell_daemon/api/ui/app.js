@@ -1570,6 +1570,7 @@ function wireKindSwitch() {
 async function submitNewTask(ev) {
   ev.preventDefault();
   const errEl = document.getElementById("new-task-error");
+  const submitBtn = document.getElementById("new-task-submit");
   errEl.hidden = true;
 
   const kind = document.querySelector('input[name="kind"]:checked').value;
@@ -1599,6 +1600,9 @@ async function submitNewTask(ev) {
     body = { prompt };
   }
 
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Dispatching...";
+
   try {
     const r = await fetch(url, {
       method: "POST",
@@ -1615,6 +1619,9 @@ async function submitNewTask(ev) {
     errEl.textContent = `Network error: ${e.message}`;
     errEl.hidden = false;
     return;
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Dispatch";
   }
 
   closeNewTaskDialog();
