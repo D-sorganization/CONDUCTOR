@@ -146,6 +146,28 @@ maxwell_daemon/
 
 ---
 
+## 🧠 LLM Operations & Best Practices
+
+### Model Selection
+- **Haiku**: Use for formatting, parsing, syntax checks, or summarizing existing context. (Cheap, fast).
+- **Sonnet**: Use for standard code generation and routine feature implementation. (Balanced).
+- **Opus**: Use STRICTLY for complex architectural planning, difficult refactors, and critical debugging where deep reasoning is needed. (Expensive).
+
+### Critic Verdicts
+- **Severities**: Critical (blocks merge), Warning (should fix, but non-blocking), Info (suggestions).
+- Always address Critical findings before re-requesting a gate check.
+
+### Memory & Token Accounting
+- Tasks run within a constrained token budget. Always prefer compressing context (using `MAXWELL_AGGRESSIVE_COMPRESSION`) over passing massive raw files.
+- Ensure that repetitive tasks don't bloat the history; summarize past findings.
+
+### Coding Practices
+- **Idempotence**: Scripts and setup functions must be safe to run multiple times.
+- **Error Messages**: Write actionable error messages (e.g. "Failed to bind port 8080 (already in use). Did you leave another daemon running?").
+- **Naming**: Use clear, descriptive variable names. Avoid cryptic abbreviations.
+
+---
+
 ## 📂 Repository Decluttering
 
 All development documentation (summaries, plans, analysis) MUST go in `docs/development/`. Do NOT create `.md` files in the repo root unless they are critical project-wide files (README, AGENTS, CHANGELOG).
