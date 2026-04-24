@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from maxwell_daemon.backends.base import BackendUnavailableError
+from maxwell_daemon.backends.deepseek import DeepSeekBackend
 from maxwell_daemon.backends.gemini import GeminiBackend
 from maxwell_daemon.backends.groq import GroqBackend
 from maxwell_daemon.backends.mistral import MistralBackend
@@ -41,3 +42,14 @@ def test_mistral_backend_reports_missing_sdk() -> None:
         pytest.raises(BackendUnavailableError, match="mistralai SDK not installed"),
     ):
         MistralBackend(api_key="test-key")
+
+
+def test_deepseek_backend_reports_missing_sdk() -> None:
+    with (
+        patch(
+            "maxwell_daemon.backends.deepseek.import_module",
+            side_effect=ModuleNotFoundError("openai"),
+        ),
+        pytest.raises(BackendUnavailableError, match="OpenAI SDK not installed"),
+    ):
+        DeepSeekBackend(api_key="test-key")
