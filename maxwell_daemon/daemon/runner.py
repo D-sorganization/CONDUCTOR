@@ -124,6 +124,20 @@ class Task:
         return (self.priority, self.created_at) < (other.priority, other.created_at)
 
 
+@dataclass(slots=True, frozen=True)
+class ConfigSnapshot:
+    """Immutable view of the daemon configuration and its active collaborators.
+
+    Captured by workers at task-claim time so that hot-reloads of the global
+    daemon config do not cause mid-task inconsistency.
+    """
+
+    config: MaxwellDaemonConfig
+    router: BackendRouter
+    ledger: CostLedger
+    budget: BudgetEnforcer
+
+
 @dataclass
 class DaemonState:
     version: str
@@ -133,6 +147,8 @@ class DaemonState:
     backends_available: list[str]
     worker_count: int = 0
     queue_depth: int = 0
+    needs_restart: bool = False
+    restart_required_reasons: list[str] = field(default_factory=list)
 
 
 class Daemon:
@@ -236,6 +252,8 @@ class Daemon:
         # are a mix of sync and async — acquisition is uncontended under
         # normal load and a lock-free async path doesn't win us anything.
         self._tasks_lock = threading.Lock()
+        self._needs_restart = False
+        self._restart_required_reasons: list[str] = []
         # PriorityQueue: workers dequeue (priority, task) tuples. Lower priority
         # number = higher urgency (0=emergency, 50=high, 100=normal, 200=batch).
         self._queue: asyncio.PriorityQueue[tuple[int, Task | None]] = asyncio.PriorityQueue(
@@ -284,9 +302,30 @@ class Daemon:
         # Validate first (outside the lock) so we never swap in a bad config.
         new_config = load_config(path)
         new_router = BackendRouter(new_config)
+
+        # Detect fields requiring restart
+        reasons = []
+        if new_config.role != self._config.role:
+            reasons.append(f"role changed from {self._config.role} to {new_config.role}")
+        if new_config.api.port != self._config.api.port:
+            reasons.append(f"api.port changed from {self._config.api.port} to {new_config.api.port}")
+        if new_config.api.host != self._config.api.host:
+            reasons.append(f"api.host changed from {self._config.api.host} to {new_config.api.host}")
+        if new_config.memory.workspace_path != self._config.memory.workspace_path:
+            reasons.append("memory.workspace_path changed")
+
         with self._config_lock:
             self._config = new_config
             self._router = new_router
+            self._budget = BudgetEnforcer(new_config.budget, self._ledger)
+            if hasattr(self, "_actions"):
+                self._actions._policy = ActionPolicy(
+                    mode=ApprovalMode(new_config.tools.approval_tier),
+                    workspace_root=self._workspace_root,
+                )
+            if reasons:
+                self._needs_restart = True
+                self._restart_required_reasons.extend(reasons)
         log.info("config reloaded from %s", path)
         return path
 
@@ -342,6 +381,15 @@ class Daemon:
             )
             self._bg_tasks.add(dream_task)
             dream_task.add_done_callback(self._bg_tasks.discard)
+            
+        if self._config.agent.task_live_retention_seconds > 0:
+            evict_task = asyncio.create_task(
+                self._live_eviction_loop(),
+                name="live-memory-eviction",
+            )
+            self._bg_tasks.add(evict_task)
+            evict_task.add_done_callback(self._bg_tasks.discard)
+
         log.info("daemon started with %d workers", self._worker_count)
 
     def recover(self) -> list[Task]:
@@ -472,6 +520,33 @@ class Daemon:
                 log.warning("retention prune failed", exc_info=True)
             await asyncio.sleep(interval)
 
+    async def _live_eviction_loop(self) -> None:
+        """Periodically evict terminal tasks from the live memory dict."""
+        while self._running:
+            try:
+                live_retention = self._config.agent.task_live_retention_seconds
+                cutoff = datetime.now(timezone.utc) - timedelta(seconds=live_retention)
+                terminal = {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}
+                evicted = 0
+                with self._tasks_lock:
+                    stale_ids = [
+                        task_id
+                        for task_id, task in self._tasks.items()
+                        if task.status in terminal
+                        and task.finished_at is not None
+                        and task.finished_at < cutoff
+                    ]
+                    for task_id in stale_ids:
+                        self._tasks.pop(task_id, None)
+                        evicted += 1
+                if evicted > 0:
+                    log.debug("evicted %d stale tasks from live memory dict", evicted)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.warning("live eviction loop failed", exc_info=True)
+            await asyncio.sleep(60.0)
+
     async def _dream_cycle_loop(self) -> None:
         """Periodically consolidate raw markdown memory when explicitly enabled."""
         while self._running:
@@ -539,6 +614,11 @@ class Daemon:
                     self._queue.put_nowait(item)
                 except asyncio.QueueFull:
                     log.error("Queue saturated inline; dropped task %s", getattr(task, "id", None))
+                    if task is not None and getattr(task, "id", None):
+                        with self._tasks_lock:
+                            self._tasks.pop(task.id, None)
+                        if hasattr(self._task_store, "delete"):
+                            self._task_store.delete(task.id)
             self._loop.call_soon_threadsafe(_put_inline)
             return
 
@@ -570,7 +650,7 @@ class Daemon:
         resolved_task_id = task_id or uuid.uuid4().hex[:12]
         task = Task(
             id=resolved_task_id,
-            prompt=prompt,
+            prompt=self._offload_prompt_if_needed(resolved_task_id, prompt),
             kind=TaskKind.PROMPT,
             repo=repo,
             backend=backend,
@@ -584,7 +664,13 @@ class Daemon:
                 self._reject_duplicate_task_id(task.id)
             self._task_store.save(task)
             self._tasks[task.id] = task
-            self._enqueue_task_entry(task.priority, task)
+            try:
+                self._enqueue_task_entry(task.priority, task)
+            except QueueSaturationError:
+                self._tasks.pop(task.id, None)
+                if hasattr(self._task_store, "delete"):
+                    self._task_store.delete(task.id)
+                raise
         # Fire-and-forget: if there's no running loop yet (e.g. sync test
         # submits before start()), skip the event — the queued state is
         # observable via get_task().
@@ -631,9 +717,10 @@ class Daemon:
         """
         if self._loop is None:
             raise RuntimeError("daemon must be started before submit_threadsafe()")
+        task_id = uuid.uuid4().hex[:12]
         task = Task(
-            id=uuid.uuid4().hex[:12],
-            prompt=prompt,
+            id=task_id,
+            prompt=self._offload_prompt_if_needed(task_id, prompt),
             kind=TaskKind.PROMPT,
             repo=repo,
             backend=backend,
@@ -642,8 +729,42 @@ class Daemon:
         self._task_store.save(task)
         with self._tasks_lock:
             self._tasks[task.id] = task
-        self._enqueue_task_entry(task.priority, task)
+        try:
+            self._enqueue_task_entry(task.priority, task)
+        except QueueSaturationError:
+            with self._tasks_lock:
+                self._tasks.pop(task.id, None)
+            if hasattr(self._task_store, "delete"):
+                self._task_store.delete(task.id)
+            raise
         return task
+
+    def _offload_prompt_if_needed(self, task_id: str, prompt: str) -> str:
+        """Move large prompts (>50KB) to the artifact store to keep task history lean.
+
+        Returns the original prompt if small, or a truncated version with an
+        artifact_id reference if large.
+        """
+        MAX_PROMPT_LEN = 50000
+        OFFLOAD_CUTOFF = 10000
+        if len(prompt) <= MAX_PROMPT_LEN:
+            return prompt
+
+        from maxwell_daemon.core.artifacts import Artifact, ArtifactKind
+
+        # Migrate remainder to artifact store
+        main_req = prompt[:OFFLOAD_CUTOFF]
+        artifact_id = f"prompt-{task_id}"
+        artifact = Artifact(
+            id=artifact_id,
+            kind=ArtifactKind.TEXT,
+            repo="internal",
+            data=prompt.encode("utf-8"),
+            description=f"Full prompt for task {task_id}",
+        )
+        self._artifact_store.put(artifact)
+        log.info("prompt-offload task=%s size=%d", task_id, len(prompt))
+        return f"{main_req}\n\n[Full prompt offloaded to artifact_id:///{artifact_id}]"
 
     def submit_issue(
         self,
@@ -679,7 +800,13 @@ class Daemon:
                 self._reject_duplicate_task_id(task.id)
             self._task_store.save(task)
             self._tasks[task.id] = task
-            self._enqueue_task_entry(task.priority, task)
+            try:
+                self._enqueue_task_entry(task.priority, task)
+            except QueueSaturationError:
+                self._tasks.pop(task.id, None)
+                if hasattr(self._task_store, "delete"):
+                    self._task_store.delete(task.id)
+                raise
         try:
             loop = asyncio.get_running_loop()
             bg = loop.create_task(
@@ -751,7 +878,34 @@ class Daemon:
 
     def get_task(self, task_id: str) -> Task | None:
         # dict.get is GIL-atomic; no lock needed on hot-path reads.
-        return self._tasks.get(task_id)
+        task = self._tasks.get(task_id)
+        if task is not None:
+            return task
+        return self._task_store.get(task_id)
+
+    def list_tasks(
+        self,
+        *,
+        limit: int = 100,
+        status: TaskStatus | None = None,
+        kind: TaskKind | None = None,
+        repo: str | None = None,
+        completed_before: datetime | None = None,
+        created_before: datetime | None = None,
+    ) -> list[Task]:
+        """List tasks with filtering and pagination.
+
+        This method queries the durable store and does not rely on the in-memory
+        live dict, making it safe for large histories.
+        """
+        return self._task_store.list_tasks(
+            limit=limit,
+            status=status,
+            kind=kind.value if kind else None,
+            repo=repo,
+            completed_before=completed_before,
+            created_before=created_before,
+        )
 
     def _reject_duplicate_task_id(self, task_id: str) -> None:
         get_persisted_task = getattr(self._task_store, "get", None)
@@ -1274,6 +1428,8 @@ class Daemon:
             backends_available=self._router.available_backends(),
             worker_count=self._worker_count,
             queue_depth=self._queue.qsize(),
+            needs_restart=self._needs_restart,
+            restart_required_reasons=list(self._restart_required_reasons),
         )
 
     @property
@@ -1330,9 +1486,16 @@ class Daemon:
                             task.started_at = None
                     await self._queue.put((task.priority, task))
                     continue
-                await self._execute(task)
+                with self._config_lock:
+                    snapshot = ConfigSnapshot(
+                        config=self._config,
+                        router=self._router,
+                        ledger=self._ledger,
+                        budget=self._budget,
+                    )
+                await self._execute(task, snapshot)
 
-    async def _execute(self, task: Task) -> None:
+    async def _execute(self, task: Task, snapshot: ConfigSnapshot) -> None:
         task.status = TaskStatus.RUNNING
         task.started_at = datetime.now(timezone.utc)
         try:
@@ -1351,11 +1514,15 @@ class Daemon:
                     ),
                 )
             )
-            self._budget.require_under_budget()
-            decision = self._router.route(
+            snapshot.budget.require_under_budget()
+            from maxwell_daemon.core.cost_evaluator import CostEvaluator
+            evaluator = CostEvaluator(snapshot)
+            choice = evaluator.choose_model(task)
+            
+            decision = snapshot.router.route(
                 repo=task.repo,
                 backend_override=task.backend,
-                model_override=task.model,
+                model_override=task.model or choice.model,
             )
             task.backend = decision.backend_name
             task.route_reason = decision.reason
@@ -1369,7 +1536,7 @@ class Daemon:
                 log.exception("task store write failed while recording route for task=%s", task.id)
 
             if task.kind is TaskKind.ISSUE:
-                await self._execute_issue(task, decision)
+                await self._execute_issue(task, decision, snapshot)
                 return
 
             resp = await decision.backend.complete(
@@ -1380,7 +1547,7 @@ class Daemon:
             estimated_cost = decision.backend.estimate_cost(resp.usage, decision.model)
             task.cost_usd = estimated_cost if estimated_cost is not None else 0.0
             task.status = TaskStatus.COMPLETED
-            self._ledger.record(
+            snapshot.ledger.record(
                 CostRecord(
                     ts=datetime.now(timezone.utc),
                     backend=decision.backend_name,
@@ -1485,7 +1652,7 @@ class Daemon:
                     # Scratchpad API mismatch — log but don't crash the task.
                     log.warning("scratchpad.clear API not available for task %s", task.id)
 
-    async def _execute_issue(self, task: Task, decision: Any) -> None:
+    async def _execute_issue(self, task: Task, decision: Any, snapshot: ConfigSnapshot) -> None:
         """Run the issue → PR flow. Called with status already RUNNING."""
         from maxwell_daemon.core.repo_overrides import resolve_overrides
         from maxwell_daemon.gh import GitHubClient
@@ -1512,18 +1679,23 @@ class Daemon:
         )
 
         mode = task.issue_mode if task.issue_mode in {"plan", "implement"} else "plan"
-        overrides = resolve_overrides(self._config, repo=task.issue_repo)
+        overrides = resolve_overrides(snapshot.config, repo=task.issue_repo)
 
         # Smart model selection: if the task didn't specify a model AND the
-        # backend has a tier_map, pick by issue complexity. Otherwise fall back
-        # to whatever the router resolved.
+        # backend has a tier_map, pick by issue complexity.
+        from maxwell_daemon.core.cost_evaluator import CostEvaluator
+        evaluator = CostEvaluator(snapshot)
+        
         effective_model = decision.model
-        backend_cfg = self._router._backend_config(decision.backend_name)
+        backend_cfg = snapshot.router._backend_config(decision.backend_name)
         if not task.model and backend_cfg is not None and backend_cfg.tier_map:
-            from maxwell_daemon.core.model_selector import pick_model_for_issue
-
             try:
                 issue = await github.get_issue(task.issue_repo, task.issue_number)
+                # Inject issue details into evaluator logic if needed, 
+                # or just use prompt length which for ISSUE is short.
+                # Actually, pick_model_for_issue was better here because it has the issue object.
+                # I'll keep pick_model_for_issue but use evaluator for budgeting.
+                from maxwell_daemon.core.model_selector import pick_model_for_issue
                 selection = pick_model_for_issue(
                     title=issue.title,
                     body=issue.body,

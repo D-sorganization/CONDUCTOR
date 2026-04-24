@@ -20,7 +20,7 @@ from unittest.mock import MagicMock
 
 from maxwell_daemon.config import MaxwellDaemonConfig
 from maxwell_daemon.daemon import Daemon
-from maxwell_daemon.daemon.runner import Task, TaskKind, TaskStatus
+from maxwell_daemon.daemon.runner import QueueSaturationError, Task, TaskKind, TaskStatus
 
 
 class _ThreadBoundQueue:
@@ -28,6 +28,9 @@ class _ThreadBoundQueue:
         self.owner_thread = owner_thread
         self.items: list[tuple[int, Task | None]] = []
         self.put_event = threading.Event()
+
+    def full(self) -> bool:
+        return False
 
     def put_nowait(self, item: tuple[int, Task | None]) -> None:
         if threading.current_thread() is not self.owner_thread:
@@ -216,11 +219,15 @@ class TestTasksDictThreadSafety:
 
         def _writer() -> None:
             nonlocal stop
-            try:
-                while not stop:
+            while not stop:
+                try:
                     d.submit("hi")
-            except BaseException as e:
-                errors.append(e)
+                except QueueSaturationError:
+                    # Expected when queue fills up — not the bug we're testing.
+                    break
+                except BaseException as e:
+                    errors.append(e)
+                    break
 
         def _reader() -> None:
             try:

@@ -206,7 +206,7 @@ class TestTaskExecution:
             d.reprioritize_task(task.id, 10)
             calls: list[str] = []
 
-            async def fake_execute(executed: Task) -> None:
+            async def fake_execute(executed: Task, memory_snapshot: Any) -> None:
                 calls.append(executed.id)
                 executed.status = TaskStatus.COMPLETED
 
@@ -348,6 +348,12 @@ class TestRunningStatusResilience:
             def recover_pending(self) -> list[Any]:
                 return []
 
+            def delete(self, task_id: str) -> None:
+                pass
+
+            async def aprune(self, days: int, *, now: Any = None) -> int:
+                return 0
+
         store = _PartiallyFailingStore()
 
         async def body() -> None:
@@ -387,6 +393,12 @@ class TestRunningStatusResilience:
             def recover_pending(self) -> list[Any]:
                 return []
 
+            def delete(self, task_id: str) -> None:
+                pass
+
+            async def aprune(self, days: int, *, now: Any = None) -> int:
+                return 0
+
         store = _OnceFailStore()
 
         async def body() -> None:
@@ -405,7 +417,7 @@ class TestRunningStatusResilience:
         _run(body())
 
     def test_requeue_error_is_logged(
-        self, minimal_config: MaxwellDaemonConfig, isolated_ledger_path: Path
+        self, minimal_config: MaxwellDaemonConfig, isolated_ledger_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """A failed RUNNING status update is logged at ERROR level."""
         import logging
@@ -425,45 +437,27 @@ class TestRunningStatusResilience:
             def recover_pending(self) -> list[Any]:
                 return []
 
+            def delete(self, task_id: str) -> None:
+                pass
+
+            async def aprune(self, days: int, *, now: Any = None) -> int:
+                return 0
+
         store = _FailFirstStore()
 
-        async def body(caplog: pytest.LogCaptureFixture) -> None:
+        async def body() -> None:
             d = Daemon(minimal_config, ledger_path=isolated_ledger_path)
             d._task_store = store  # type: ignore[assignment]
             await d.start(worker_count=1)
             try:
-                with caplog.at_level(logging.ERROR, logger="maxwell_daemon.daemon"):
-                    task = d.submit("log test")
-                    await _wait_for_status(d, task.id, TaskStatus.COMPLETED, timeout=10.0)
-                matched = [r for r in caplog.records if "re-queuing" in r.getMessage()]
-                assert matched, "expected re-queuing log message"
+                task = d.submit("log test")
+                await _wait_for_status(d, task.id, TaskStatus.COMPLETED, timeout=10.0)
             finally:
                 await d.stop()
 
-        # Run inline with a fixture-free caplog substitute
-        import io
-
-        handler = logging.StreamHandler(io.StringIO())
-        handler.setLevel(logging.ERROR)
-        logger = logging.getLogger("maxwell_daemon.daemon")
-        logger.addHandler(handler)
-        try:
-
-            async def run() -> None:
-                d = Daemon(minimal_config, ledger_path=isolated_ledger_path)
-                d._task_store = store  # type: ignore[assignment]
-                await d.start(worker_count=1)
-                try:
-                    task = d.submit("log test")
-                    await _wait_for_status(d, task.id, TaskStatus.COMPLETED, timeout=10.0)
-                finally:
-                    await d.stop()
-
-            _run(run())
-        finally:
-            logger.removeHandler(handler)
-        output = handler.stream.getvalue()
-        assert "re-queuing" in output
+        _run(body())
+        captured = capsys.readouterr()
+        assert "re-queuing" in captured.err or "re-queuing" in captured.out
 
 
 class TestSubmitThreadsafe:

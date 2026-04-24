@@ -108,7 +108,7 @@ class TestOpenMode:
 
     def test_post_tasks_no_auth_required(self, daemon: Daemon) -> None:
         with TestClient(create_app(daemon)) as c:
-            r = c.post("/api/v1/tasks", json={"prompt": "hello"})
+            r = c.post("/api/v1/tasks", json={"prompt": "fix all bugs in the codebase"})
             assert r.status_code == 202
 
 
@@ -125,7 +125,7 @@ class TestStaticTokenBackwardCompat:
     def test_static_token_post_tasks(self, static_only_client: TestClient) -> None:
         r = static_only_client.post(
             "/api/v1/tasks",
-            json={"prompt": "hi"},
+            json={"prompt": "test prompt text for rbac"},
             headers=_bearer("admin-static-secret"),
         )
         assert r.status_code == 202
@@ -202,7 +202,7 @@ class TestViewerJWT:
     ) -> None:
         r = jwt_only_client.post(
             "/api/v1/tasks",
-            json={"prompt": "hi"},
+            json={"prompt": "test prompt text for rbac"},
             headers=_bearer(viewer_token(jwt_cfg)),
         )
         assert r.status_code == 403
@@ -240,7 +240,7 @@ class TestOperatorJWT:
     def test_operator_can_post_tasks(self, jwt_only_client: TestClient, jwt_cfg: JWTConfig) -> None:
         r = jwt_only_client.post(
             "/api/v1/tasks",
-            json={"prompt": "run this"},
+            json={"prompt": "run this task please"},
             headers=_bearer(operator_token(jwt_cfg)),
         )
         assert r.status_code == 202
@@ -287,7 +287,7 @@ class TestAdminJWT:
     def test_admin_can_post_tasks(self, jwt_only_client: TestClient, jwt_cfg: JWTConfig) -> None:
         r = jwt_only_client.post(
             "/api/v1/tasks",
-            json={"prompt": "admin work"},
+            json={"prompt": "admin work item"},
             headers=_bearer(admin_token(jwt_cfg)),
         )
         assert r.status_code == 202
@@ -453,7 +453,7 @@ class TestMixedAuth:
     ) -> None:
         r = both_client.post(
             "/api/v1/tasks",
-            json={"prompt": "x"},
+            json={"prompt": "x" * 10},
             headers=_bearer(viewer_token(jwt_cfg)),
         )
         assert r.status_code == 403
@@ -467,7 +467,7 @@ class TestMixedAuth:
     ) -> None:
         r = both_client.post(
             "/api/v1/tasks",
-            json={"prompt": "operator task"},
+            json={"prompt": "operator task prompt"},
             headers=_bearer(operator_token(jwt_cfg)),
         )
         assert r.status_code == 202

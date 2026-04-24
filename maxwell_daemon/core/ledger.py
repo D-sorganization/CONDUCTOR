@@ -28,6 +28,8 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from contextlib import contextmanager
+from typing import Iterator
 
 from maxwell_daemon.backends.base import TokenUsage
 
@@ -65,23 +67,25 @@ class CostLedger:
     def __init__(self, db_path: Path | str) -> None:
         self._path = Path(db_path).expanduser()
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        # Persistent connection — avoids per-operation open/close overhead.
-        self._conn = sqlite3.connect(
-            str(self._path),
-            isolation_level=None,  # autocommit
-            check_same_thread=False,
-        )
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.executescript(_SCHEMA)
-        # threading.Lock guards the connection itself; only used from thread-pool
-        # workers dispatched via run_in_executor, never held across await points.
+        with self._connect() as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.executescript(_SCHEMA)
         self._lock = threading.Lock()
+
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        conn = sqlite3.connect(str(self._path), isolation_level=None, timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        try:
+            yield conn
+        finally:
+            conn.close()
 
     # ── Sync helpers (called inside thread-pool workers) ─────────────────────
 
     def _record_sync(self, rec: CostRecord) -> None:
-        with self._lock:
-            self._conn.execute(
+        with self._lock, self._connect() as conn:
+            conn.execute(
                 """
                 INSERT INTO cost_records
                   (ts, backend, model, repo, agent_id,
@@ -102,16 +106,18 @@ class CostLedger:
             )
 
     def _total_since_sync(self, since: datetime) -> float:
-        with self._lock:
-            row = self._conn.execute(
+        # Reads don't strictly need the lock with WAL, but we keep it for simplicity
+        # or remove it if parallel reads are desired. The issue says "reads can proceed in parallel".
+        with self._connect() as conn:
+            row = conn.execute(
                 "SELECT COALESCE(SUM(cost_usd), 0) FROM cost_records WHERE ts >= ?",
                 (since.isoformat(),),
             ).fetchone()
         return float(row[0])
 
     def _by_backend_sync(self, since: datetime) -> dict[str, float]:
-        with self._lock:
-            rows = self._conn.execute(
+        with self._connect() as conn:
+            rows = conn.execute(
                 """
                 SELECT backend, COALESCE(SUM(cost_usd), 0)
                 FROM cost_records WHERE ts >= ? GROUP BY backend
@@ -124,8 +130,8 @@ class CostLedger:
         if older_than_days < 0:
             raise ValueError(f"older_than_days must be >= 0, got {older_than_days}")
         cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=older_than_days)
-        with self._lock:
-            cursor = self._conn.execute(
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(
                 "DELETE FROM cost_records WHERE ts < ?",
                 (cutoff.isoformat(),),
             )
@@ -199,6 +205,5 @@ class CostLedger:
         return spent / fraction
 
     def close(self) -> None:
-        """Close the persistent connection. Call on daemon shutdown."""
-        with self._lock:
-            self._conn.close()
+        """Compatibility hook for stores that do not keep an open connection."""
+        return None

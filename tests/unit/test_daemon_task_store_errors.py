@@ -51,6 +51,15 @@ class _FailingSaveStore:
     def recover_pending(self) -> list[Any]:
         return []
 
+    def get(self, _id: str) -> Any:
+        return None
+
+    def delete(self, _id: str) -> None:
+        pass
+
+    async def aprune(self, _days: int) -> int:
+        return 0
+
 
 async def _wait_for_status(
     daemon: Daemon, task_id: str, expected: TaskStatus, timeout: float = 10.0
@@ -72,7 +81,7 @@ class TestTaskStoreErrorLogging:
         self,
         minimal_config: MaxwellDaemonConfig,
         isolated_ledger_path: Path,
-        caplog: pytest.LogCaptureFixture,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         store = _FailingSaveStore()
 
@@ -90,17 +99,13 @@ class TestTaskStoreErrorLogging:
             finally:
                 await d.stop()
 
-        with caplog.at_level(logging.ERROR, logger="maxwell_daemon.daemon"):
-            _run(body())
+        _run(body())
 
         # The fix replaces suppress(Exception) with an explicit log.exception.
-        matched = [r for r in caplog.records if "task store write failed" in r.getMessage()]
-        assert matched, (
-            "expected 'task store write failed' log.exception; "
-            f"records={[r.getMessage() for r in caplog.records]}"
-        )
+        captured = capsys.readouterr()
+        assert "task store write failed" in captured.out or "task store write failed" in captured.err
         # The failure is an *exception* log (with traceback), not a plain error.
-        assert matched[0].exc_info is not None
+        assert "Traceback" in captured.out or "Traceback" in captured.err
 
 
 class TestEventPublishFailure:

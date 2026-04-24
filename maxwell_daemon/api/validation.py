@@ -15,7 +15,7 @@ RepoField = Annotated[
 
 PromptField = Annotated[
     str, 
-    Field(min_length=10, max_length=50000, description="Prompt text must be between 10 and 50,000 characters")
+    Field(min_length=10, max_length=1000000, description="Prompt text (prompts > 50KB will be automatically offloaded to artifacts)")
 ]
 
 PriorityField = Annotated[
