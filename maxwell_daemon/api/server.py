@@ -1209,15 +1209,6 @@ def _control_plane_view_from_task(daemon: Daemon, task: Task) -> ControlPlaneWor
         actions=_control_plane_actions_for_task(task),
     )
 
-class WebhookTriggerRequest(BaseModel):
-    """Body accepted by ``POST /api/webhooks/trigger``."""
-
-    prompt: str = Field(..., min_length=1)
-    repo: str | None = None
-    backend: str | None = None
-    priority: int = Field(default=100, ge=0, le=1000)
-
-
 def create_app(
     daemon: Daemon,
     *,
