@@ -9,20 +9,17 @@ Reduces boilerplate across test files by providing:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
 from maxwell_daemon.config import BudgetConfig, MaxwellDaemonConfig
-from maxwell_daemon.core.actions import ActionKind, ActionRiskLevel, ActionStatus
-from maxwell_daemon.core.ledger import CostLedger, CostRecord
+from maxwell_daemon.core.ledger import CostRecord
 from maxwell_daemon.daemon.runner import Task, TaskKind, TaskStatus
 
 __all__ = [
-    "TaskFactory",
-    "CostRecordFactory",
     "ConfigFactory",
+    "CostRecordFactory",
+    "TaskFactory",
     "assert_cost_record_valid",
     "assert_task_state_valid",
 ]
@@ -92,9 +89,7 @@ class CostRecordFactory:
         """Create a cost record for Anthropic models."""
         if cost_usd is None:
             # Rough estimate: 3/$15 per 1M for Sonnet
-            cost_usd = (prompt_tokens * 0.003 / 1000) + (
-                completion_tokens * 0.015 / 1000
-            )
+            cost_usd = (prompt_tokens * 0.003 / 1000) + (completion_tokens * 0.015 / 1000)
 
         return CostRecord(
             backend="anthropic",
@@ -118,9 +113,7 @@ class CostRecordFactory:
         """Create a cost record for OpenAI models."""
         if cost_usd is None:
             # Rough estimate: 5/$15 per 1M for gpt-4o
-            cost_usd = (prompt_tokens * 0.005 / 1000) + (
-                completion_tokens * 0.015 / 1000
-            )
+            cost_usd = (prompt_tokens * 0.005 / 1000) + (completion_tokens * 0.015 / 1000)
 
         return CostRecord(
             backend="openai",
@@ -170,14 +163,14 @@ class ConfigFactory:
 
 def assert_cost_record_valid(record: CostRecord) -> None:
     """Assert that a CostRecord meets basic validity constraints.
-    
+
     Raises AssertionError if any constraint is violated.
     """
     assert record.prompt_tokens >= 0, "prompt_tokens must be non-negative"
     assert record.completion_tokens >= 0, "completion_tokens must be non-negative"
-    assert (
-        record.total_tokens == record.prompt_tokens + record.completion_tokens
-    ), "total_tokens must equal sum of prompt+completion"
+    assert record.total_tokens == record.prompt_tokens + record.completion_tokens, (
+        "total_tokens must equal sum of prompt+completion"
+    )
     assert record.cost_usd >= 0, "cost_usd must be non-negative"
     assert record.backend, "backend must be non-empty"
     assert record.model, "model must be non-empty"
@@ -185,13 +178,11 @@ def assert_cost_record_valid(record: CostRecord) -> None:
 
 def assert_task_state_valid(task: Task) -> None:
     """Assert that a Task is in a consistent state.
-    
+
     Raises AssertionError if any constraint is violated.
     """
     assert task.id, "task.id must be non-empty"
-    assert task.prompt or task.kind == TaskKind.ISSUE, (
-        "prompt is required for PROMPT tasks"
-    )
+    assert task.prompt or task.kind == TaskKind.ISSUE, "prompt is required for PROMPT tasks"
     assert 0 <= task.priority <= 200, "priority must be in [0, 200]"
     assert task.status in TaskStatus, "status must be a valid TaskStatus"
     if task.kind == TaskKind.ISSUE:
