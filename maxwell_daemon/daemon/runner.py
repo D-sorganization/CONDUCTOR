@@ -89,6 +89,15 @@ class DuplicateTaskIdError(ValueError):
 
 
 @dataclass
+class Attachment:
+    kind: str
+    uri: str
+    content_type: str
+    size: int
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class Task:
     id: str
     prompt: str
@@ -108,6 +117,7 @@ class Task:
     depends_on: list[str] = field(default_factory=list)
     # Priority: lower number = higher priority. 0=emergency, 50=high, 100=normal, 200=batch.
     priority: int = 100
+    attachments: list[Attachment] = field(default_factory=list)
     status: TaskStatus = TaskStatus.QUEUED
     result: str | None = None
     error: str | None = None
@@ -171,12 +181,16 @@ class Daemon:
         self._config_path: Path | None = config_path
         # Protects atomic swap of _config, _budget, and _router during reload.
         self._config_lock = threading.Lock()
+        from maxwell_daemon.mcp.client import McpClientManager
+
+        self._mcp_manager = McpClientManager(config.mcp_servers)
+
         self._fleet_registry = InMemoryFleetCapabilityRegistry()
         self._ledger = CostLedger(
             ledger_path or Path.home() / ".local/share/maxwell-daemon/ledger.db"
         )
         self._budget = BudgetEnforcer(config.budget, self._ledger)
-        self._router = BackendRouter(config, budget=self._budget)
+        self._router = BackendRouter(config, mcp_manager=self._mcp_manager, budget=self._budget)
         self._events = EventBus()
         self._workspace_root = (
             workspace_root or Path.home() / ".local/share/maxwell-daemon/workspaces"
@@ -340,14 +354,18 @@ class Daemon:
         elif role == "worker":
             # Worker: accepts tasks via REST API and executes locally — no discovery.
             self._worker_count = worker_count
-            for i in range(worker_count):
-                self._workers.append(asyncio.create_task(self._worker_loop(i), name=f"worker-{i}"))
-            log.info("daemon started as worker with %d workers", worker_count)
+            self._workers = [
+                asyncio.create_task(self._worker_loop(i), name=f"AgentWorker-{i}")
+                for i in range(self._worker_count)
+            ]
+            await self._mcp_manager.start()
+            log.info("Daemon workers started", workers=self._worker_count)
         else:
             # Standalone (default): run local workers.
             self._worker_count = worker_count
             for i in range(worker_count):
                 self._workers.append(asyncio.create_task(self._worker_loop(i), name=f"worker-{i}"))
+            await self._mcp_manager.start()
             log.info("daemon started (standalone) with %d workers", worker_count)
 
         # Install SIGUSR1 handler for config hot-reload (Unix only).
@@ -436,7 +454,14 @@ class Daemon:
             await asyncio.gather(*self._bg_tasks, return_exceptions=True)
             self._bg_tasks.clear()
 
-        log.info("daemon stopped")
+        if getattr(self, "_memory", None) is not None:
+            close_method = getattr(self._memory, "aclose", None)
+            if close_method is not None:
+                await close_method()
+
+        await self._mcp_manager.stop()
+
+        log.info("Daemon shut down")
 
     def prune_retained_history(self, older_than_days: int | None = None) -> dict[str, int]:
         """Prune terminal tasks and ledger rows older than the retention window."""
@@ -607,8 +632,21 @@ class Daemon:
         priority: int = 100,
         task_id: str | None = None,
         depends_on: list[str] | None = None,
+        attachments: list[Attachment] | None = None,
     ) -> Task:
         resolved_task_id = task_id or uuid.uuid4().hex[:12]
+
+        if len(prompt) > 50000:
+            main_req = prompt[:10000]
+            remainder = prompt[10000:]
+            artifact = self._artifact_store.put_text(
+                kind=ArtifactKind.METADATA,
+                name="prompt_overflow.txt",
+                text=remainder,
+                task_id=resolved_task_id,
+            )
+            prompt = f"{main_req}\n\n[PROMPT TRUNCATED. Remainder stored in artifact_id:///{artifact.id}]"
+
         task = Task(
             id=resolved_task_id,
             prompt=prompt,
@@ -618,6 +656,7 @@ class Daemon:
             model=model,
             priority=priority,
             depends_on=list(depends_on) if depends_on else [],
+            attachments=list(attachments) if attachments else [],
         )
         # Persist and track the task under lock, then route the queue mutation
         # through the daemon loop if this caller is on a foreign thread.
@@ -664,6 +703,7 @@ class Daemon:
         repo: str | None = None,
         backend: str | None = None,
         model: str | None = None,
+        attachments: list[Attachment] | None = None,
     ) -> Task:
         """Enqueue a prompt task from any thread. **Cross-thread safe.**
 
@@ -678,13 +718,27 @@ class Daemon:
         """
         if self._loop is None:
             raise RuntimeError("daemon must be started before submit_threadsafe()")
+
+        resolved_task_id = uuid.uuid4().hex[:12]
+        if len(prompt) > 50000:
+            main_req = prompt[:10000]
+            remainder = prompt[10000:]
+            artifact = self._artifact_store.put_text(
+                kind=ArtifactKind.METADATA,
+                name="prompt_overflow.txt",
+                text=remainder,
+                task_id=resolved_task_id,
+            )
+            prompt = f"{main_req}\n\n[PROMPT TRUNCATED. Remainder stored in artifact_id:///{artifact.id}]"
+
         task = Task(
-            id=uuid.uuid4().hex[:12],
+            id=resolved_task_id,
             prompt=prompt,
             kind=TaskKind.PROMPT,
             repo=repo,
             backend=backend,
             model=model,
+            attachments=list(attachments) if attachments else [],
         )
         self._task_store.save(task)
         with self._tasks_lock:
@@ -707,6 +761,7 @@ class Daemon:
         model: str | None = None,
         priority: int = 100,
         task_id: str | None = None,
+        attachments: list[Attachment] | None = None,
     ) -> Task:
         """Queue a task that reads a GitHub issue and opens a draft PR for it."""
         if mode not in {"plan", "implement"}:
@@ -723,6 +778,7 @@ class Daemon:
             issue_number=issue_number,
             issue_mode=mode,
             priority=priority,
+            attachments=list(attachments) if attachments else [],
         )
         # See note in submit(): queue mutation must stay loop-affine once the
         # daemon has started.
@@ -1474,6 +1530,7 @@ class Daemon:
                 model=decision.model,
                 status="success",
                 tokens=resp.usage.total_tokens,
+                cached_tokens=resp.usage.cached_tokens,
                 cost_usd=task.cost_usd,
                 duration_seconds=(datetime.now(timezone.utc) - task.started_at).total_seconds(),
             )
