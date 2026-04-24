@@ -84,12 +84,9 @@ class TestLedger:
         ledger._pool.put(conn)
 
         ledger.close()
-<<<<<<< HEAD
-=======
         # After close, attempting to use the previously pooled connection should raise
         with pytest.raises(sqlite3.ProgrammingError):
             conn.execute("SELECT 1")
->>>>>>> origin/main
 
 
 class TestAsyncAPI:

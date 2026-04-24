@@ -49,14 +49,9 @@ RoutingKeyField = Annotated[
 ]
 
 PromptField = Annotated[
-<<<<<<< HEAD
-    str, 
-    Field(min_length=10, max_length=1000000, description="Prompt text (prompts > 50KB will be automatically offloaded to artifacts)")
-=======
     str,
     StringConstraints(min_length=1, max_length=500000),
     Field(description="Prompt text must be between 1 and 500,000 characters"),
->>>>>>> origin/main
 ]
 
 PriorityField = Annotated[

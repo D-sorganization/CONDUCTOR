@@ -34,10 +34,8 @@ def _redact_value(val: Any) -> Any:
         return "***"
     return f"{val[:8]}...{val[-4:]}"
 
-<<<<<<< HEAD
 _SECRET_PATTERN = re.compile(r"(?:sk-|ant-|key-|ghp_)[a-zA-Z0-9_-]{20,}")
-=======
->>>>>>> origin/main
+
 
 def _redact_secrets_processor(
     logger: structlog.types.WrappedLogger, name: str, event_dict: structlog.types.EventDict

@@ -225,24 +225,12 @@ class TestTasksDictThreadSafety:
 
         def _writer() -> None:
             nonlocal stop
-<<<<<<< HEAD
-            while not stop:
-                try:
-                    d.submit("hi")
-                except QueueSaturationError:
-                    # Expected when queue fills up — not the bug we're testing.
-                    break
-                except BaseException as e:
-                    errors.append(e)
-                    break
-=======
             try:
                 while not stop:
                     with contextlib.suppress(QueueSaturationError):
                         d.submit("hi")
             except BaseException as e:
                 errors.append(e)
->>>>>>> origin/main
 
         def _reader() -> None:
             try:

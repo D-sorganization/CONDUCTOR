@@ -206,11 +206,7 @@ class TestTaskExecution:
             d.reprioritize_task(task.id, 10)
             calls: list[str] = []
 
-<<<<<<< HEAD
-            async def fake_execute(executed: Task, memory_snapshot: Any) -> None:
-=======
             async def fake_execute(executed: Task, snapshot: object) -> None:
->>>>>>> origin/main
                 calls.append(executed.id)
                 executed.status = TaskStatus.COMPLETED
 
@@ -449,29 +445,6 @@ class TestRunningStatusResilience:
         store = _FailFirstStore()
 
         async def body() -> None:
-<<<<<<< HEAD
-=======
-            import structlog
-            from structlog.testing import LogCapture
-
-            cap_structlog = LogCapture()
-            structlog.configure(processors=[cap_structlog])
-
->>>>>>> origin/main
-            d = Daemon(minimal_config, ledger_path=isolated_ledger_path)
-            d._task_store = store  # type: ignore[assignment]
-            await d.start(worker_count=1)
-            try:
-                task = d.submit("log test")
-                await _wait_for_status(d, task.id, TaskStatus.COMPLETED, timeout=10.0)
-<<<<<<< HEAD
-            finally:
-                await d.stop()
-
-        _run(body())
-        captured = capsys.readouterr()
-        assert "re-queuing" in captured.err or "re-queuing" in captured.out
-=======
                 matched = [
                     r for r in cap_structlog.entries if "re-queuing" in str(r.get("event", ""))
                 ]
@@ -480,7 +453,6 @@ class TestRunningStatusResilience:
                 await d.stop()
 
         # Removed redundant stream handler test
->>>>>>> origin/main
 
 
 class TestSubmitThreadsafe:

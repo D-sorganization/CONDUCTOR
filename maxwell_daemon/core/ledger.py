@@ -70,12 +70,6 @@ class CostLedger:
     def __init__(self, db_path: Path | str, pool_size: int = 5) -> None:
         self._path = Path(db_path).expanduser()
         self._path.parent.mkdir(parents=True, exist_ok=True)
-<<<<<<< HEAD
-        with self._connect() as conn:
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.executescript(_SCHEMA)
-        self._lock = threading.Lock()
-=======
         self._pool_size = pool_size
         self._pool: queue.Queue[sqlite3.Connection] = queue.Queue(maxsize=pool_size)
 
@@ -117,7 +111,6 @@ class CostLedger:
                 self._pool.put_nowait(conn)
             except queue.Full:
                 conn.close()
->>>>>>> origin/main
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -131,11 +124,7 @@ class CostLedger:
     # ── Sync helpers (called inside thread-pool workers) ─────────────────────
 
     def _record_sync(self, rec: CostRecord) -> None:
-<<<<<<< HEAD
-        with self._lock, self._connect() as conn:
-=======
         with self._write_lock, self._get_conn() as conn:
->>>>>>> origin/main
             conn.execute(
                 """
                 INSERT INTO cost_records
@@ -156,27 +145,6 @@ class CostLedger:
                 ),
             )
 
-<<<<<<< HEAD
-    def _total_since_sync(self, since: datetime) -> float:
-        # Reads don't strictly need the lock with WAL, but we keep it for simplicity
-        # or remove it if parallel reads are desired. The issue says "reads can proceed in parallel".
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT COALESCE(SUM(cost_usd), 0) FROM cost_records WHERE ts >= ?",
-                (since.isoformat(),),
-            ).fetchone()
-        return float(row[0])
-
-    def _by_backend_sync(self, since: datetime) -> dict[str, float]:
-        with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT backend, COALESCE(SUM(cost_usd), 0)
-                FROM cost_records WHERE ts >= ? GROUP BY backend
-                """,
-                (since.isoformat(),),
-            ).fetchall()
-=======
     def _total_since_sync(self, since: datetime, end: datetime | None = None) -> float:
         with self._get_conn() as conn:
             query = "SELECT COALESCE(SUM(cost_usd), 0) FROM cost_records WHERE ts >= ?"
@@ -196,7 +164,6 @@ class CostLedger:
                 params.append(end.isoformat())
             query += " GROUP BY backend"
             rows = conn.execute(query, tuple(params)).fetchall()
->>>>>>> origin/main
         return {backend: float(cost) for backend, cost in rows}
 
     def _cache_metrics_raw_sync(
@@ -222,11 +189,7 @@ class CostLedger:
         if older_than_days < 0:
             raise ValueError(f"older_than_days must be >= 0, got {older_than_days}")
         cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=older_than_days)
-<<<<<<< HEAD
-        with self._lock, self._connect() as conn:
-=======
         with self._write_lock, self._get_conn() as conn:
->>>>>>> origin/main
             cursor = conn.execute(
                 "DELETE FROM cost_records WHERE ts < ?",
                 (cutoff.isoformat(),),
@@ -313,10 +276,6 @@ class CostLedger:
         return spent / fraction
 
     def close(self) -> None:
-<<<<<<< HEAD
-        """Compatibility hook for stores that do not keep an open connection."""
-        return None
-=======
         """Close the persistent connection. Call on daemon shutdown."""
         while not self._pool.empty():
             try:
@@ -324,4 +283,3 @@ class CostLedger:
                 conn.close()
             except queue.Empty:
                 break
->>>>>>> origin/main

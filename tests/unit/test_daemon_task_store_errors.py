@@ -78,18 +78,9 @@ class TestTaskStoreErrorLogging:
         self,
         minimal_config: MaxwellDaemonConfig,
         isolated_ledger_path: Path,
-<<<<<<< HEAD
         capsys: pytest.CaptureFixture[str],
-=======
->>>>>>> origin/main
     ) -> None:
         store = _FailingSaveStore()
-
-        import structlog
-        from structlog.testing import LogCapture
-
-        cap_structlog = LogCapture()
-        structlog.configure(processors=[cap_structlog])
 
         async def body() -> None:
             d = Daemon(minimal_config, ledger_path=isolated_ledger_path)
@@ -104,18 +95,11 @@ class TestTaskStoreErrorLogging:
 
         _run(body())
 
-<<<<<<< HEAD
         # The fix replaces suppress(Exception) with an explicit log.exception.
         captured = capsys.readouterr()
         assert "task store write failed" in captured.out or "task store write failed" in captured.err
         # The failure is an *exception* log (with traceback), not a plain error.
         assert "Traceback" in captured.out or "Traceback" in captured.err
-=======
-        matched = [
-            r for r in cap_structlog.entries if "task store write failed" in str(r.get("event", ""))
-        ]
-        assert matched, "expected 'task store write failed' log"
->>>>>>> origin/main
 
 
 class TestEventPublishFailure:

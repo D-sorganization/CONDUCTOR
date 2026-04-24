@@ -129,27 +129,12 @@ class Task:
         return (self.priority, self.created_at) < (other.priority, other.created_at)
 
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-@dataclass(slots=True, frozen=True)
-class ConfigSnapshot:
-    """Immutable view of the daemon configuration and its active collaborators.
-
-    Captured by workers at task-claim time so that hot-reloads of the global
-    daemon config do not cause mid-task inconsistency.
-    """
-
-    config: MaxwellDaemonConfig
-    router: BackendRouter
-    ledger: CostLedger
-=======
 @dataclass(frozen=True, slots=True)
 class ConfigSnapshot:
     """Frozen execution collaborators captured when a worker claims a task."""
 
     config: MaxwellDaemonConfig
     router: BackendRouter
->>>>>>> origin/main
     budget: BudgetEnforcer
 
 
@@ -329,25 +314,8 @@ class Daemon:
         path = self._config_path or default_config_path()
         # Validate first (outside the lock) so we never swap in a bad config.
         new_config = load_config(path)
-<<<<<<< HEAD
-<<<<<<< HEAD
-        new_router = BackendRouter(new_config)
-
-        # Detect fields requiring restart
-        reasons = []
-        if new_config.role != self._config.role:
-            reasons.append(f"role changed from {self._config.role} to {new_config.role}")
-        if new_config.api.port != self._config.api.port:
-            reasons.append(f"api.port changed from {self._config.api.port} to {new_config.api.port}")
-        if new_config.api.host != self._config.api.host:
-            reasons.append(f"api.host changed from {self._config.api.host} to {new_config.api.host}")
-        if new_config.memory.workspace_path != self._config.memory.workspace_path:
-            reasons.append("memory.workspace_path changed")
-
-=======
         new_budget = BudgetEnforcer(new_config.budget, self._ledger)
         new_router = BackendRouter(new_config, budget=new_budget)
->>>>>>> origin/main
 =======
         new_router = BackendRouter(new_config)
 >>>>>>> origin/main
@@ -666,15 +634,7 @@ class Daemon:
                     self._queue.put_nowait(item)
                 except asyncio.QueueFull:
                     log.error("Queue saturated inline; dropped task %s", getattr(task, "id", None))
-<<<<<<< HEAD
-                    if task is not None and getattr(task, "id", None):
-                        with self._tasks_lock:
-                            self._tasks.pop(task.id, None)
-                        if hasattr(self._task_store, "delete"):
-                            self._task_store.delete(task.id)
-=======
 
->>>>>>> origin/main
             self._loop.call_soon_threadsafe(_put_inline)
             return
 
@@ -729,14 +689,8 @@ class Daemon:
             try:
                 self._enqueue_task_entry(task.priority, task)
             except QueueSaturationError:
-<<<<<<< HEAD
-                self._tasks.pop(task.id, None)
-                if hasattr(self._task_store, "delete"):
-                    self._task_store.delete(task.id)
-=======
                 del self._tasks[task.id]
                 self._task_store.delete(task.id)
->>>>>>> origin/main
                 raise
         # Fire-and-forget: if there's no running loop yet (e.g. sync test
         # submits before start()), skip the event — the queued state is
@@ -784,13 +738,6 @@ class Daemon:
         """
         if self._loop is None:
             raise RuntimeError("daemon must be started before submit_threadsafe()")
-<<<<<<< HEAD
-<<<<<<< HEAD
-        task_id = uuid.uuid4().hex[:12]
-        task = Task(
-            id=task_id,
-            prompt=self._offload_prompt_if_needed(task_id, prompt),
-=======
 
         resolved_task_id = uuid.uuid4().hex[:12]
         if len(prompt) > 50000:
@@ -805,7 +752,6 @@ class Daemon:
             prompt = f"{main_req}\n\n[PROMPT TRUNCATED. Remainder stored in artifact_id:///{artifact.id}]"
 
 =======
->>>>>>> origin/main
         task = Task(
             id=uuid.uuid4().hex[:12],
             prompt=prompt,
@@ -818,23 +764,12 @@ class Daemon:
         self._task_store.save(task)
         with self._tasks_lock:
             self._tasks[task.id] = task
-<<<<<<< HEAD
-        try:
-            self._enqueue_task_entry(task.priority, task)
-        except QueueSaturationError:
-            with self._tasks_lock:
-                self._tasks.pop(task.id, None)
-            if hasattr(self._task_store, "delete"):
-                self._task_store.delete(task.id)
-            raise
-=======
             try:
                 self._enqueue_task_entry(task.priority, task)
             except QueueSaturationError:
                 del self._tasks[task.id]
                 self._task_store.delete(task.id)
                 raise
->>>>>>> origin/main
         return task
 
     def _offload_prompt_if_needed(self, task_id: str, prompt: str) -> str:
@@ -901,14 +836,8 @@ class Daemon:
             try:
                 self._enqueue_task_entry(task.priority, task)
             except QueueSaturationError:
-<<<<<<< HEAD
-                self._tasks.pop(task.id, None)
-                if hasattr(self._task_store, "delete"):
-                    self._task_store.delete(task.id)
-=======
                 del self._tasks[task.id]
                 self._task_store.delete(task.id)
->>>>>>> origin/main
                 raise
         try:
             loop = asyncio.get_running_loop()
@@ -1609,18 +1538,7 @@ class Daemon:
                             task.started_at = None
                     await self._queue.put((task.priority, task))
                     continue
-<<<<<<< HEAD
-<<<<<<< HEAD
-                with self._config_lock:
-                    snapshot = ConfigSnapshot(
-                        config=self._config,
-                        router=self._router,
-                        ledger=self._ledger,
-                        budget=self._budget,
-                    )
-=======
                 snapshot = self._capture_config_snapshot()
->>>>>>> origin/main
                 await self._execute(task, snapshot)
 =======
                 await self._execute(task)
@@ -1645,20 +1563,11 @@ class Daemon:
                     ),
                 )
             )
-<<<<<<< HEAD
-            snapshot.budget.require_under_budget()
-<<<<<<< HEAD
-            from maxwell_daemon.core.cost_evaluator import CostEvaluator
-            evaluator = CostEvaluator(snapshot)
-            choice = evaluator.choose_model(task)
-            
-=======
 >>>>>>> origin/main
             decision = snapshot.router.route(
 =======
             self._budget.require_under_budget()
             decision = self._router.route(
->>>>>>> origin/main
                 repo=task.repo,
                 backend_override=task.backend,
                 model_override=task.model or choice.model,
