@@ -255,8 +255,19 @@ async function refreshAll() {
 
 function updateStatusResources(costOverride) {
   const taskCount = state.allTasks.size || state.tasks.size;
-  const running = [...state.allTasks.values()].filter((t) => t.status === "running").length;
-  const totalCost = costOverride ?? [...state.allTasks.values()].reduce((s, t) => s + (t.cost_usd || 0), 0);
+
+  // ⚡ Bolt: Use a single pass over Map.values() instead of spreading to arrays twice
+  // O(N) array allocation avoided, reducing GC pressure during rapid UI updates
+  let running = 0;
+  let totalCost = 0;
+  for (const t of state.allTasks.values()) {
+    if (t.status === "running") running++;
+    if (costOverride === undefined) totalCost += (t.cost_usd || 0);
+  }
+  if (costOverride !== undefined) {
+    totalCost = costOverride;
+  }
+
   const el = document.getElementById("status-resources");
   if (el) el.textContent = `Tasks ${taskCount} | Running ${running} | Cost ${fmtUsdShort(totalCost)}`;
 }
@@ -268,10 +279,17 @@ async function fetchCostDetail() {
   const detailEl = document.getElementById("cost-summary-detail");
   const byBackend = body.by_backend || {};
   const total = body.month_to_date_usd || 0;
-  const taskCount = [...state.allTasks.values()].length;
-  const avgCost = taskCount > 0
-    ? [...state.allTasks.values()].reduce((s, t) => s + (t.cost_usd || 0), 0) / taskCount
-    : 0;
+
+  // ⚡ Bolt: Use size instead of spreading to an array and getting length.
+  // Then use a for...of loop instead of spreading to an array for reduce.
+  const taskCount = state.allTasks.size;
+  let totalTasksCost = 0;
+  if (taskCount > 0) {
+    for (const t of state.allTasks.values()) {
+      totalTasksCost += (t.cost_usd || 0);
+    }
+  }
+  const avgCost = taskCount > 0 ? totalTasksCost / taskCount : 0;
 
   detailEl.innerHTML = `
     <div class="cost-stat">
