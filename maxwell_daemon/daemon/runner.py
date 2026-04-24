@@ -89,6 +89,15 @@ class DuplicateTaskIdError(ValueError):
 
 
 @dataclass
+class Attachment:
+    kind: str
+    uri: str
+    content_type: str
+    size: int
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class Task:
     id: str
     prompt: str
@@ -108,6 +117,7 @@ class Task:
     depends_on: list[str] = field(default_factory=list)
     # Priority: lower number = higher priority. 0=emergency, 50=high, 100=normal, 200=batch.
     priority: int = 100
+    attachments: list[Attachment] = field(default_factory=list)
     status: TaskStatus = TaskStatus.QUEUED
     result: str | None = None
     error: str | None = None
@@ -621,6 +631,7 @@ class Daemon:
         priority: int = 100,
         task_id: str | None = None,
         depends_on: list[str] | None = None,
+        attachments: list[Attachment] | None = None,
     ) -> Task:
         resolved_task_id = task_id or uuid.uuid4().hex[:12]
         task = Task(
@@ -632,6 +643,7 @@ class Daemon:
             model=model,
             priority=priority,
             depends_on=list(depends_on) if depends_on else [],
+            attachments=list(attachments) if attachments else [],
         )
         # Persist and track the task under lock, then route the queue mutation
         # through the daemon loop if this caller is on a foreign thread.
@@ -678,6 +690,7 @@ class Daemon:
         repo: str | None = None,
         backend: str | None = None,
         model: str | None = None,
+        attachments: list[Attachment] | None = None,
     ) -> Task:
         """Enqueue a prompt task from any thread. **Cross-thread safe.**
 
@@ -699,6 +712,7 @@ class Daemon:
             repo=repo,
             backend=backend,
             model=model,
+            attachments=list(attachments) if attachments else [],
         )
         self._task_store.save(task)
         with self._tasks_lock:
@@ -721,6 +735,7 @@ class Daemon:
         model: str | None = None,
         priority: int = 100,
         task_id: str | None = None,
+        attachments: list[Attachment] | None = None,
     ) -> Task:
         """Queue a task that reads a GitHub issue and opens a draft PR for it."""
         if mode not in {"plan", "implement"}:
@@ -737,6 +752,7 @@ class Daemon:
             issue_number=issue_number,
             issue_mode=mode,
             priority=priority,
+            attachments=list(attachments) if attachments else [],
         )
         # See note in submit(): queue mutation must stay loop-affine once the
         # daemon has started.
