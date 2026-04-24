@@ -453,7 +453,7 @@ def serve(
     cfg = load_config(config)
     log_file = getattr(cfg, "log_file", None)
     configure_logging(level="INFO", log_file=log_file)
-    
+
     daemon = Daemon(cfg)
 
     async def _boot() -> None:

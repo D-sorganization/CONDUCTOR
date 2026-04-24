@@ -88,9 +88,7 @@ class JulesCLIBackend(ILLMBackend):
             detail = stderr.decode(errors="replace").strip() or "jules failed"
             import structlog
 
-            structlog.get_logger(__name__).error(
-                "jules failed", rc=rc, stderr=detail[-32768:]
-            )
+            structlog.get_logger(__name__).error("jules failed", rc=rc, stderr=detail[-32768:])
             raise BackendUnavailableError(f"jules rc={rc}: {detail[:1024]}")
 
         try:

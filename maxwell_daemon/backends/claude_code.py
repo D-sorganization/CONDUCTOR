@@ -98,9 +98,7 @@ class ClaudeCodeCLIBackend(ILLMBackend):
             detail = stderr.decode(errors="replace").strip() or "claude -p failed"
             import structlog
 
-            structlog.get_logger(__name__).error(
-                "claude -p failed", rc=rc, stderr=detail[-32768:]
-            )
+            structlog.get_logger(__name__).error("claude -p failed", rc=rc, stderr=detail[-32768:])
             raise BackendUnavailableError(f"claude -p rc={rc}: {detail[:1024]}")
 
         try:

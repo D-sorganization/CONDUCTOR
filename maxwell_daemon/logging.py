@@ -87,20 +87,22 @@ def configure_logging(
             processor=renderer, foreign_pre_chain=shared_processors
         )
         handler.setFormatter(formatter)
-        
+
         logging.basicConfig(
             level=level.upper(),
             handlers=[handler, logging.StreamHandler(sys.stderr)],
             force=True,
         )
-        
+
         structlog.configure(
             processors=[
                 structlog.stdlib.filter_by_level,
                 *shared_processors,
                 structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
             ],
-            wrapper_class=structlog.make_filtering_bound_logger(logging.getLevelName(level.upper())),
+            wrapper_class=structlog.make_filtering_bound_logger(
+                logging.getLevelName(level.upper())
+            ),
             context_class=dict,
             logger_factory=structlog.stdlib.LoggerFactory(),
             cache_logger_on_first_use=True,
@@ -108,7 +110,9 @@ def configure_logging(
     else:
         structlog.configure(
             processors=[*shared_processors, renderer],
-            wrapper_class=structlog.make_filtering_bound_logger(logging.getLevelName(level.upper())),
+            wrapper_class=structlog.make_filtering_bound_logger(
+                logging.getLevelName(level.upper())
+            ),
             context_class=dict,
             logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
             cache_logger_on_first_use=True,
