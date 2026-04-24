@@ -179,7 +179,10 @@ def record_cache_hit(hit_rate: float) -> None:
 
 def record_gate_verdict(verdict: str, severity: str) -> None:
     """Record a gate verdict with outcome and severity."""
-    MAXWELL_GATE_VERDICTS_TOTAL.labels(verdict=verdict, severity=severity).inc()  # type: ignore[no-untyped-call]
+    labels = MAXWELL_GATE_VERDICTS_TOTAL.labels(
+        verdict=verdict, severity=severity
+    )  # type: ignore[no-untyped-call]
+    labels.inc()  # type: ignore[no-untyped-call]
 
 
 def record_queue_depth(depth: int) -> None:
