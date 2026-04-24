@@ -52,6 +52,16 @@ class TokenBucket:
                 return True
             return False
 
+    def has_capacity(self, amount: float = 1.0) -> bool:
+        with self._lock:
+            self._refill()
+            return self._tokens >= amount
+
+    def consume(self, amount: float = 1.0) -> None:
+        with self._lock:
+            self._refill()
+            self._tokens = max(0.0, self._tokens - amount)
+
     def retry_after_seconds(self) -> float:
         """Seconds until at least 1 token is available."""
         with self._lock:
@@ -108,6 +118,12 @@ class TokenBucketLimiter:
     def check(self, key: str, *, group: str = "default") -> bool:
         return self._bucket(key, group).try_consume()
 
+    def has_capacity(self, key: str, *, group: str = "default", amount: float = 1.0) -> bool:
+        return self._bucket(key, group).has_capacity(amount)
+
+    def consume(self, key: str, *, group: str = "default", amount: float = 1.0) -> None:
+        self._bucket(key, group).consume(amount)
+
     def retry_after(self, key: str, *, group: str = "default") -> float:
         return self._bucket(key, group).retry_after_seconds()
 
@@ -145,6 +161,12 @@ def install_rate_limiter(
     Returns the underlying limiter so tests / metrics integrations can inspect
     bucket state.
     """
+    if "auth_failures" not in groups:
+        # Default policy: permit 5 rapid auth failures, then 1 per 10s.
+        groups_dict = dict(groups)
+        groups_dict["auth_failures"] = {"rate": 0.1, "burst": 5}
+        groups = groups_dict
+
     limiter = TokenBucketLimiter(
         default_rate=default_rate,
         default_burst=default_burst,
@@ -157,6 +179,15 @@ def install_rate_limiter(
         if request.url.path in exempt:
             return await call_next(request)
         key = _client_key(request)
+
+        if not limiter.has_capacity(key, group="auth_failures"):
+            retry = max(1, round(limiter.retry_after(key, group="auth_failures")))
+            return JSONResponse(
+                {"detail": "too many authentication failures"},
+                status_code=429,
+                headers={"Retry-After": str(retry)},
+            )
+
         group = _classify(request.method, request.url.path)
         if not limiter.check(key, group=group):
             retry = max(1, round(limiter.retry_after(key, group=group)))
@@ -165,6 +196,11 @@ def install_rate_limiter(
                 status_code=429,
                 headers={"Retry-After": str(retry)},
             )
-        return await call_next(request)
+            
+        response = await call_next(request)
+        if response.status_code == 401:
+            limiter.consume(key, group="auth_failures", amount=1.0)
+            
+        return response
 
     return limiter

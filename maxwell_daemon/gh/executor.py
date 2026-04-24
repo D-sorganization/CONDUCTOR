@@ -37,8 +37,6 @@ __all__ = ["IssueExecutionError", "IssueExecutor", "IssueResult"]
 
 Mode = Literal["plan", "implement"]
 
-_FENCE_RE = re.compile(r"^\s*```(?:json)?\s*\n?(.*?)\n?```\s*$", re.DOTALL)
-
 
 class IssueExecutionError(RuntimeError):
     """Raised when issue → PR execution can't complete."""
@@ -781,9 +779,19 @@ class IssueExecutor:
     @staticmethod
     def _parse_response(raw: str) -> tuple[str, str]:
         content = raw.strip()
-        fence_match = _FENCE_RE.match(content)
-        if fence_match:
-            content = fence_match.group(1).strip()
+        if content.startswith("```"):
+            lines = content.splitlines()
+            if len(lines) >= 2 and lines[-1].strip() == "```":
+                # Strip the opening fence line and closing fence line
+                content = "\n".join(lines[1:-1]).strip()
+            else:
+                # If there's no closing fence on its own line, 
+                # try stripping just the leading ```json and trailing ```
+                first_newline = content.find('\n')
+                if first_newline != -1:
+                    content = content[first_newline+1:].strip()
+                if content.endswith("```"):
+                    content = content[:-3].strip()
         try:
             parsed = json.loads(content)
         except json.JSONDecodeError as e:
