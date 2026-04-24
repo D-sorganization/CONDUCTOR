@@ -14,9 +14,9 @@ from maxwell_daemon.config import BudgetConfig, MaxwellDaemonConfig
 from maxwell_daemon.core.ledger import CostLedger
 
 __all__ = [
-    "TokenBudgetStatus",
-    "TokenBudgetAllocator",
     "EstimatedCost",
+    "TokenBudgetAllocator",
+    "TokenBudgetStatus",
 ]
 
 
@@ -76,8 +76,8 @@ class TokenBudgetAllocator:
     ) -> EstimatedCost:
         """Estimate the USD cost of a task given model and token counts.
 
-        Returns a tuple of (estimated_prompt_tokens, estimated_completion_tokens, cost_usd).
         Estimates are based on published pricing; actual costs may vary.
+        Returns an EstimatedCost object with detailed cost breakdown.
         """
         key = model
         if model.startswith("ollama:"):
