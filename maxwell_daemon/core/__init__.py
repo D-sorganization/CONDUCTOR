@@ -44,6 +44,11 @@ from maxwell_daemon.core.resource_broker import (
     RoutingPolicy,
 )
 from maxwell_daemon.core.router import BackendRouter
+from maxwell_daemon.core.token_budget import (
+    EstimatedCost,
+    TokenBudgetAllocator,
+    TokenBudgetStatus,
+)
 from maxwell_daemon.core.workspace_service import WorkspaceService
 from maxwell_daemon.core.workspace_store import WorkspaceStore
 from maxwell_daemon.core.workspaces import (
@@ -89,6 +94,7 @@ __all__ = [
     "DelegateSessionSnapshot",
     "DelegateSessionStatus",
     "DelegateSessionStore",
+    "EstimatedCost",
     "HandoffArtifact",
     "LeaseRecoveryPolicy",
     "PolicyDecision",
@@ -100,6 +106,8 @@ __all__ = [
     "RoutingDecision",
     "RoutingPolicy",
     "TaskWorkspace",
+    "TokenBudgetAllocator",
+    "TokenBudgetStatus",
     "WorkspaceCheckpoint",
     "WorkspaceService",
     "WorkspaceStatus",
