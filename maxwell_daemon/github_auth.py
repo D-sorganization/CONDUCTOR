@@ -19,9 +19,12 @@ Usage::
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import field
 from pathlib import Path
 from typing import Any
+
+from pydantic import field_validator
+from pydantic.dataclasses import dataclass
 
 from maxwell_daemon.contracts import require
 
@@ -42,6 +45,13 @@ class GitHubAuth:
     _installation_id: int | None = None
     _private_key_pem: str | None = field(default=None, repr=False)
     _cache: _AppTokenCache | None = field(default=None, repr=False)
+
+    @field_validator('_installation_id')
+    @classmethod
+    def _validate_installation_id(cls, v: int | None) -> int | None:
+        if v is not None and v < 0:
+            raise ValueError("installation_id must be >= 0")
+        return v
 
     # ------------------------------------------------------------------ #
     # Factory methods
