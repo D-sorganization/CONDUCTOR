@@ -19,17 +19,25 @@ from prometheus_client import (
 )
 
 __all__ = [
+    "MAXWELL_CACHE_HIT_RATE",
     "MAXWELL_COST_FORECAST_USD",
     "MAXWELL_DAEMON_ACTIVE_TASKS",
     "MAXWELL_DAEMON_LIVE_TASKS_DICT_SIZE",
     "MAXWELL_FREE_REQUESTS_TOTAL",
+    "MAXWELL_GATE_VERDICTS_TOTAL",
     "MAXWELL_LEDGER_CONNECTIONS_IN_USE",
+    "MAXWELL_QUEUE_DEPTH",
+    "MAXWELL_QUEUE_LATENCY_MS",
     "MAXWELL_REQUESTS_TOTAL",
     "MAXWELL_REQUEST_COST",
     "MAXWELL_REQUEST_DURATION",
     "MAXWELL_TOKENS_TOTAL",
     "build_registry",
     "mount_metrics_endpoint",
+    "record_cache_hit",
+    "record_gate_verdict",
+    "record_queue_depth",
+    "record_queue_latency",
     "record_request",
 ]
 
@@ -93,6 +101,28 @@ MAXWELL_REQUEST_DURATION = Histogram(
     buckets=(0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0),
 )
 
+MAXWELL_QUEUE_DEPTH = Gauge(
+    "maxwell_daemon_queue_depth",
+    "Current depth of the task queue",
+)
+
+MAXWELL_QUEUE_LATENCY_MS = Histogram(
+    "maxwell_daemon_queue_latency_ms",
+    "Latency to dequeue a task from the priority queue",
+    buckets=(0.1, 0.5, 1.0, 2.5, 5.0, 10.0),
+)
+
+MAXWELL_GATE_VERDICTS_TOTAL = Counter(
+    "maxwell_daemon_gate_verdicts_total",
+    "Total gate verdicts by outcome and severity",
+    labelnames=("verdict", "severity"),
+)
+
+MAXWELL_CACHE_HIT_RATE = Gauge(
+    "maxwell_daemon_cache_hit_rate",
+    "Prompt cache hit rate (0.0 to 1.0)",
+)
+
 
 def record_request(
     *,
@@ -140,3 +170,24 @@ def mount_metrics_endpoint(app: FastAPI, *, path: str = "/metrics") -> None:
             content=generate_latest(),
             media_type="text/plain; version=0.0.4; charset=utf-8",
         )
+
+
+def record_cache_hit(hit_rate: float) -> None:
+    """Record the current prompt cache hit rate (0.0 to 1.0)."""
+    MAXWELL_CACHE_HIT_RATE.set(hit_rate)  # type: ignore[no-untyped-call]
+
+
+def record_gate_verdict(verdict: str, severity: str) -> None:
+    """Record a gate verdict with outcome and severity."""
+    labels = MAXWELL_GATE_VERDICTS_TOTAL.labels(verdict=verdict, severity=severity)  # type: ignore[no-untyped-call]
+    labels.inc()  # type: ignore[no-untyped-call]
+
+
+def record_queue_depth(depth: int) -> None:
+    """Record the current task queue depth."""
+    MAXWELL_QUEUE_DEPTH.set(depth)  # type: ignore[no-untyped-call]
+
+
+def record_queue_latency(latency_ms: float) -> None:
+    """Record latency to dequeue a task in milliseconds."""
+    MAXWELL_QUEUE_LATENCY_MS.observe(latency_ms)  # type: ignore[no-untyped-call]
