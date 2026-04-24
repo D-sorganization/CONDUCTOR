@@ -21,7 +21,7 @@ const state = {
 
 const viewOrder = [
   "tasks", "fleet", "gauntlet", "work-items", "approvals", "artifacts",
-  "graphs", "checks", "repos", "history", "cost", "monitor", "debug",
+  "graphs", "checks", "repos", "history", "cost", "monitor", "debug", "benchmarks",
 ];
 
 const commands = [
@@ -39,6 +39,8 @@ const commands = [
   { id: "view.cost", title: "Show Cost", detail: "Open cost analytics", run: () => switchView("cost") },
   { id: "task.new", title: "Dispatch New Task", detail: "Open task dispatch dialog", run: () => openNewTaskDialog() },
   { id: "data.refresh", title: "Refresh Dashboard", detail: "Reload task, cost, and fleet data", run: () => refreshAll() },
+  { id: "view.benchmarks", title: "Show Benchmarks", detail: "Open model benchmark leaderboard", run: () => switchView("benchmarks") },
+  { id: "benchmarks.run", title: "Run Benchmark", detail: "Kick a benchmark run against all backends", run: () => runBenchmark() },
 ];
 
 // ---- helpers ---------------------------------------------------------------
@@ -174,6 +176,7 @@ function switchView(name) {
   if (name === "cost") fetchCostDetail().catch(console.error);
   if (name === "history") renderHistory();
   if (name === "repos") fetchFleet().catch(console.error);  // repos uses same data
+  if (name === "benchmarks") fetchBenchmarkLeaderboard().catch(console.error);
   document.getElementById("status-operation").textContent = `Viewing ${name}`;
 }
 
@@ -1380,6 +1383,80 @@ function handleEvent(evt) {
   }
 }
 
+// ---- benchmarks / leaderboard ----------------------------------------------
+
+async function fetchBenchmarkLeaderboard() {
+  const sortBy = document.getElementById("benchmark-sort")?.value || "success_rate";
+  const r = await fetch(`/api/v1/evals/leaderboard?sort_by=${encodeURIComponent(sortBy)}&limit=50`, {
+    headers: headers(),
+  });
+  if (!r.ok) {
+    setTableMessage("benchmarks-body", 8, `Leaderboard unavailable (${r.status})`);
+    return;
+  }
+  const body = await r.json();
+  renderBenchmarkLeaderboard(body.leaderboard || []);
+}
+
+function renderBenchmarkLeaderboard(rows) {
+  const tbody = document.getElementById("benchmarks-body");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  if (!rows.length) {
+    setTableMessage("benchmarks-body", 8, "No benchmark data yet — click \"Run Benchmark\" to start.");
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+    const successPct = `${((row.success_rate || 0) * 100).toFixed(1)}%`;
+    tr.innerHTML = `
+      <td>${escapeHtml(String(row.rank))}</td>
+      <td>${escapeHtml(row.backend || "—")}</td>
+      <td>${escapeHtml(successPct)}</td>
+      <td>${escapeHtml(String(row.latency_p50_ms ?? "—"))}</td>
+      <td>${escapeHtml(String(row.latency_p95_ms ?? "—"))}</td>
+      <td>${escapeHtml(String(row.total_tokens ?? "—"))}</td>
+      <td>${escapeHtml(String(row.prompt_count ?? "—"))}</td>
+      <td>${escapeHtml(fmtTs(row.completed_at))}</td>
+    `;
+    fragment.appendChild(tr);
+  }
+  tbody.appendChild(fragment);
+}
+
+async function runBenchmark() {
+  const statusEl = document.getElementById("benchmark-run-status");
+  const btn = document.getElementById("benchmarks-run-btn");
+  if (btn) btn.disabled = true;
+  if (statusEl) {
+    statusEl.textContent = "Running benchmark…";
+    statusEl.hidden = false;
+  }
+  try {
+    const r = await fetch("/api/v1/evals/run", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers() },
+      body: JSON.stringify({ backends: [] }),
+    });
+    if (!r.ok) {
+      const detail = await r.text();
+      if (statusEl) statusEl.textContent = `Benchmark failed (${r.status}): ${detail.slice(0, 200)}`;
+      return;
+    }
+    const body = await r.json();
+    if (statusEl) {
+      statusEl.textContent =
+        `Benchmark complete — ${body.backend_count} backend(s), ${body.prompt_count} prompt(s).`;
+    }
+    await fetchBenchmarkLeaderboard();
+  } catch (e) {
+    if (statusEl) statusEl.textContent = `Network error: ${e.message}`;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 // ---- wiring ----------------------------------------------------------------
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -1438,6 +1515,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Repos view
   document.getElementById("repos-refresh-btn").addEventListener("click", () => fetchFleet().catch(console.error));
+
+  // Benchmarks view
+  const benchRefreshBtn = document.getElementById("benchmarks-refresh-btn");
+  if (benchRefreshBtn) benchRefreshBtn.addEventListener("click", () => fetchBenchmarkLeaderboard().catch(console.error));
+  const benchRunBtn = document.getElementById("benchmarks-run-btn");
+  if (benchRunBtn) benchRunBtn.addEventListener("click", () => runBenchmark().catch(console.error));
+  const benchSort = document.getElementById("benchmark-sort");
+  if (benchSort) benchSort.addEventListener("change", () => fetchBenchmarkLeaderboard().catch(console.error));
 
   // Debug view
   document.getElementById("debug-clear-btn").addEventListener("click", () => {

@@ -40,6 +40,7 @@
       <button class="tab" data-view="history" role="tab" aria-selected="false" title="History">H</button>
       <button class="tab" data-view="cost" role="tab" aria-selected="false" title="Cost">C</button>
       <button class="tab" data-view="debug" role="tab" aria-selected="false" title="Debug">D</button>
+      <button class="tab" data-view="benchmarks" role="tab" aria-selected="false" title="Benchmarks">B</button>
     </nav>
 
     <aside class="sidebar" aria-label="Sidebar">
@@ -55,6 +56,7 @@
         <button class="sidebar-item" data-view="checks">Checks</button>
         <button class="sidebar-item" data-view="repos">Repositories</button>
         <button class="sidebar-item" data-view="monitor">Daemon logs</button>
+        <button class="sidebar-item" data-view="benchmarks">Benchmarks</button>
       </section>
       <section>
         <h2>Agents</h2>
@@ -384,6 +386,41 @@
           </tr>
         </thead>
         <tbody id="checks-body"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <!-- ── Benchmarks / leaderboard view ─────────────────────────────── -->
+  <main id="view-benchmarks" class="view" hidden>
+    <section class="card full-width">
+      <div class="card-head">
+        <h2>Model Benchmarks</h2>
+        <div class="filters">
+          <select id="benchmark-sort" aria-label="Sort leaderboard by">
+            <option value="success_rate">Success Rate</option>
+            <option value="latency_p50_ms">Latency p50</option>
+            <option value="mean_latency_ms">Mean Latency</option>
+          </select>
+          <button id="benchmarks-refresh-btn">refresh</button>
+          <button id="benchmarks-run-btn">Run Benchmark</button>
+        </div>
+      </div>
+      <div id="benchmark-run-status" class="hint" hidden></div>
+      <h3 class="section-label">Leaderboard</h3>
+      <table id="benchmarks-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Backend</th>
+            <th>Success Rate</th>
+            <th>Latency p50 (ms)</th>
+            <th>Latency p95 (ms)</th>
+            <th>Total Tokens</th>
+            <th>Prompts</th>
+            <th>Last Run</th>
+          </tr>
+        </thead>
+        <tbody id="benchmarks-body"></tbody>
       </table>
     </section>
   </main>

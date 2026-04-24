@@ -2490,6 +2490,68 @@ def create_app(
             "audit_entries_pruned": audit_removed,
         }
 
+    # ── Benchmark / leaderboard endpoints ─────────────────────────────────────
+
+    class BenchmarkRunRequest(BaseModel):
+        backends: list[str] = Field(default_factory=list, description="Backend names to benchmark")
+
+    class BenchmarkRunResponse(BaseModel):
+        run_ids: list[str]
+        backend_count: int
+        prompt_count: int
+
+    @app.post(
+        "/api/v1/evals/run",
+        dependencies=[Depends(_require_operator())],
+        summary="Trigger a benchmark run against one or more backends",
+    )
+    async def benchmark_run(body: BenchmarkRunRequest) -> BenchmarkRunResponse:
+        from pathlib import Path as _BPath
+
+        from maxwell_daemon.evals.benchmark import BenchmarkRunner
+        from maxwell_daemon.evals.leaderboard import LeaderboardStore
+
+        store_root = _BPath(daemon._config.agent.work_dir) / "benchmark_results"
+        runner = BenchmarkRunner()
+        backends = body.backends or list(daemon._config.backends.keys())
+        if not backends:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "No backends specified and no backends configured.",
+            )
+        results = runner.run(backends)
+        store = LeaderboardStore(store_root)
+        store.save_all(results)
+        return BenchmarkRunResponse(
+            run_ids=[r.run_id for r in results],
+            backend_count=len(results),
+            prompt_count=len(runner._prompts),
+        )
+
+    @app.get(
+        "/api/v1/evals/leaderboard",
+        dependencies=[Depends(_require_viewer())],
+        summary="Return the current model benchmark leaderboard",
+    )
+    async def benchmark_leaderboard(
+        sort_by: str = Query(
+            default="success_rate", description="success_rate | latency_p50_ms | mean_latency_ms"
+        ),
+        limit: int = Query(default=50, ge=1, le=200),
+    ) -> dict:
+        from pathlib import Path as _BPath
+
+        from maxwell_daemon.evals.leaderboard import LeaderboardStore
+
+        store_root = _BPath(daemon._config.agent.work_dir) / "benchmark_results"
+        store = LeaderboardStore(store_root)
+        return {
+            "leaderboard": store.leaderboard(sort_by=sort_by, limit=limit),
+            "summary": store.summary(),
+        }
+
+    # ── Cost endpoint ──────────────────────────────────────────────────────────
+
     @app.get("/api/v1/cost", dependencies=[Depends(_require_viewer())])
     async def cost_summary() -> CostSummary:
         now = datetime.now(timezone.utc)
