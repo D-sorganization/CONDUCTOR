@@ -11,7 +11,17 @@ import pytest
 from maxwell_daemon.config import MaxwellDaemonConfig
 from maxwell_daemon.daemon import Daemon
 from maxwell_daemon.daemon.runner import TaskKind, TaskStatus
+from maxwell_daemon.events import EventKind
 
+class FakeIssue:
+    def __init__(self, title: str = "Fix", body: str = "Fix", labels: list[str] | None = None) -> None:
+        self.title = title
+        self.body = body
+        self.labels = labels or ["bug"]
+
+class FakeGithub:
+    async def get_issue(self, repo: str, number: int) -> FakeIssue:
+        return FakeIssue(labels=["complexity: high"])
 
 class FakeExecutor:
     def __init__(self, *a: Any, **kw: Any) -> None:
@@ -47,7 +57,7 @@ def daemon_with_fake_executor(
         workspace_root=tmp_path / "ws",
     )
     d.set_issue_collaborators(
-        github_client=object(),
+        github_client=FakeGithub(),
         workspace=object(),
         executor_factory=lambda gh, ws, be: FakeExecutor(),
     )
@@ -111,6 +121,49 @@ class TestIssueDispatch:
                 final = daemon_with_fake_executor.get_task(task.id)
                 assert final.status is TaskStatus.COMPLETED
             finally:
+                await daemon_with_fake_executor.stop()
+
+        asyncio.run(body())
+
+    def test_issue_completion_event_uses_effective_model(self, daemon_with_fake_executor: Daemon) -> None:
+        async def body() -> None:
+            # Configure a tier_map that maps "complex" to "override-model"
+            backend_cfg = daemon_with_fake_executor._config.backends[
+                daemon_with_fake_executor._config.agent.default_backend
+            ]
+            backend_cfg.tier_map = {"complex": "override-model"}
+
+            events = []
+            
+            async def drain_events() -> None:
+                sub = daemon_with_fake_executor._events.subscribe()
+                try:
+                    async for ev in sub:
+                        if ev.kind == EventKind.TASK_COMPLETED:
+                            events.append(ev)
+                except asyncio.CancelledError:
+                    pass
+            
+            drain_task = asyncio.create_task(drain_events())
+
+            await daemon_with_fake_executor.start(worker_count=1)
+            try:
+                task = daemon_with_fake_executor.submit_issue(
+                    repo="owner/repo", issue_number=42, mode="plan"
+                )
+                await _run_to_completion(daemon_with_fake_executor, task.id)
+                final = daemon_with_fake_executor.get_task(task.id)
+                assert final.status is TaskStatus.COMPLETED
+                
+                # Give the event loop a chance to propagate events
+                await asyncio.sleep(0.1)
+                
+                assert len(events) == 1
+                payload = events[0].payload
+                assert payload.get("observability", {}).get("model") == "override-model"
+                assert final.model == "override-model"
+            finally:
+                drain_task.cancel()
                 await daemon_with_fake_executor.stop()
 
         asyncio.run(body())
