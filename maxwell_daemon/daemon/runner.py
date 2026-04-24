@@ -97,6 +97,14 @@ class DaemonState:
     queue_depth: int = 0
 
 
+@dataclass
+class ConfigSnapshot:
+    config: MaxwellDaemonConfig
+    router: BackendRouter
+    budget: BudgetEnforcer
+    ledger: CostLedger
+
+
 class Daemon:
     def __init__(
         self,
@@ -127,17 +135,35 @@ class Daemon:
         # Memory store — co-located with the ledger for easy backup.
         from maxwell_daemon.memory import (
             EpisodicStore,
+            MemoryInterface,
             MemoryManager,
+            RemoteMemoryClient,
+            RemoteMemoryManager,
             RepoProfile,
             ScratchPad,
         )
 
         default_memory = Path.home() / ".local/share/maxwell-daemon/memory.db"
-        self._memory = MemoryManager(
+        local_memory = MemoryManager(
             scratchpad=ScratchPad(),
             profile=RepoProfile(default_memory),
             episodes=EpisodicStore(default_memory),
         )
+        memory_cfg = self._config.memory
+        self._memory: MemoryInterface
+        if memory_cfg.mode == "remote":
+            self._memory = RemoteMemoryManager(
+                scratchpad=ScratchPad(),
+                client=RemoteMemoryClient(
+                    base_url=memory_cfg.coordinator_url or "",
+                    auth_token=memory_cfg.auth_token or self._config.api.auth_token,
+                    timeout_seconds=memory_cfg.timeout_seconds,
+                    tls_verify=memory_cfg.tls_verify,
+                ),
+                fallback=local_memory,
+            )
+        else:
+            self._memory = local_memory
         self._tasks: dict[str, Task] = {}
         # ``_tasks`` is touched from async workers *and* from synchronous
         # callers like :meth:`submit` (typically a FastAPI request thread).
@@ -233,15 +259,17 @@ class Daemon:
             log.info("daemon started (standalone) with %d workers", worker_count)
 
         # Install SIGUSR1 handler for config hot-reload (Unix only).
-        try:
-            loop = asyncio.get_running_loop()
-            loop.add_signal_handler(
-                signal.SIGUSR1,
-                lambda: asyncio.create_task(self._reload_config_signal()),
-            )
-        except (AttributeError, NotImplementedError, OSError):
-            # Windows or unsupported platform — skip signal handler.
-            pass
+        sigusr1 = getattr(signal, "SIGUSR1", None)
+        if sigusr1 is not None:
+            try:
+                loop = asyncio.get_running_loop()
+                loop.add_signal_handler(
+                    sigusr1,
+                    lambda: asyncio.create_task(self._reload_config_signal()),
+                )
+            except (AttributeError, NotImplementedError, OSError):
+                # Windows or unsupported platform — skip signal handler.
+                pass
         if self._config.agent.task_retention_days > 0:
             prune_task = asyncio.create_task(self._retention_loop(), name="retention-pruner")
             self._bg_tasks.add(prune_task)
@@ -364,6 +392,42 @@ class Daemon:
             # Task kept alive via strong reference in _bg_tasks.
             bg = loop.create_task(
                 self._events.publish(Event(kind=EventKind.TASK_QUEUED, payload={"id": task.id}))
+            )
+            self._bg_tasks.add(bg)
+            bg.add_done_callback(self._bg_tasks.discard)
+        return task
+
+    def enqueue_task(self, task: Task) -> Task:
+        """Enqueue an already-materialized task, preserving its id and metadata.
+
+        Used by remote workers receiving coordinator-dispatched work. Normal
+        local callers should prefer ``submit`` / ``submit_issue`` so the daemon
+        can assign fresh task IDs.
+        """
+        if task.status is not TaskStatus.QUEUED:
+            raise ValueError(f"enqueue_task expects QUEUED task, got {task.status.value}")
+        if not task.id:
+            raise ValueError("enqueue_task requires a non-empty task id")
+        with self._tasks_lock:
+            if task.id in self._tasks:
+                raise ValueError(f"task {task.id!r} already exists")
+            self._tasks[task.id] = task
+        self._task_store.save(task)
+        self._queue.put_nowait((task.priority, task))
+        with contextlib.suppress(RuntimeError):
+            loop = asyncio.get_running_loop()
+            bg = loop.create_task(
+                self._events.publish(
+                    Event(
+                        kind=EventKind.TASK_QUEUED,
+                        payload={
+                            "id": task.id,
+                            "kind": task.kind.value,
+                            "repo": task.issue_repo or task.repo,
+                            "issue": task.issue_number,
+                        },
+                    )
+                )
             )
             self._bg_tasks.add(bg)
             bg.add_done_callback(self._bg_tasks.discard)
@@ -622,6 +686,8 @@ class Daemon:
                 port=m.port,
                 capacity=m.capacity,
                 tags=tuple(m.tags),
+                tls=m.tls,
+                tls_verify=m.tls_verify,
             )
             for m in fleet_cfg.machines
         )
@@ -685,6 +751,8 @@ class Daemon:
                 tags=m.tags,
                 active_tasks=dispatched_counts.get(m.name, 0),
                 healthy=m.healthy,
+                tls=m.tls,
+                tls_verify=m.tls_verify,
             )
             for m in machines
         )
@@ -778,10 +846,18 @@ class Daemon:
             if task is None:
                 log.info("worker %d received stop sentinel; exiting", worker_id)
                 break
-            # Tasks cancelled while queued should not be executed.
-            if task.status is TaskStatus.CANCELLED:
+            # Reprioritization leaves stale entries in the priority queue. Only
+            # the first dequeued QUEUED entry may transition to RUNNING.
+            if task.status is not TaskStatus.QUEUED:
                 continue
             with bind_context(task_id=task.id, worker_id=worker_id):
+                with self._config_lock:
+                    snapshot = ConfigSnapshot(
+                        config=self._config,
+                        router=self._router,
+                        budget=self._budget,
+                        ledger=self._ledger,
+                    )
                 # Attempt to mark the task RUNNING in the durable store before
                 # executing.  If that write fails (disk full, lock contention),
                 # re-queue the task so it is retried rather than silently lost.
@@ -802,9 +878,9 @@ class Daemon:
                     task.started_at = None
                     await self._queue.put((task.priority, task))
                     continue
-                await self._execute(task)
+                await self._execute(task, snapshot)
 
-    async def _execute(self, task: Task) -> None:
+    async def _execute(self, task: Task, snapshot: ConfigSnapshot) -> None:
         task.status = TaskStatus.RUNNING
         await self._events.publish(
             Event(
@@ -814,8 +890,8 @@ class Daemon:
         )
         decision_backend = decision_model = "unknown"
         try:
-            self._budget.require_under_budget()
-            decision = self._router.route(
+            snapshot.budget.require_under_budget()
+            decision = snapshot.router.route(
                 repo=task.repo,
                 backend_override=task.backend,
                 model_override=task.model,
@@ -824,7 +900,7 @@ class Daemon:
             decision_model = decision.model
 
             if task.kind is TaskKind.ISSUE:
-                await self._execute_issue(task, decision)
+                await self._execute_issue(task, decision, snapshot)
                 return
 
             resp = await decision.backend.complete(
@@ -834,7 +910,7 @@ class Daemon:
             task.result = resp.content
             task.cost_usd = decision.backend.estimate_cost(resp.usage, decision.model)
             task.status = TaskStatus.COMPLETED
-            self._ledger.record(
+            snapshot.ledger.record(
                 CostRecord(
                     ts=datetime.now(timezone.utc),
                     backend=decision.backend_name,
@@ -909,7 +985,7 @@ class Daemon:
                 with contextlib.suppress(AttributeError):
                     self._memory.scratchpad.clear(task.id)
 
-    async def _execute_issue(self, task: Task, decision: Any) -> None:
+    async def _execute_issue(self, task: Task, decision: Any, snapshot: ConfigSnapshot) -> None:
         """Run the issue → PR flow. Called with status already RUNNING."""
         from maxwell_daemon.gh import GitHubClient
         from maxwell_daemon.gh.executor import IssueExecutor
@@ -934,13 +1010,13 @@ class Daemon:
         )
 
         mode = task.issue_mode if task.issue_mode in {"plan", "implement"} else "plan"
-        overrides = resolve_overrides(self._config, repo=task.issue_repo)
+        overrides = resolve_overrides(snapshot.config, repo=task.issue_repo)
 
         # Smart model selection: if the task didn't specify a model AND the
         # backend has a tier_map, pick by issue complexity. Otherwise fall back
         # to whatever the router resolved.
         effective_model = decision.model
-        backend_cfg = self._config.backends.get(decision.backend_name)
+        backend_cfg = snapshot.config.backends.get(decision.backend_name)
         if not task.model and backend_cfg is not None and backend_cfg.tier_map:
             from maxwell_daemon.core.model_selector import pick_model_for_issue
 
@@ -1034,7 +1110,9 @@ def main() -> None:
             except Exception:
                 log.exception("config reload failed; keeping existing config")
 
-        loop.add_signal_handler(signal.SIGHUP, _sighup_handler)
+        sighup = getattr(signal, "SIGHUP", None)
+        if sighup is not None:
+            loop.add_signal_handler(sighup, _sighup_handler)
         await stop.wait()
         await daemon.stop()
 

@@ -312,3 +312,104 @@ class TestReloadEndpoint:
         with TestClient(create_app(file_daemon)) as c:
             r = c.post("/api/reload")
         assert r.json()["config_path"] == str(config_file)
+
+
+# ---------------------------------------------------------------------------
+# ConfigSnapshot during execution tests
+# ---------------------------------------------------------------------------
+
+
+class TestConfigSnapshotInFlight:
+    @pytest.mark.asyncio
+    async def test_reload_does_not_affect_in_flight_task(
+        self, file_daemon: Daemon, config_file: Path
+    ) -> None:
+        """start a long-running task; reload config; assert the task used the old router."""
+        old_router = file_daemon._router
+
+        task = file_daemon.submit("test prompt")
+
+        # We need to simulate the worker grabbing the task but pausing during execution
+        execute_event = asyncio.Event()
+        resume_event = asyncio.Event()
+
+        original_execute = file_daemon._execute
+
+        async def _mock_execute(t: Any, snapshot: Any) -> None:
+            execute_event.set()
+            await resume_event.wait()
+            # Assert that the snapshot is holding the old router!
+            assert snapshot.router is old_router
+            await original_execute(t, snapshot)
+
+        with patch.object(file_daemon, "_execute", new=_mock_execute):
+            worker_task = asyncio.create_task(file_daemon._worker_loop(0))
+
+            # Wait for execution to start
+            await asyncio.wait_for(execute_event.wait(), timeout=2.0)
+
+            # Reload config
+            updated = {
+                "backends": {
+                    "primary": {"type": "recording", "model": "test-model-new"},
+                },
+                "agent": {"default_backend": "primary"},
+            }
+            _write_config(config_file, updated)
+            file_daemon.reload_config()
+
+            assert file_daemon._router is not old_router
+
+            # Resume execution
+            resume_event.set()
+
+            # Wait for task completion
+            # stop worker
+            await file_daemon._queue.put((-1, None))
+            await worker_task
+
+            t = file_daemon.get_task(task.id)
+            assert t is not None
+            assert t.status == "completed"
+
+    @pytest.mark.asyncio
+    async def test_reload_applies_to_next_task(
+        self, file_daemon: Daemon, config_file: Path
+    ) -> None:
+        """submit a task after reload; assert new config applied."""
+        old_router = file_daemon._router
+
+        updated = {
+            "backends": {
+                "primary": {"type": "recording", "model": "test-model-newer"},
+            },
+            "agent": {"default_backend": "primary"},
+        }
+        _write_config(config_file, updated)
+        file_daemon.reload_config()
+
+        assert file_daemon._router is not old_router
+        new_router = file_daemon._router
+
+        task = file_daemon.submit("test prompt")
+
+        original_execute = file_daemon._execute
+
+        execute_event = asyncio.Event()
+
+        async def _mock_execute(t: Any, snapshot: Any) -> None:
+            assert snapshot.router is new_router
+            await original_execute(t, snapshot)
+            execute_event.set()
+
+        with patch.object(file_daemon, "_execute", new=_mock_execute):
+            worker_task = asyncio.create_task(file_daemon._worker_loop(0))
+
+            await asyncio.wait_for(execute_event.wait(), timeout=2.0)
+
+            await file_daemon._queue.put((999, None))
+            await worker_task
+
+            t = file_daemon.get_task(task.id)
+            assert t is not None
+            assert t.status == "completed"
