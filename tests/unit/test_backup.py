@@ -18,11 +18,11 @@ def test_restore_rejects_path_traversal_members(tmp_path: Path) -> None:
         tar.add(payload, arcname="../escape.txt")
 
     manager = BackupManager(config_path=tmp_path / "config.yaml", data_dir=tmp_path / "data")
-    with pytest.raises(RestoreError, match="escapes destination"):
+    with pytest.raises(RestoreError, match="unsafe archive member path"):
         manager.restore(archive)
 
 
-def test_export_json_quotes_sqlite_identifiers(tmp_path: Path) -> None:
+def test_export_json_rejects_unsafe_sqlite_identifiers(tmp_path: Path) -> None:
     data_dir = tmp_path / "data"
     data_dir.mkdir()
     db_path = data_dir / "ledger.db"
@@ -35,7 +35,5 @@ def test_export_json_quotes_sqlite_identifiers(tmp_path: Path) -> None:
         conn.close()
 
     manager = BackupManager(config_path=tmp_path / "config.yaml", data_dir=data_dir)
-    exported = manager.export_json("ledger")
-
-    assert exported["component"] == "ledger"
-    assert exported["tables"]["table with space"] == [{"id": 1, "value": "ok"}]
+    with pytest.raises(RestoreError, match="unsafe SQLite table name"):
+        manager.export_json("ledger")

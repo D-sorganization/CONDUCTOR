@@ -128,15 +128,24 @@ class TokenBudgetAllocator:
             est = self.estimate_cost(model=model, prompt_tokens=10000, completion_tokens=2000)
             can_afford[model] = est.cost_usd < remaining
 
-        status_val: Literal["ok", "tight", "exhausted"]
-        if remaining <= 0.0 or utilization >= 100.0:
-            recommended = "claude-haiku-4-5"
-            status_val = "exhausted"
-        elif utilization >= 75.0:
+        tight_budget = utilization >= 75.0
+
+        # Recommend a lower-cost model that still fits the current budget state.
+        if tight_budget and can_afford.get("claude-sonnet-4-6"):
             recommended = "claude-sonnet-4-6"
+        elif can_afford.get("claude-haiku-4-5"):
+            recommended = "claude-haiku-4-5"
+        elif can_afford.get("claude-sonnet-4-6"):
+            recommended = "claude-sonnet-4-6"
+        else:
+            recommended = "claude-opus-4-7"
+
+        status_val: Literal["ok", "tight", "exhausted"]
+        if remaining <= 0.0:
+            status_val = "exhausted"
+        elif tight_budget:
             status_val = "tight"
         else:
-            recommended = "claude-haiku-4-5"
             status_val = "ok"
 
         return TokenBudgetStatus(

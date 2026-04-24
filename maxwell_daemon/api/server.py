@@ -113,18 +113,6 @@ def _parse_delegate_status(value: str | None) -> DelegateSessionStatus | None:
         ) from exc
 
 
-def _parse_task_status(value: str | None) -> TaskStatus | None:
-    if value is None:
-        return None
-    try:
-        return TaskStatus(value)
-    except ValueError as exc:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            f"invalid task status: {value}",
-        ) from exc
-
-
 class TaskSubmit(BaseModel):
     prompt: PromptField
     task_id: TaskIdField | None = None
@@ -154,15 +142,6 @@ class WorkItemCreate(BaseModel):
     required_checks: tuple[str, ...] = ()
     priority: int = Field(default=100, ge=0, le=1000)
     task_ids: tuple[str, ...] = ()
-
-
-class WebhookTriggerRequest(BaseModel):
-    """Body accepted by ``POST /api/webhooks/trigger``."""
-
-    prompt: str = Field(..., min_length=1)
-    repo: str | None = None
-    backend: str | None = None
-    priority: int = Field(default=100, ge=0, le=1000)
 
 
 class WorkItemPatch(BaseModel):
@@ -1210,6 +1189,15 @@ def _control_plane_view_from_task(daemon: Daemon, task: Task) -> ControlPlaneWor
     )
 
 
+class WebhookTriggerRequest(BaseModel):
+    """Body accepted by ``POST /api/webhooks/trigger``."""
+
+    prompt: str = Field(..., min_length=1)
+    repo: str | None = None
+    backend: str | None = None
+    priority: int = Field(default=100, ge=0, le=1000)
+
+
 def create_app(
     daemon: Daemon,
     *,
@@ -1665,7 +1653,7 @@ def create_app(
 
     @app.get("/api/v1/tasks", dependencies=[Depends(_require_viewer())])
     async def list_tasks(
-        status: Annotated[str | None, Query()] = None,
+        status_filter: Annotated[str | None, Query(alias="status")] = None,
         kind: Annotated[str | None, Query()] = None,
         repo: Annotated[str | None, Query()] = None,
         cursor: Annotated[datetime | None, Query()] = None,
@@ -1678,11 +1666,20 @@ def create_app(
             completed_before_filter = _coerce_datetime_to_utc(completed_before_filter)
         if cursor is not None:
             cursor = _coerce_datetime_to_utc(cursor)
-        status_filter = _parse_task_status(status)
+
+        task_status: TaskStatus | None = None
+        if status_filter is not None:
+            try:
+                task_status = TaskStatus(status_filter)
+            except ValueError as exc:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    f"invalid task status: {status_filter}",
+                ) from exc
 
         tasks = await daemon._task_store.alist_tasks(
             limit=limit,
-            status=status_filter,
+            status=task_status,
             repo=repo,
             kind=kind,
             cursor=cursor,
