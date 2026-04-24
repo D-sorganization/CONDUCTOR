@@ -101,6 +101,7 @@ class Task:
     issue_repo: str | None = None
     issue_number: int | None = None
     issue_mode: str | None = None  # "plan" | "implement"
+    dry_run: bool = False
     # A/B grouping: sibling tasks share an ab_group so the UI pairs them.
     ab_group: str | None = None
     # DAG dependencies: list of task IDs that must reach COMPLETED before this
@@ -587,6 +588,7 @@ class Daemon:
         priority: int = 100,
         task_id: str | None = None,
         depends_on: list[str] | None = None,
+        dry_run: bool = False,
     ) -> Task:
         resolved_task_id = task_id or uuid.uuid4().hex[:12]
         task = Task(
@@ -598,6 +600,7 @@ class Daemon:
             model=model,
             priority=priority,
             depends_on=list(depends_on) if depends_on else [],
+            dry_run=dry_run,
         )
         # Persist and track the task under lock, then route the queue mutation
         # through the daemon loop if this caller is on a foreign thread.
@@ -644,6 +647,7 @@ class Daemon:
         repo: str | None = None,
         backend: str | None = None,
         model: str | None = None,
+        dry_run: bool = False,
     ) -> Task:
         """Enqueue a prompt task from any thread. **Cross-thread safe.**
 
@@ -665,6 +669,7 @@ class Daemon:
             repo=repo,
             backend=backend,
             model=model,
+            dry_run=dry_run,
         )
         self._task_store.save(task)
         with self._tasks_lock:
@@ -687,6 +692,7 @@ class Daemon:
         model: str | None = None,
         priority: int = 100,
         task_id: str | None = None,
+        dry_run: bool = False,
     ) -> Task:
         """Queue a task that reads a GitHub issue and opens a draft PR for it."""
         if mode not in {"plan", "implement"}:
@@ -703,6 +709,7 @@ class Daemon:
             issue_number=issue_number,
             issue_mode=mode,
             priority=priority,
+            dry_run=dry_run,
         )
         # See note in submit(): queue mutation must stay loop-affine once the
         # daemon has started.
@@ -1634,6 +1641,7 @@ class Daemon:
             overrides=overrides,
             task_id=task.id,
             on_test_output=_emit_test_output,
+            dry_run=task.dry_run,
         )
 
         task.status = TaskStatus.COMPLETED

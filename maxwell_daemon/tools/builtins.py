@@ -123,6 +123,7 @@ def make_write_file(
     *,
     action_service: ActionService | None = None,
     task_id: str | None = None,
+    dry_run: bool = False,
 ) -> Callable[..., str]:
     @mcp_tool(
         name="write_file",
@@ -155,6 +156,7 @@ def make_write_file(
                 summary=f"write file {path}",
                 payload={"path": path, "bytes": len(content)},
                 risk_level=ActionRiskLevel.MEDIUM,
+                dry_run=dry_run,
             )
             action_id = action.id
             if not decision.allowed:
@@ -193,6 +195,7 @@ def make_edit_file(
     *,
     action_service: ActionService | None = None,
     task_id: str | None = None,
+    dry_run: bool = False,
 ) -> Callable[..., str]:
     @mcp_tool(
         name="edit_file",
@@ -235,6 +238,7 @@ def make_edit_file(
                 summary=f"edit file {path}",
                 payload={"path": path, "old_bytes": len(old_string), "new_bytes": len(new_string)},
                 risk_level=ActionRiskLevel.MEDIUM,
+                dry_run=dry_run,
             )
             action_id = action.id
             if not decision.allowed:
@@ -323,6 +327,7 @@ def make_run_bash(
     max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES,
     action_service: ActionService | None = None,
     task_id: str | None = None,
+    dry_run: bool = False,
 ) -> Callable[..., Awaitable[str]]:
     run = runner or _default_runner
 
@@ -358,6 +363,7 @@ def make_run_bash(
                 summary=f"run command: {command[:80]}",
                 payload={"command": command, "timeout_seconds": timeout},
                 risk_level=ActionRiskLevel.HIGH,
+                dry_run=dry_run,
             )
             action_id = action.id
             if not decision.allowed:
@@ -595,6 +601,7 @@ def build_default_registry(
     policy: ToolPolicy | None = None,
     invocation_store: ToolInvocationStore | None = None,
     browser_service: BrowserService | None = None,
+    dry_run: bool = False,
 ) -> ToolRegistry:
     """Return a ``ToolRegistry`` with built-in tools bound to ``root``.
 
@@ -612,9 +619,11 @@ def build_default_registry(
     )
     reg.register_from_function(make_read_file(root))
     reg.register_from_function(
-        make_write_file(root, action_service=action_service, task_id=task_id)
+        make_write_file(root, action_service=action_service, task_id=task_id, dry_run=dry_run)
     )
-    reg.register_from_function(make_edit_file(root, action_service=action_service, task_id=task_id))
+    reg.register_from_function(
+        make_edit_file(root, action_service=action_service, task_id=task_id, dry_run=dry_run)
+    )
     reg.register_from_function(make_glob_files(root))
     reg.register_from_function(make_grep_files(root))
     reg.register_from_function(
@@ -623,6 +632,7 @@ def build_default_registry(
             runner=bash_runner,
             action_service=action_service,
             task_id=task_id,
+            dry_run=dry_run,
         )
     )
     if browser_service is not None:

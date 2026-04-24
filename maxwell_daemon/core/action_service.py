@@ -46,6 +46,7 @@ class ActionService:
         payload: dict[str, Any] | None = None,
         work_item_id: str | None = None,
         risk_level: ActionRiskLevel = ActionRiskLevel.MEDIUM,
+        dry_run: bool = False,
     ) -> tuple[Action, PolicyDecision]:
         action = Action(
             id=uuid.uuid4().hex,
@@ -57,6 +58,8 @@ class ActionService:
             risk_level=risk_level,
         )
         decision = self._policy.evaluate(action)
+        if dry_run:
+            decision = PolicyDecision(False, True, "dry-run mode requires manual approval")
         action.requires_approval = decision.requires_approval
         self._store.save(action)
         self._publish(EventKind.ACTION_PROPOSED, action)
@@ -72,6 +75,7 @@ class ActionService:
         runner: Callable[[], Awaitable[dict[str, Any]] | dict[str, Any]],
         work_item_id: str | None = None,
         risk_level: ActionRiskLevel = ActionRiskLevel.MEDIUM,
+        dry_run: bool = False,
     ) -> Action:
         action, decision = self.propose(
             task_id=task_id,
@@ -80,6 +84,7 @@ class ActionService:
             payload=payload,
             work_item_id=work_item_id,
             risk_level=risk_level,
+            dry_run=dry_run,
         )
         if decision.requires_approval:
             return action

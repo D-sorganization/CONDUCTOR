@@ -128,6 +128,7 @@ class TaskSubmit(BaseModel):
         default_factory=list,
         description="Task IDs that must reach COMPLETED before this task starts.",
     )
+    dry_run: bool = False
 
 
 class WorkItemCreate(BaseModel):
@@ -1633,6 +1634,7 @@ def create_app(
                         model=payload.model,
                         priority=payload.priority,
                         task_id=payload.task_id,
+                        dry_run=payload.dry_run,
                     )
                 except ValueError as exc:
                     raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
@@ -1645,6 +1647,7 @@ def create_app(
                     priority=payload.priority,
                     task_id=payload.task_id,
                     depends_on=payload.depends_on or [],
+                    dry_run=payload.dry_run,
                 )
         except DuplicateTaskIdError as exc:
             raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc

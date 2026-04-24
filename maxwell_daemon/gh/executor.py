@@ -181,6 +181,7 @@ class IssueExecutor:
         overrides: RepoOverrides | None = None,
         task_id: str | None = None,
         on_test_output: Any = None,
+        dry_run: bool = False,
     ) -> IssueResult:
         async with _trace_span(
             "maxwell_daemon.issue.fetch",
@@ -278,7 +279,7 @@ class IssueExecutor:
 
         applied = False
         test_result: TestResult | None = None
-        if mode == "implement":
+        if mode == "implement" and not dry_run:
             if not diff.strip():
                 raise IssueExecutionError(
                     "LLM returned no diff but mode=implement — rerun in plan mode "
@@ -381,14 +382,17 @@ class IssueExecutor:
             "maxwell_daemon.issue.open_pr",
             {"repo": repo, "issue": issue_number, "applied_diff": applied},
         ):
-            pr = await self._gh.create_pull_request(
-                repo,
-                head=branch,
-                base=base_branch,
-                title=f"Fix #{issue_number}: {issue.title}",
-                body=pr_body,
-                draft=True,
-            )
+            if dry_run:
+                pr = type("MockPR", (), {"url": "https://github.com/dry-run/pr/1", "number": -1})()
+            else:
+                pr = await self._gh.create_pull_request(
+                    repo,
+                    head=branch,
+                    base=base_branch,
+                    title=f"Fix #{issue_number}: {issue.title}",
+                    body=pr_body,
+                    draft=True,
+                )
 
         # Memory write-back: one episode per successful PR open so future
         # related issues can retrieve it. Outcome is "completed" until/unless
