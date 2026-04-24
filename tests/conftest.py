@@ -10,6 +10,9 @@ from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any
 
+import os
+os.environ["MAXWELL_AGGRESSIVE_COMPRESSION"] = "1"
+
 import pytest
 import structlog
 

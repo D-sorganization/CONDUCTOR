@@ -1539,8 +1539,17 @@ class Daemon:
                 await self._execute_issue(task, decision, snapshot)
                 return
 
+            prompt_content = task.prompt
+            if task.repo:
+                from maxwell_daemon.gh.workspace import Workspace
+                ws = getattr(self, "_workspace", None) or Workspace(root=self._workspace_root)
+                repo_path = await ws.ensure_clone(task.repo, task_id=task.id)
+                from maxwell_daemon.core.repo_overrides import RepoSchematic
+                schematic = RepoSchematic(task.repo, repo_path).generate()
+                prompt_content = f"{schematic}\n\n{prompt_content}"
+
             resp = await decision.backend.complete(
-                [Message(role=MessageRole.USER, content=task.prompt)],
+                [Message(role=MessageRole.USER, content=prompt_content)],
                 model=decision.model,
             )
             task.result = resp.content
