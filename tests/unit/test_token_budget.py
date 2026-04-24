@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import Mock
+from typing import Any
 
 import pytest
 
@@ -17,19 +19,19 @@ from maxwell_daemon.core.token_budget import (
 
 
 @pytest.fixture
-def mock_config() -> MaxwellDaemonConfig:
+def mock_config() -> Any:
     """Create a mock config with a $100 monthly budget."""
     return Mock(spec=MaxwellDaemonConfig, budget=BudgetConfig(monthly_limit_usd=100.0))
 
 
 @pytest.fixture
-def mock_ledger(tmp_path: object) -> CostLedger:
+def mock_ledger(tmp_path: Path) -> CostLedger:
     """Create a real cost ledger for testing."""
-    return CostLedger(tmp_path / "test_ledger.db")  # type: ignore[arg-type]
+    return CostLedger(tmp_path / "test_ledger.db")
 
 
 def test_estimate_cost_anthropic_models(
-    mock_config: MaxwellDaemonConfig, mock_ledger: CostLedger
+    mock_config: Any, mock_ledger: CostLedger
 ) -> None:
     """Test cost estimation for Anthropic models."""
     allocator = TokenBudgetAllocator(mock_config, mock_ledger)
@@ -57,7 +59,7 @@ def test_estimate_cost_anthropic_models(
 
 
 def test_estimate_cost_unknown_model(
-    mock_config: MaxwellDaemonConfig, mock_ledger: CostLedger
+    mock_config: Any, mock_ledger: CostLedger
 ) -> None:
     """Test that unknown models default to free (local)."""
     allocator = TokenBudgetAllocator(mock_config, mock_ledger)
@@ -69,7 +71,7 @@ def test_estimate_cost_unknown_model(
 
 
 def test_check_budget_ok_status(
-    mock_config: MaxwellDaemonConfig, mock_ledger: CostLedger
+    mock_config: Any, mock_ledger: CostLedger
 ) -> None:
     """Test budget check when well under limit."""
     allocator = TokenBudgetAllocator(mock_config, mock_ledger)
@@ -84,7 +86,7 @@ def test_check_budget_ok_status(
 
 
 def test_check_budget_with_spending(
-    mock_config: MaxwellDaemonConfig, mock_ledger: CostLedger
+    mock_config: Any, mock_ledger: CostLedger
 ) -> None:
     """Test budget check when some money has been spent."""
     from maxwell_daemon.backends import TokenUsage
@@ -109,7 +111,7 @@ def test_check_budget_with_spending(
 
 
 def test_check_budget_tight_status(
-    mock_config: MaxwellDaemonConfig, mock_ledger: CostLedger
+    mock_config: Any, mock_ledger: CostLedger
 ) -> None:
     """Test budget check when approaching limit."""
     from maxwell_daemon.backends import TokenUsage
@@ -134,7 +136,7 @@ def test_check_budget_tight_status(
 
 def test_check_budget_no_limit(mock_ledger: CostLedger) -> None:
     """Test budget check when no limit is set."""
-    unlimited_config = Mock(
+    unlimited_config: Any = Mock(
         spec=MaxwellDaemonConfig,
         budget=BudgetConfig(monthly_limit_usd=None),
     )
