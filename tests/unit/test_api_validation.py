@@ -6,7 +6,6 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from maxwell_daemon.api.validation import (
-    MODEL_NAME_PATTERN,
     ModelField,
     PriorityField,
     PromptField,

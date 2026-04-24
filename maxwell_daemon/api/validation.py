@@ -12,20 +12,19 @@ These ensure consistent validation across all API endpoints.
 
 from __future__ import annotations
 
-import re
 from typing import Annotated
 
 from pydantic import Field
 
 __all__ = [
+    "MODEL_NAME_PATTERN",
     "REPO_PATTERN",
     "TASK_ID_PATTERN",
-    "MODEL_NAME_PATTERN",
-    "RepoField",
-    "PromptField",
-    "PriorityField",
-    "TaskIdField",
     "ModelField",
+    "PriorityField",
+    "PromptField",
+    "RepoField",
+    "TaskIdField",
 ]
 
 # Reusable regex patterns for validation
