@@ -1664,6 +1664,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // N opens the dialog when it's closed and no input is focused.
   document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") {
+      const dialogs = document.querySelectorAll("dialog");
+      const isDialogOpen = Array.from(dialogs).some(d => d.open);
+      if (!isDialogOpen) {
+        const detailCard = document.getElementById("detail-card");
+        if (detailCard && !detailCard.hidden) {
+          detailCard.hidden = true;
+          state.selected = null;
+        }
+      }
+      return;
+    }
+
     if (ev.key !== "n" && ev.key !== "N") return;
     const tag = document.activeElement?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;

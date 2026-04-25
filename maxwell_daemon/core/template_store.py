@@ -44,13 +44,14 @@ class TaskTemplate(BaseModel):
         """Render the prompt_template using Jinja2."""
         # Optional jinja2 import to avoid hard dependency if not needed everywhere
         try:
-            from jinja2 import Template
+            from jinja2 import Template  # type: ignore[import-not-found]
         except ImportError:
             # Fallback to simple format if jinja2 is missing
             return self.prompt_template.format(**kwargs)
 
         t = Template(self.prompt_template)
-        return t.render(**kwargs)
+        rendered: str = t.render(**kwargs)
+        return rendered
 
 
 class TemplateStore:
