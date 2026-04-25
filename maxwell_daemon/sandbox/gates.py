@@ -16,7 +16,7 @@ from maxwell_daemon.sandbox.runner import (
     CommandExecutor,
     SandboxCommandRunner,
     SandboxRunResult,
-    SubprocessCommandExecutor,
+    DockerCommandExecutor,
 )
 
 __all__ = ["SandboxGateAdapter"]
@@ -72,7 +72,7 @@ class SandboxGateAdapter:
         executor: CommandExecutor | None = None,
         artifact_store: ArtifactStore | None = None,
     ) -> None:
-        self._capture = _CapturingExecutor(executor or SubprocessCommandExecutor())
+        self._capture = _CapturingExecutor(executor or DockerCommandExecutor())
         self._runner = SandboxCommandRunner(executor=self._capture)
         self._artifact_store = artifact_store
 

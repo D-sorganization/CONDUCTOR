@@ -411,6 +411,39 @@
     </div>
   </div>
 
+  <dialog id="onboarding-wizard" class="wizard-dialog">
+    <div class="wizard-content">
+      <h2>Welcome to Maxwell-Daemon</h2>
+      <p>Let's set up your first AI backend to start building.</p>
+      
+      <div class="wizard-step" id="wizard-step-1">
+        <h3>1. Choose a Provider</h3>
+        <ul id="onboarding-catalog" class="backend-catalog">
+        </ul>
+      </div>
+
+      <div class="wizard-step" id="wizard-step-2" hidden>
+        <h3 id="wizard-provider-title">Configure Provider</h3>
+        <form id="onboarding-form">
+          <input type="hidden" id="wizard-backend-name">
+          <label id="wizard-api-key-label">
+            API Key
+            <input type="password" id="wizard-api-key" placeholder="sk-..." required autocomplete="off">
+          </label>
+          <label id="wizard-endpoint-label" hidden>
+            Endpoint URL
+            <input type="url" id="wizard-endpoint" placeholder="http://localhost:11434" autocomplete="off">
+          </label>
+          <div class="wizard-actions">
+            <button type="button" id="wizard-back-btn">Back</button>
+            <button type="submit" id="wizard-test-btn" class="primary">Test & Save</button>
+          </div>
+        </form>
+        <div id="wizard-status" class="status-msg" aria-live="polite"></div>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="new-task-dialog">
     <form id="new-task-form" method="dialog">
       <h3>Dispatch a task</h3>

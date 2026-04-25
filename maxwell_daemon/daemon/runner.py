@@ -1520,6 +1520,11 @@ class Daemon:
             # worker that atomically claims a still-queued task may execute it.
             with self._tasks_lock:
                 if task.status is not TaskStatus.QUEUED:
+                    self._queue.task_done()
+                    continue
+                if _priority != task.priority:
+                    # Stale entry from before a reprioritize_task call
+                    self._queue.task_done()
                     continue
                 # DAG dependency check: if any upstream task is not yet in a
                 # terminal-success state, requeue and wait for the next tick.
@@ -1540,6 +1545,7 @@ class Daemon:
                         # and will be retried once the dependencies finish.
                         self._queue.put_nowait((task.priority, task))
                         self._queue.task_done()
+                        await asyncio.sleep(1.0)  # Prevent busy-looping
                         continue
                 task.status = TaskStatus.RUNNING
                 task.started_at = datetime.now(timezone.utc)

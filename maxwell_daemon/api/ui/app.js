@@ -1721,3 +1721,104 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 });
+/* ---- onboarding wizard logic ---- */
+document.addEventListener("DOMContentLoaded", async () => {
+  const wizardDialog = document.getElementById("onboarding-wizard");
+  if (!wizardDialog) return;
+  const catalogList = document.getElementById("onboarding-catalog");
+  const step1 = document.getElementById("wizard-step-1");
+  const step2 = document.getElementById("wizard-step-2");
+  const form = document.getElementById("onboarding-form");
+  const statusMsg = document.getElementById("wizard-status");
+
+  async function checkOnboarding() {
+    try {
+      const res = await fetch("/api/v1/backends/available", { headers: headers() });
+      if (!res.ok) return;
+      const data = await res.json();
+      const hasConnected = data.backends.some(b => b.connected);
+      if (!hasConnected) {
+        renderCatalog(data.backends);
+        wizardDialog.showModal();
+      }
+    } catch (err) {
+      console.error("Failed onboarding check", err);
+    }
+  }
+
+  function renderCatalog(backends) {
+    catalogList.innerHTML = "";
+    backends.forEach(b => {
+      const li = document.createElement("li");
+      li.innerHTML = <strong> + escapeHtml(b.name) + </strong><small> + escapeHtml(b.description || "AI Provider") + </small>;
+      li.addEventListener("click", () => showStep2(b));
+      catalogList.appendChild(li);
+    });
+  }
+
+  function showStep2(backend) {
+    step1.hidden = true;
+    step2.hidden = false;
+    document.getElementById("wizard-provider-title").textContent = Configure  + backend.name;
+    document.getElementById("wizard-backend-name").value = backend.name;
+    
+    const isLocal = backend.name === "ollama";
+    document.getElementById("wizard-api-key-label").hidden = isLocal;
+    document.getElementById("wizard-api-key").required = !isLocal;
+    document.getElementById("wizard-endpoint-label").hidden = !isLocal;
+  }
+
+  document.getElementById("wizard-back-btn").addEventListener("click", () => {
+    step1.hidden = false;
+    step2.hidden = true;
+    statusMsg.textContent = "";
+  });
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById("wizard-test-btn");
+    btn.disabled = true;
+    statusMsg.className = "status-msg";
+    statusMsg.textContent = "Testing connection...";
+
+    const name = document.getElementById("wizard-backend-name").value;
+    const apiKey = document.getElementById("wizard-api-key").value;
+    const endpoint = document.getElementById("wizard-endpoint").value;
+
+    try {
+      const cfgRes = await fetch("/api/v1/backends", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers() },
+        body: JSON.stringify({ name, api_key: apiKey, endpoint: endpoint, set_as_default: true })
+      });
+      if (!cfgRes.ok) throw new Error(await cfgRes.text());
+
+      statusMsg.textContent = "Configuration saved. Running smoke test...";
+
+      const testRes = await fetch("/api/v1/onboarding/smoke-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers() },
+        body: JSON.stringify({ backend_name: name, model: "" })
+      });
+      const testData = await testRes.json();
+      if (!testRes.ok || testData.status !== "success") {
+        throw new Error(testData.error || "Smoke test failed");
+      }
+
+      statusMsg.className = "status-msg success";
+      statusMsg.textContent = "Success! Closing wizard...";
+      setTimeout(() => {
+        wizardDialog.close();
+        window.location.reload();
+      }, 1500);
+
+    } catch (err) {
+      statusMsg.className = "status-msg error";
+      statusMsg.textContent = err.message || "Failed to configure";
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  checkOnboarding();
+});

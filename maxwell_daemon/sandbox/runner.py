@@ -43,8 +43,11 @@ class CommandExecutor(Protocol):
     ) -> SandboxRunResult: ...
 
 
-class SubprocessCommandExecutor:
-    """Small subprocess adapter kept separate from sandbox policy evaluation."""
+class DockerCommandExecutor:
+    """Docker-based command executor for full isolation."""
+
+    def __init__(self, image: str = "python:3.12-slim") -> None:
+        self.image = image
 
     async def execute(
         self,
@@ -55,11 +58,23 @@ class SubprocessCommandExecutor:
         timeout_seconds: float,
     ) -> SandboxRunResult:
         start = time.monotonic()
+        abs_cwd = cwd.resolve()
+        
+        docker_argv = [
+            "docker", "run", "--rm", "--network", "none",
+            "-v", f"{abs_cwd}:/sandbox",
+            "-w", "/sandbox",
+        ]
+        
+        for k, v in env.items():
+            docker_argv.extend(["-e", f"{k}={v}"])
+            
+        docker_argv.append(self.image)
+        docker_argv.extend(argv)
+        
         try:
             proc = await asyncio.create_subprocess_exec(
-                *argv,
-                cwd=str(cwd),
-                env=dict(env),
+                *docker_argv,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -91,7 +106,7 @@ class SandboxCommandRunner:
     """Validate policy, filter env, execute, and return a gate-like decision."""
 
     def __init__(self, *, executor: CommandExecutor | None = None) -> None:
-        self._executor = executor or SubprocessCommandExecutor()
+        self._executor = executor or DockerCommandExecutor()
 
     async def run(
         self,

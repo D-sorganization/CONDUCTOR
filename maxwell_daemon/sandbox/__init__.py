@@ -12,7 +12,7 @@ from maxwell_daemon.sandbox.runner import (
     CommandExecutor,
     SandboxCommandRunner,
     SandboxRunResult,
-    SubprocessCommandExecutor,
+    DockerCommandExecutor,
 )
 
 __all__ = [
@@ -24,6 +24,6 @@ __all__ = [
     "SandboxCommandRunner",
     "SandboxPolicy",
     "SandboxRunResult",
-    "SubprocessCommandExecutor",
+    "DockerCommandExecutor",
     "WorkspacePolicy",
 ]

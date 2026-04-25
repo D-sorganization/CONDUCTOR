@@ -1094,3 +1094,17 @@ button, .tab, select, input[type="checkbox"], input[type="radio"] {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
+/* ---- onboarding wizard ------------------------------------------------ */
+.wizard-dialog { max-width: 500px; width: 100%; border-radius: 8px; padding: 0; }
+.wizard-content { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.wizard-content h2 { margin: 0 0 4px 0; font-size: 20px; }
+.wizard-content p { margin: 0 0 16px 0; color: var(--fg-muted); font-size: 14px; }
+.backend-catalog { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.backend-catalog li { border: 1px solid var(--border); border-radius: 6px; padding: 12px; cursor: pointer; transition: background 0.2s; }
+.backend-catalog li:hover { background: var(--bg-hover); }
+.backend-catalog li strong { display: block; font-size: 14px; margin-bottom: 4px; text-transform: capitalize; }
+.backend-catalog li small { color: var(--fg-muted); font-size: 12px; }
+.wizard-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.status-msg { font-size: 13px; margin-top: 8px; }
+.status-msg.error { color: var(--fg-error); }
+.status-msg.success { color: var(--fg-success); }
