@@ -25,7 +25,7 @@ async def run_mcp_server(config_path: Path | None = None) -> None:
     # We expose the built-in sandbox tools mapped to the default workspace.
     registry = build_default_registry(config.memory.workspace_path)
 
-    @server.list_tools()  # type: ignore[no-untyped-call, untyped-decorator]
+    @server.list_tools()  # type: ignore
     async def handle_list_tools() -> list[Tool]:
         mcp_tools = []
         for name in registry.names():
@@ -50,7 +50,7 @@ async def run_mcp_server(config_path: Path | None = None) -> None:
             mcp_tools.append(Tool(name=spec.name, description=spec.description, inputSchema=schema))
         return mcp_tools
 
-    @server.call_tool()  # type: ignore[untyped-decorator]
+    @server.call_tool()  # type: ignore
     async def handle_call_tool(name: str, arguments: dict[str, Any] | None) -> list[TextContent]:
         try:
             # We enforce that all MCP calls pass through the audit/approval tier by default
