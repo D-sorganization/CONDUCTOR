@@ -319,6 +319,7 @@ def _substitute(command: str, tool_input: dict[str, Any]) -> str:
     Missing keys are left as-is so hook authors can spot unresolved placeholders
     in logs rather than having them silently replaced with ``""``.
     """
+
     def replacer(match: re.Match[str]) -> str:
         key = match.group(1)
         if key not in tool_input:
