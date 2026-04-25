@@ -7,11 +7,11 @@ behavior rather than scaffolding.
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any
 
-import os
 os.environ["MAXWELL_AGGRESSIVE_COMPRESSION"] = "1"
 
 import pytest
@@ -54,7 +54,6 @@ def _reset_structlog_cache() -> Iterator[None]:
     )
     yield
     structlog.reset_defaults()
-
 
 
 class RecordingBackend(ILLMBackend):

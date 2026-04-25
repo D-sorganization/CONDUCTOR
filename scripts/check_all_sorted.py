@@ -31,7 +31,9 @@ def main() -> int:
                                     names.append(elt.value)
                             if names and not _is_sorted(names):
                                 print(f"UNSORTED: {path}")
-                                for i, (a, b) in enumerate(zip(names, sorted(names, key=str.lower))):
+                                for i, (a, b) in enumerate(
+                                    zip(names, sorted(names, key=str.lower))
+                                ):
                                     if a != b:
                                         print(f"  position {i}: got {a!r}, expected {b!r}")
                                         break

@@ -31,8 +31,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from contextlib import contextmanager
-from typing import Iterator
 
 from maxwell_daemon.backends.base import TokenUsage
 

@@ -133,11 +133,16 @@ class Task:
 class ConfigSnapshot:
     """Frozen execution collaborators captured when a worker claims a task."""
 
+>>>>>>> origin/main
+@dataclass
+class DaemonState:
     config: MaxwellDaemonConfig
     router: BackendRouter
     budget: BudgetEnforcer
 
 
+@dataclass
+class DaemonState:
 =======
 >>>>>>> origin/main
 @dataclass
