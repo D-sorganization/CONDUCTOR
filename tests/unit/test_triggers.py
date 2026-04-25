@@ -33,9 +33,7 @@ def test_webhook_trigger_enqueue(mocker) -> None:
     assert res.task_id == "task-1"
     assert res.error is None
     assert res.duplicate is False
-    daemon_mock.submit.assert_called_once_with(
-        "hello", repo=None, backend=None, priority=100
-    )
+    daemon_mock.submit.assert_called_once_with("hello", repo=None, backend=None, priority=100)
 
 
 def test_webhook_trigger_empty_prompt(mocker) -> None:

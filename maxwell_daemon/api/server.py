@@ -2659,8 +2659,6 @@ def create_app(
 
     # ── Evals endpoints ──────────────────────────────────────────────────────
 
-
-
     @app.post("/api/v1/evals/run", dependencies=[Depends(auth), Depends(_require_operator())])
     async def run_evals(payload: EvalRunRequest) -> dict[str, Any]:
         """Kick off an evaluation run."""
