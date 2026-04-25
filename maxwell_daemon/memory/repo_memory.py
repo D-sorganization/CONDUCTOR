@@ -180,7 +180,7 @@ class MemoryEntry:
             supersedes=tuple(_str_list(payload.get("supersedes", []), "supersedes")),
             allow_secrets=bool(payload.get("allow_secrets", False)),
             retention_days=(
-                int(payload["retention_days"])
+                int(str(payload["retention_days"]))
                 if payload.get("retention_days") is not None
                 else None
             ),
