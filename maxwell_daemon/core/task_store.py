@@ -282,9 +282,7 @@ class TaskStore:
             row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         return _row_to_task(row) if row else None
 
-    def _delete_sync(self, task_id: str) -> None:
-        with self._lock, self._connect() as conn:
-            conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+
 
     def _list_sync(
         self,
@@ -426,8 +424,7 @@ class TaskStore:
     def get(self, task_id: str) -> Task | None:
         return self._get_sync(task_id)
 
-    def delete(self, task_id: str) -> None:
-        self._delete_sync(task_id)
+
 
     def list_tasks(
         self,

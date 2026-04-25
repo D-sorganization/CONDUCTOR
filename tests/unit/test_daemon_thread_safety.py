@@ -39,8 +39,6 @@ class _ThreadBoundQueue:
         self.items.append(item)
         self.put_event.set()
 
-    def full(self) -> bool:
-        return False
 
 
 class TestTasksDictThreadSafety:

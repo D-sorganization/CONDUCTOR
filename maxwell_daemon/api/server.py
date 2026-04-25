@@ -1671,7 +1671,7 @@ def create_app(
                 task_status = TaskStatus(status)
             except ValueError as exc:
                 raise HTTPException(
-                    status.HTTP_422_UNPROCESSABLE_ENTITY, f"invalid task status: {status}"
+                    422, f"invalid task status: {status}"
                 ) from exc
 
         tasks = await daemon._task_store.alist_tasks(

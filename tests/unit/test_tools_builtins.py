@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from maxwell_daemon.browser import BrowserAction, BrowserRequest, BrowserResult
 from maxwell_daemon.core.action_policy import ActionPolicy, ApprovalMode
 from maxwell_daemon.core.action_service import ActionService
 from maxwell_daemon.core.action_store import ActionStore
@@ -24,17 +25,16 @@ from maxwell_daemon.tools.builtins import (
     SandboxViolationError,
     _build_run_bash_env,
     build_default_registry,
+    make_browser_screenshot,
     make_edit_file,
     make_glob_files,
     make_grep_files,
+    make_open_browser_url,
     make_read_file,
     make_run_bash,
     make_write_file,
-    make_open_browser_url,
-    make_browser_screenshot,
 )
 from maxwell_daemon.tools.mcp import ToolInvocationStore, ToolPolicy
-from maxwell_daemon.browser import BrowserResult, BrowserAction, BrowserRequest
 
 
 # ── read_file ────────────────────────────────────────────────────────────────
@@ -155,8 +155,13 @@ class TestEditFile:
         # Force the action to be denied by hacking the policy
         service._policy = ActionPolicy(mode=ApprovalMode.SUGGEST, workspace_root=tmp_path, denied_command_names=frozenset({"denied"}))
         def mock_propose(*args, **kwargs):
-            from maxwell_daemon.core.actions import Action, ActionStatus, ActionKind, ActionRiskLevel
             from maxwell_daemon.core.action_policy import PolicyDecision
+            from maxwell_daemon.core.actions import (
+                Action,
+                ActionKind,
+                ActionRiskLevel,
+                ActionStatus,
+            )
             action = Action(id="action-edit", task_id="task-1", kind=ActionKind.FILE_EDIT, summary="edit", payload={}, status=ActionStatus.PROPOSED, risk_level=ActionRiskLevel.MEDIUM)
             service._store.save(action)
             return action, PolicyDecision(allowed=False, requires_approval=True, reason="disallowed")
@@ -176,7 +181,6 @@ class TestEditFile:
         # A simpler way is to pass a directory instead of a file? No, is_file() checks first.
         # How about making the file readonly?
         # We can just mock os.replace in builtins.py for a moment during this test.
-        import maxwell_daemon.tools.builtins as builtins
         import os
         orig = os.replace
         def broken_replace(*args, **kwargs):
@@ -273,8 +277,13 @@ class TestRunBash:
             policy=ActionPolicy(mode=ApprovalMode.SUGGEST, workspace_root=tmp_path),
         )
         def mock_propose(*args, **kwargs):
-            from maxwell_daemon.core.actions import Action, ActionStatus, ActionKind, ActionRiskLevel
             from maxwell_daemon.core.action_policy import PolicyDecision
+            from maxwell_daemon.core.actions import (
+                Action,
+                ActionKind,
+                ActionRiskLevel,
+                ActionStatus,
+            )
             action = Action(id="action-bash", task_id="task-1", kind=ActionKind.COMMAND, summary="cmd", payload={}, status=ActionStatus.PROPOSED, risk_level=ActionRiskLevel.HIGH)
             service._store.save(action)
             return action, PolicyDecision(allowed=False, requires_approval=True, reason="disallowed bash")

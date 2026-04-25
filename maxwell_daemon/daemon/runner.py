@@ -136,10 +136,10 @@ class ConfigSnapshot:
     config: MaxwellDaemonConfig
     router: BackendRouter
     budget: BudgetEnforcer
+    ledger: CostLedger
 
 
-=======
->>>>>>> origin/main
+
 @dataclass
 class DaemonState:
     version: str
@@ -297,6 +297,15 @@ class Daemon:
         resolved = Path(path).expanduser() if path else default_config_path()
         return cls(load_config(resolved), config_path=resolved)
 
+    def _capture_config_snapshot(self) -> ConfigSnapshot:
+        with self._config_lock:
+            return ConfigSnapshot(
+                config=self._config,
+                router=self._router,
+                budget=self._budget,
+                ledger=self._ledger,
+            )
+
     def reload_config(self) -> Path:
         """Reload configuration from disk and swap atomically.
 
@@ -315,10 +324,7 @@ class Daemon:
         # Validate first (outside the lock) so we never swap in a bad config.
         new_config = load_config(path)
         new_budget = BudgetEnforcer(new_config.budget, self._ledger)
-        new_router = BackendRouter(new_config, budget=new_budget)
-=======
-        new_router = BackendRouter(new_config)
->>>>>>> origin/main
+        new_router = BackendRouter(new_config, mcp_manager=self._mcp_manager, budget=new_budget)
         with self._config_lock:
             self._config = new_config
             self._router = new_router
@@ -328,9 +334,7 @@ class Daemon:
                     mode=ApprovalMode(new_config.tools.approval_tier),
                     workspace_root=self._workspace_root,
                 )
-            if reasons:
-                self._needs_restart = True
-                self._restart_required_reasons.extend(reasons)
+
         log.info("config reloaded from %s", path)
         return path
 
@@ -390,7 +394,7 @@ class Daemon:
             )
             self._bg_tasks.add(dream_task)
             dream_task.add_done_callback(self._bg_tasks.discard)
-            
+
         if self._config.agent.task_live_retention_seconds > 0:
             evict_task = asyncio.create_task(
                 self._live_eviction_loop(),
@@ -751,11 +755,9 @@ class Daemon:
             )
             prompt = f"{main_req}\n\n[PROMPT TRUNCATED. Remainder stored in artifact_id:///{artifact.id}]"
 
-=======
         task = Task(
-            id=uuid.uuid4().hex[:12],
+            id=resolved_task_id,
             prompt=prompt,
->>>>>>> origin/main
             kind=TaskKind.PROMPT,
             repo=repo,
             backend=backend,
@@ -778,26 +780,24 @@ class Daemon:
         Returns the original prompt if small, or a truncated version with an
         artifact_id reference if large.
         """
-        MAX_PROMPT_LEN = 50000
-        OFFLOAD_CUTOFF = 10000
-        if len(prompt) <= MAX_PROMPT_LEN:
+        max_prompt_len = 50000
+        offload_cutoff = 10000
+        if len(prompt) <= max_prompt_len:
             return prompt
 
         from maxwell_daemon.core.artifacts import Artifact, ArtifactKind
 
         # Migrate remainder to artifact store
-        main_req = prompt[:OFFLOAD_CUTOFF]
-        artifact_id = f"prompt-{task_id}"
-        artifact = Artifact(
-            id=artifact_id,
-            kind=ArtifactKind.TEXT,
-            repo="internal",
-            data=prompt.encode("utf-8"),
-            description=f"Full prompt for task {task_id}",
+        main_req = prompt[:offload_cutoff]
+        remainder = prompt[offload_cutoff:]
+        artifact = self._artifact_store.put_text(
+            kind=ArtifactKind.METADATA,
+            name="prompt_overflow.txt",
+            text=remainder,
+            task_id=task_id,
         )
-        self._artifact_store.put(artifact)
         log.info("prompt-offload task=%s size=%d", task_id, len(prompt))
-        return f"{main_req}\n\n[Full prompt offloaded to artifact_id:///{artifact_id}]"
+        return f"{main_req}\n\n[Full prompt offloaded to artifact_id:///{artifact.id}]"
 
     def submit_issue(
         self,
@@ -1540,11 +1540,8 @@ class Daemon:
                     continue
                 snapshot = self._capture_config_snapshot()
                 await self._execute(task, snapshot)
-=======
-                await self._execute(task)
->>>>>>> origin/main
 
-    async def _execute(self, task: Task) -> None:
+    async def _execute(self, task: Task, snapshot: ConfigSnapshot) -> None:
         task.status = TaskStatus.RUNNING
         task.started_at = datetime.now(timezone.utc)
         try:
@@ -1563,14 +1560,11 @@ class Daemon:
                     ),
                 )
             )
->>>>>>> origin/main
+            snapshot.budget.require_under_budget()
             decision = snapshot.router.route(
-=======
-            self._budget.require_under_budget()
-            decision = self._router.route(
                 repo=task.repo,
                 backend_override=task.backend,
-                model_override=task.model or choice.model,
+                model_override=task.model,
             )
             task.backend = decision.backend_name
             task.route_reason = decision.reason
@@ -1589,9 +1583,13 @@ class Daemon:
 
             prompt_content = task.prompt
             if task.repo:
-                from maxwell_daemon.gh.workspace import Workspace
-                ws = getattr(self, "_workspace", None) or Workspace(root=self._workspace_root)
-                repo_path = await ws.ensure_clone(task.repo, task_id=task.id)
+                repo_cfg = next((r for r in snapshot.config.repos if r.name == task.repo), None)
+                if repo_cfg and repo_cfg.path:
+                    repo_path = Path(repo_cfg.path)
+                else:
+                    from maxwell_daemon.gh.workspace import Workspace
+                    ws = getattr(self, "_workspace", None) or Workspace(root=self._workspace_root)
+                    repo_path = await ws.ensure_clone(task.repo, task_id=task.id)
                 from maxwell_daemon.core.repo_overrides import RepoSchematic
                 schematic = RepoSchematic(task.repo, repo_path).generate()
                 prompt_content = f"{schematic}\n\n{prompt_content}"
@@ -1740,15 +1738,13 @@ class Daemon:
 
         # Smart model selection: if the task didn't specify a model AND the
         # backend has a tier_map, pick by issue complexity.
-        from maxwell_daemon.core.cost_evaluator import CostEvaluator
-        evaluator = CostEvaluator(snapshot)
-        
+
         effective_model = decision.model
         backend_cfg = self._router._backend_config(decision.backend_name)
         if not task.model and backend_cfg is not None and backend_cfg.tier_map:
             try:
                 issue = await github.get_issue(task.issue_repo, task.issue_number)
-                # Inject issue details into evaluator logic if needed, 
+                # Inject issue details into evaluator logic if needed,
                 # or just use prompt length which for ISSUE is short.
                 # Actually, pick_model_for_issue was better here because it has the issue object.
                 # I'll keep pick_model_for_issue but use evaluator for budgeting.

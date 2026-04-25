@@ -9,13 +9,13 @@ its own default.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from maxwell_daemon.config import MaxwellDaemonConfig
 
-__all__ = ["RepoOverrides", "resolve_overrides", "RepoSchematic"]
+__all__ = ["RepoOverrides", "RepoSchematic", "resolve_overrides"]
 
 
 @dataclass(slots=True, frozen=True)
@@ -53,7 +53,7 @@ class RepoSchematic:
         schematic = f"Schematic for {self.repo_name}:\n"
         if not self.workspace_path.exists():
             return schematic + "Workspace not found."
-            
+
         try:
             for item in self.workspace_path.iterdir():
                 if item.is_dir() and not item.name.startswith("."):
@@ -62,7 +62,7 @@ class RepoSchematic:
                     schematic += f"File: {item.name}\n"
         except Exception as e:
             schematic += f"Error: {e}\n"
-            
+
         if os.environ.get("MAXWELL_AGGRESSIVE_COMPRESSION") == "1":
             from maxwell_daemon.tools.compression import ToolResultCompressor
             compressor = ToolResultCompressor(head_lines=100, tail_lines=100, max_chars=4000)
