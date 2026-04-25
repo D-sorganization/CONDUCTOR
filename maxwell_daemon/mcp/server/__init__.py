@@ -13,7 +13,9 @@ from mcp.types import GetPromptResult, Prompt, PromptMessage, Resource, TextCont
 from maxwell_daemon.config import load_config
 from maxwell_daemon.core.action_service import ActionService
 from maxwell_daemon.core.cross_audit import DEFAULT_CROSS_AUDIT_ROLES
-from maxwell_daemon.core.ledger import CostLedger
+from pydantic import AnyUrl
+
+from maxwell_daemon.core.action_store import ActionStore
 from maxwell_daemon.mcp.server.daemon_client import DaemonClient
 from maxwell_daemon.mcp.server.daemon_tools import build_daemon_registry
 from maxwell_daemon.tools.builtins import build_default_registry
@@ -28,8 +30,8 @@ async def run_mcp_server(config_path: Path | None = None) -> None:
     server = Server("maxwell-daemon")
 
     # Wire up the ActionService so side-effecting tools require approval in the daemon UI
-    ledger = CostLedger(config.ledger_path)
-    action_service = ActionService(ledger)
+    action_store = ActionStore(":memory:")
+    action_service = ActionService(action_store)
 
     # We expose the built-in sandbox tools mapped to the default workspace.
     registry = build_default_registry(config.memory.workspace_path, action_service=action_service)
@@ -79,14 +81,14 @@ async def run_mcp_server(config_path: Path | None = None) -> None:
     async def handle_list_resources() -> list[Resource]:
         return [
             Resource(
-                uri="artifact://list", name="Artifacts", description="Maxwell Daemon artifacts"
+                uri=AnyUrl("artifact://list"), name="Artifacts", description="Maxwell Daemon artifacts"
             ),
-            Resource(uri="workspace://list", name="Workspaces", description="Task workspaces"),
-            Resource(uri="memory://list", name="Episodic Memory", description="Agent memory"),
+            Resource(uri=AnyUrl("workspace://list"), name="Workspaces", description="Task workspaces"),
+            Resource(uri=AnyUrl("memory://list"), name="Episodic Memory", description="Agent memory"),
         ]
 
-    @server.read_resource()  # type: ignore[untyped-decorator]
-    async def handle_read_resource(uri: str) -> str:
+    @server.read_resource()  # type: ignore[no-untyped-call, untyped-decorator]
+    async def handle_read_resource(uri: AnyUrl | str) -> str:
         return f"Resource {uri} is not fully implemented yet over REST proxy."
 
     @server.list_prompts()  # type: ignore[no-untyped-call, untyped-decorator]
@@ -98,7 +100,7 @@ async def run_mcp_server(config_path: Path | None = None) -> None:
             )
         return prompts
 
-    @server.get_prompt()  # type: ignore[untyped-decorator]
+    @server.get_prompt()  # type: ignore[no-untyped-call, untyped-decorator]
     async def handle_get_prompt(name: str, arguments: dict[str, str] | None) -> GetPromptResult:
         role_id = name.replace("maxwell_", "")
         role = DEFAULT_CROSS_AUDIT_ROLES.get(role_id)

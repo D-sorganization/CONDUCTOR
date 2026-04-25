@@ -417,7 +417,7 @@ class TestRunningStatusResilience:
         _run(body())
 
     def test_requeue_error_is_logged(
-        self, minimal_config: MaxwellDaemonConfig, isolated_ledger_path: Path, capsys: pytest.CaptureFixture[str]
+        self, minimal_config: MaxwellDaemonConfig, isolated_ledger_path: Path, cap_structlog: Any
     ) -> None:
         """A failed RUNNING status update is logged at ERROR level."""
 
@@ -445,6 +445,12 @@ class TestRunningStatusResilience:
         store = _FailFirstStore()
 
         async def body() -> None:
+            d = Daemon(minimal_config, ledger_path=isolated_ledger_path)
+            d._task_store = store  # type: ignore[assignment]
+            await d.start(worker_count=1)
+            try:
+                d.submit("hi")
+                await asyncio.sleep(0.1) # Wait for processing attempt
                 matched = [
                     r for r in cap_structlog.entries if "re-queuing" in str(r.get("event", ""))
                 ]

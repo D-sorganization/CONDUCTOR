@@ -109,7 +109,8 @@ class TestEndToEnd:
 
         r = client.post("/api/v1/tasks", json={"prompt": "hello there", "repo": "user/cheap-repo"})
         assert r.status_code == 202, r.json()
-        _wait_for_completion(client, loop, r.json()["id"])
+        final = _wait_for_completion(client, loop, r.json()["id"])
+        print(f"DEBUG: {final}")
 
         cost = client.get("/api/v1/cost").json()
         assert "local" in cost["by_backend"]
