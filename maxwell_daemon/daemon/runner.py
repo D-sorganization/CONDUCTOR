@@ -224,6 +224,10 @@ class Daemon:
         self._delegate_lifecycle = DelegateLifecycleService(
             DelegateSessionStore(default_delegate_store)
         )
+        from maxwell_daemon.core.template_store import TemplateStore
+        self._template_store = TemplateStore(
+            Path.home() / ".local/share/maxwell-daemon/templates"
+        )
 
         default_auth_store = auth_store_path or (
             Path.home() / ".local/share/maxwell-daemon/auth_sessions.db"
@@ -291,6 +295,10 @@ class Daemon:
     @property
     def events(self) -> EventBus:
         return self._events
+
+    @property
+    def template_store(self) -> Any:
+        return self._template_store
 
     @classmethod
     def from_config_path(cls, path: Path | str | None = None) -> Daemon:
@@ -785,7 +793,7 @@ class Daemon:
         if len(prompt) <= max_prompt_len:
             return prompt
 
-        from maxwell_daemon.core.artifacts import Artifact, ArtifactKind
+        from maxwell_daemon.core.artifacts import ArtifactKind
 
         # Migrate remainder to artifact store
         main_req = prompt[:offload_cutoff]
