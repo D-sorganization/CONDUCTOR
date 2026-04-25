@@ -19,7 +19,7 @@ import hmac
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path as _Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 
 from fastapi import (
     Body,
@@ -2162,6 +2162,20 @@ def create_app(
             "ab_group": tasks[0].ab_group,
             "tasks": [TaskView.from_task(t).model_dump(mode="json") for t in tasks],
         }
+
+    @app.get("/api/v1/templates", dependencies=[Depends(_require_viewer())])
+    async def list_templates() -> list[dict[str, Any]]:
+        """List all available task templates."""
+        return [t.model_dump() for t in daemon.template_store.list_templates()]
+
+    @app.get("/api/v1/templates/{template_id}", dependencies=[Depends(_require_viewer())])
+    async def get_template(template_id: str) -> dict[str, Any]:
+        """Fetch a specific task template by ID."""
+        t = daemon.template_store.get_template(template_id)
+        if not t:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, f"Template {template_id} not found")
+        return cast(dict[str, Any], t.model_dump())
+
 
     @app.post(
         "/api/v1/issues/batch-dispatch",
