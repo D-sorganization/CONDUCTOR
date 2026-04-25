@@ -29,8 +29,8 @@ async def test_cognitive_pipeline_execution():  # type: ignore[no-untyped-def]
     validator = DummyRolePlayer(Role("Validator", "check", False), content="PASS")
 
     pipeline = CognitivePipeline(
-        strategist=strategist,
-        implementer=implementer,
+        strategist=strategist,  # type: ignore[arg-type]
+        implementer=implementer,  # type: ignore[arg-type]
         validator=validator,  # type: ignore[arg-type]
     )
 
@@ -51,8 +51,8 @@ async def test_cognitive_pipeline_failure():  # type: ignore[no-untyped-def]
     )
 
     pipeline = CognitivePipeline(
-        strategist=strategist,
-        implementer=implementer,
+        strategist=strategist,  # type: ignore[arg-type]
+        implementer=implementer,  # type: ignore[arg-type]
         validator=validator,  # type: ignore[arg-type]
     )
 

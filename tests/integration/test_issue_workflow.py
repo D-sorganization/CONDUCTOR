@@ -7,7 +7,7 @@ and ledger. Proves the whole dispatch loop works without touching the network.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -102,7 +102,7 @@ class StubBackend(ILLMBackend):
             backend=self.name,
         )
 
-    async def stream(self, *a: Any, **kw: Any):
+    async def stream(self, *a: Any, **kw: Any) -> AsyncIterator[str]:
         if False:
             yield ""
 
@@ -176,7 +176,9 @@ def _wait_done(
 ) -> dict[str, Any]:
     deadline = loop.time() + timeout
     while loop.time() < deadline:
-        t = client.get(f"/api/v1/tasks/{task_id}").json()
+        res = client.get(f"/api/v1/tasks/{task_id}").json()
+        assert isinstance(res, dict)
+        t: dict[str, Any] = res
         if t["status"] in {"completed", "failed"}:
             return t
         loop.run_until_complete(asyncio.sleep(0.25))

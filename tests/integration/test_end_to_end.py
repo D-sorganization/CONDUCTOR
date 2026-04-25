@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -75,11 +76,13 @@ def _wait_for_completion(
     loop: asyncio.AbstractEventLoop,
     task_id: str,
     timeout_s: float = 30.0,
-) -> dict:
+) -> dict[str, Any]:
     """Poll the API while yielding to the shared event loop so workers can run."""
     deadline = loop.time() + timeout_s
     while loop.time() < deadline:
-        t = client.get(f"/api/v1/tasks/{task_id}").json()
+        res = client.get(f"/api/v1/tasks/{task_id}").json()
+        assert isinstance(res, dict)
+        t: dict[str, Any] = res
         if t["status"] in {"completed", "failed"}:
             return t
         # Yield: run the loop long enough for a worker to pick up the task.
