@@ -50,8 +50,8 @@ def _install_mock_client(backend: AgentLoopBackend, responses: list[MagicMock]) 
     client = MagicMock()
     client.messages = MagicMock()
     client.messages.create = AsyncMock(side_effect=list(responses))
-    backend._client = client  # type: ignore[assignment]
-    return client.messages.create
+    backend._client = client
+    return client.messages.create  # type: ignore[no-any-return]
 
 
 class _FakeCondenser:

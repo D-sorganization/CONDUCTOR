@@ -21,7 +21,7 @@ def _fresh_task(**overrides: object) -> Task:
         "backend": None,
         "model": None,
     }
-    defaults.update(overrides)
+    defaults.update(overrides)  # type: ignore[arg-type]
     return Task(**defaults)  # type: ignore[arg-type]
 
 
@@ -65,7 +65,7 @@ class TestSaveAndGet:
         task.prompt = "v2"
         store.save(task)
         loaded = store.get(task.id)
-        assert loaded.prompt == "v2"
+        assert loaded.prompt == "v2"  # type: ignore[union-attr]
 
 
 class TestUpdateStatus:
@@ -74,8 +74,8 @@ class TestUpdateStatus:
         store.save(task)
         store.update_status(task.id, TaskStatus.RUNNING, started_at=datetime.now(timezone.utc))
         loaded = store.get(task.id)
-        assert loaded.status is TaskStatus.RUNNING
-        assert loaded.started_at is not None
+        assert loaded.status is TaskStatus.RUNNING  # type: ignore[union-attr]
+        assert loaded.started_at is not None  # type: ignore[union-attr]
 
     def test_missing_id_raises(self, store: TaskStore) -> None:
         with pytest.raises(KeyError):
@@ -143,9 +143,9 @@ class TestRecoverPending:
 
         store.recover_pending()
         loaded = store.get(running.id)
-        assert loaded.status is TaskStatus.FAILED
-        assert loaded.error is not None
-        assert "crashed" in loaded.error.lower()
+        assert loaded.status is TaskStatus.FAILED  # type: ignore[union-attr]
+        assert loaded.error is not None  # type: ignore[union-attr]
+        assert "crashed" in loaded.error.lower()  # type: ignore[union-attr]
 
 
 class TestPrune:
@@ -201,9 +201,9 @@ class TestIssueFields:
         )
         store.save(task)
         loaded = store.get(task.id)
-        assert loaded.issue_repo == "o/r"
-        assert loaded.issue_number == 42
-        assert loaded.issue_mode == "implement"
+        assert loaded.issue_repo == "o/r"  # type: ignore[union-attr]
+        assert loaded.issue_number == 42  # type: ignore[union-attr]
+        assert loaded.issue_mode == "implement"  # type: ignore[union-attr]
 
 
 class TestSchemaMigration:
@@ -218,7 +218,7 @@ class TestSchemaMigration:
 
 class TestClose:
     def test_close_is_idempotent(self) -> None:
-        store = TaskStore(":memory:")
+        store = TaskStore(":memory:")  # type: ignore[arg-type]
         store.close()
         store.close()  # second close must not raise
 

@@ -94,6 +94,7 @@ _STARTER_SCENARIOS = (
         requires_approval=True,
     ),
 )
+
 def list_scenarios() -> list[EvalScenario]:
     """Return the built-in starter smoke scenarios plus curated YAML suites."""
     scenarios = list(_STARTER_SCENARIOS)
@@ -115,6 +116,7 @@ def list_scenarios() -> list[EvalScenario]:
                         scenarios.append(EvalScenario(**data))
             except Exception as e:
                 import logging
+
                 logging.getLogger(__name__).warning(f"Failed to load suite {suite_file}: {e}")
 
     return scenarios

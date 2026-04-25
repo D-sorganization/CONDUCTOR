@@ -9,7 +9,7 @@ class DummyRolePlayer:
         self.role = role
         self._content = content
 
-    async def execute(self, job: Job, tools=None):
+    async def execute(self, job: Job, tools=None):  # type: ignore[no-untyped-def]
         from maxwell_daemon.backends.base import BackendResponse, TokenUsage
 
         return BackendResponse(
@@ -23,13 +23,13 @@ class DummyRolePlayer:
 
 
 @pytest.mark.asyncio
-async def test_cognitive_pipeline_execution():
+async def test_cognitive_pipeline_execution():  # type: ignore[no-untyped-def]
     strategist = DummyRolePlayer(Role("Strategist", "plan", False), content="Here is the plan.")
     implementer = DummyRolePlayer(Role("Implementer", "code", False), content="Here is the code.")
     validator = DummyRolePlayer(Role("Validator", "check", False), content="PASS")
 
     pipeline = CognitivePipeline(
-        strategist=strategist, implementer=implementer, validator=validator
+        strategist=strategist, implementer=implementer, validator=validator  # type: ignore[arg-type]
     )
 
     initial_job = Job(instructions="Fix the bug")
@@ -41,7 +41,7 @@ async def test_cognitive_pipeline_execution():
 
 
 @pytest.mark.asyncio
-async def test_cognitive_pipeline_failure():
+async def test_cognitive_pipeline_failure():  # type: ignore[no-untyped-def]
     strategist = DummyRolePlayer(Role("Strategist", "plan", False), content="Here is the plan.")
     implementer = DummyRolePlayer(Role("Implementer", "code", False), content="Here is bad code.")
     validator = DummyRolePlayer(
@@ -49,7 +49,7 @@ async def test_cognitive_pipeline_failure():
     )
 
     pipeline = CognitivePipeline(
-        strategist=strategist, implementer=implementer, validator=validator
+        strategist=strategist, implementer=implementer, validator=validator  # type: ignore[arg-type]
     )
 
     initial_job = Job(instructions="Fix the bug")

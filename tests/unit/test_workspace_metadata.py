@@ -17,7 +17,7 @@ from maxwell_daemon.core.workspaces import (
 from maxwell_daemon.gh.workspace import Workspace, WorkspaceError
 
 
-def _ids(*values: str):
+def _ids(*values: str):  # type: ignore[no-untyped-def]
     pending = iter(values)
     return lambda: next(pending)
 

@@ -50,7 +50,7 @@ def test_load_checks_is_deterministic_and_ignores_non_md_files(tmp_path: Path) -
 
     checks = load_checks(tmp_path)
 
-    assert [check.source.name for check in checks] == ["a-check.md", "b-check.md"]
+    assert [check.source.name for check in checks] == ["a-check.md", "b-check.md"]  # type: ignore[union-attr]
 
 
 def test_select_checks_filters_by_path(tmp_path: Path) -> None:

@@ -338,7 +338,7 @@ class TestRateLimitHandling:
                 (0, issues_payload, b""),
             ]
         )
-        client = GitHubClient(runner=runner)
+        client = GitHubClient(runner=runner)  # type: ignore[arg-type]
         issues = asyncio.run(client.list_issues("owner/repo"))
         assert len(issues) == 1
         assert issues[0].number == 1
@@ -353,7 +353,7 @@ class TestRateLimitHandling:
                 (1, b"", b"API rate limit exceeded"),
             ]
         )
-        client = GitHubClient(runner=runner)
+        client = GitHubClient(runner=runner)  # type: ignore[arg-type]
         with pytest.raises(GitHubRateLimitError):
             asyncio.run(client.list_issues("owner/repo"))
 
@@ -364,7 +364,7 @@ class TestRateLimitHandling:
                 (1, b"", b"Repository not found"),
             ]
         )
-        client = GitHubClient(runner=runner)
+        client = GitHubClient(runner=runner)  # type: ignore[arg-type]
         with pytest.raises(GhCliError, match="Repository not found"):
             asyncio.run(client.list_issues("owner/repo"))
         # Only one call made — no retries for non-rate-limit errors.
@@ -395,7 +395,7 @@ class TestRateLimitHandling:
                 (0, issues_payload, b""),
             ]
         )
-        client = GitHubClient(runner=runner)
+        client = GitHubClient(runner=runner)  # type: ignore[arg-type]
         issues = asyncio.run(client.list_issues("owner/repo"))
         assert len(issues) == 1
 
@@ -409,21 +409,21 @@ class TestRateLimitHandling:
                 (1, b"", b"rate limit exceeded"),
             ]
         )
-        client = GitHubClient(runner=runner)
+        client = GitHubClient(runner=runner)  # type: ignore[arg-type]
         with pytest.raises(GitHubRateLimitError):
             asyncio.run(client.list_issues("owner/repo"))
 
     def test_fetch_rate_limit_reset_returns_none_on_failure(self) -> None:
         """_fetch_rate_limit_reset returns None when the API call fails."""
         runner = self._make_runner([(1, b"", b"auth required")])
-        client = GitHubClient(runner=runner)
+        client = GitHubClient(runner=runner)  # type: ignore[arg-type]
         result = asyncio.run(client._fetch_rate_limit_reset())
         assert result is None
 
     def test_fetch_rate_limit_reset_returns_none_on_bad_json(self) -> None:
         """_fetch_rate_limit_reset returns None when output is not valid JSON."""
         runner = self._make_runner([(0, b"not json", b"")])
-        client = GitHubClient(runner=runner)
+        client = GitHubClient(runner=runner)  # type: ignore[arg-type]
         result = asyncio.run(client._fetch_rate_limit_reset())
         assert result is None
 

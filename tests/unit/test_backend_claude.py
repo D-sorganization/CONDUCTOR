@@ -54,8 +54,8 @@ class TestSystemPromptSplit:
                 Message(role=MessageRole.USER, content="hi"),
             ]
         )
-        assert "rule 1" in sys
-        assert "rule 2" in sys
+        assert "rule 1" in sys  # type: ignore[operator]
+        assert "rule 2" in sys  # type: ignore[operator]
         assert len(msgs) == 1
 
     def test_no_system_returns_none(self) -> None:
@@ -75,7 +75,7 @@ class TestCapabilities:
     def test_haiku_cheaper_than_sonnet(self) -> None:
         haiku = ClaudeBackend().capabilities("claude-haiku-4-5")
         sonnet = ClaudeBackend().capabilities("claude-sonnet-4-6")
-        assert haiku.cost_per_1k_input_tokens < sonnet.cost_per_1k_input_tokens
+        assert haiku.cost_per_1k_input_tokens < sonnet.cost_per_1k_input_tokens  # type: ignore[operator]
 
     def test_all_support_vision_and_tools(self) -> None:
         for model in ("claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5"):
@@ -85,7 +85,7 @@ class TestCapabilities:
 
     def test_unknown_model_has_safe_defaults(self) -> None:
         caps = ClaudeBackend().capabilities("claude-future-x")
-        assert caps.cost_per_1k_input_tokens >= 0
+        assert caps.cost_per_1k_input_tokens >= 0  # type: ignore[operator]
         assert caps.max_context_tokens >= 100_000
 
 

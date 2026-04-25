@@ -157,12 +157,3 @@ def isolated_ledger_path(tmp_path: Path) -> Path:
     return tmp_path / "ledger.db"
 
 
-@pytest.fixture(autouse=True)
-def _structlog_test_config() -> Iterator[None]:
-    structlog.configure(
-        wrapper_class=structlog.make_filtering_bound_logger(logging.DEBUG),
-        logger_factory=structlog.stdlib.LoggerFactory(),
-    )
-    yield
-    structlog.reset_defaults()
-    logging.getLogger().handlers.clear()

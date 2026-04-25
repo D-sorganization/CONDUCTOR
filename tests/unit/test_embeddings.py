@@ -145,7 +145,7 @@ class TestOpenAIProvider:
         client = _FakeClient([[0.0] * 256])
         provider = OpenAIEmbeddingProvider(http_client=client, dimensions_override=256)
         _run(provider.embed_batch(("x",)))
-        call_kwargs = client.embeddings.create.await_args.kwargs
+        call_kwargs = client.embeddings.create.await_args.kwargs  # type: ignore[union-attr]
         assert call_kwargs["dimensions"] == 256
         assert provider.dimensions == 256
 
@@ -153,7 +153,7 @@ class TestOpenAIProvider:
         client = _FakeClient([[0.0] * 3])
         provider = OpenAIEmbeddingProvider(http_client=client)
         _run(provider.embed_batch(("x",)))
-        call_kwargs = client.embeddings.create.await_args.kwargs
+        call_kwargs = client.embeddings.create.await_args.kwargs  # type: ignore[union-attr]
         assert "dimensions" not in call_kwargs
 
     def test_empty_batch_short_circuits(self) -> None:

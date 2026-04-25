@@ -17,7 +17,7 @@ def store(tmp_path: Path) -> WorkItemStore:
 
 def _item(**overrides: object) -> WorkItem:
     data = {"id": "wi-1", "title": "Ship work items"}
-    data.update(overrides)
+    data.update(overrides)  # type: ignore[arg-type]
     return WorkItem(**data)  # type: ignore[arg-type]
 
 
@@ -80,7 +80,7 @@ def test_transition_updates_timestamps(store: WorkItemStore) -> None:
 
     assert updated.status is WorkItemStatus.IN_PROGRESS
     assert updated.started_at is not None
-    assert store.get(item.id).started_at is not None
+    assert store.get(item.id).started_at is not None  # type: ignore[union-attr]
 
 
 def test_missing_transition_raises_key_error(store: WorkItemStore) -> None:

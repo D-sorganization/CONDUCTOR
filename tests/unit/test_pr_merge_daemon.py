@@ -77,7 +77,7 @@ def _default_config(**overrides: Any) -> PrMergeConfig:
         "merge_method": "squash",
     }
     base.update(overrides)
-    return PrMergeConfig(**base)
+    return PrMergeConfig(**base)  # type: ignore[arg-type]
 
 
 # ── Daemon off by default ────────────────────────────────────────────────────

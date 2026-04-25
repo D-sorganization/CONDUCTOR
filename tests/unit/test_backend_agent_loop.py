@@ -72,8 +72,8 @@ def _install_mock_client(backend: AgentLoopBackend, responses: list[MagicMock]) 
     client = MagicMock()
     client.messages = MagicMock()
     client.messages.create = AsyncMock(side_effect=list(responses))
-    backend._client = client  # type: ignore[assignment]
-    return client.messages.create
+    backend._client = client
+    return client.messages.create  # type: ignore[no-any-return]
 
 
 def _user(text: str) -> list[Message]:
@@ -111,7 +111,7 @@ class TestWorkspaceSelection:
         client = MagicMock()
         client.messages = MagicMock()
         client.messages.stream = MagicMock()
-        backend._client = client  # type: ignore[assignment]
+        backend._client = client
 
         with pytest.raises(PreconditionError, match="workspace_dir"):
             _ = [chunk async for chunk in backend.stream(_user("hi"), model="claude-sonnet-4-6")]
@@ -439,9 +439,9 @@ class TestToolRegistryIntegration:
                 _response(text="got it"),
             ],
         )
-        create = backend._client.messages.create  # type: ignore[attr-defined]
+        create = backend._client.messages.create
         await backend.complete(_user("read"), model="claude-sonnet-4-6")
-        second_call = create.call_args_list[1].kwargs["messages"]
+        second_call = create.call_args_list[1].kwargs["messages"]  # type: ignore[attr-defined]
         tool_result = second_call[-1]["content"][0]
         assert tool_result["type"] == "tool_result"
         assert "payload-from-registry" in tool_result["content"]
@@ -599,6 +599,6 @@ class TestAclose:
         backend = AgentLoopBackend(workspace_dir=str(tmp_path))
         mock_client = MagicMock()
         mock_client.aclose = AsyncMock()
-        backend._client = mock_client  # type: ignore[assignment]
+        backend._client = mock_client
         await backend.aclose()
         mock_client.aclose.assert_awaited_once()

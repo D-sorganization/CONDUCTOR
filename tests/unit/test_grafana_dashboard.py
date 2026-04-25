@@ -12,27 +12,27 @@ DASHBOARD = Path(__file__).resolve().parents[2] / "grafana" / "maxwell-daemon-da
 
 
 @pytest.fixture(scope="module")
-def dashboard() -> dict:
-    return json.loads(DASHBOARD.read_text())
+def dashboard() -> dict:  # type: ignore[type-arg]
+    return json.loads(DASHBOARD.read_text())  # type: ignore[no-any-return]
 
 
 class TestDashboardShape:
-    def test_has_title_and_uid(self, dashboard: dict) -> None:
+    def test_has_title_and_uid(self, dashboard: dict) -> None:  # type: ignore[type-arg]
         assert dashboard["title"] == "Maxwell-Daemon — Agent Fleet"
         assert dashboard["uid"]
         assert dashboard["schemaVersion"] >= 36
 
-    def test_has_panels(self, dashboard: dict) -> None:
+    def test_has_panels(self, dashboard: dict) -> None:  # type: ignore[type-arg]
         assert len(dashboard["panels"]) >= 5
 
-    def test_templating_has_datasource(self, dashboard: dict) -> None:
+    def test_templating_has_datasource(self, dashboard: dict) -> None:  # type: ignore[type-arg]
         assert any(v.get("name") == "DS_PROMETHEUS" for v in dashboard["templating"]["list"])
 
 
 class TestMetricsAreReal:
     """Every metric referenced in PromQL must actually be emitted by the code."""
 
-    def _referenced_metrics(self, dashboard: dict) -> set[str]:
+    def _referenced_metrics(self, dashboard: dict) -> set[str]:  # type: ignore[type-arg]
         # Match maxwell_daemon_* metric names, stripping trailing suffixes added by
         # prometheus_client (_total for counters; _bucket/_sum/_count for histograms).
         name_re = re.compile(r"\bmaxwell_daemon_[a-z_]+\b")
@@ -64,7 +64,7 @@ class TestMetricsAreReal:
             MAXWELL_COST_FORECAST_USD._name,
         }
 
-    def test_every_referenced_metric_exists(self, dashboard: dict) -> None:
+    def test_every_referenced_metric_exists(self, dashboard: dict) -> None:  # type: ignore[type-arg]
         referenced = self._referenced_metrics(dashboard)
         exported = self._exported_metrics()
         missing = referenced - exported

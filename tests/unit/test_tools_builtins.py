@@ -159,7 +159,7 @@ class TestEditFile:
             denied_command_names=frozenset({"denied"}),
         )
 
-        def mock_propose(*args, **kwargs):
+        def mock_propose(*args, **kwargs):  # type: ignore[no-untyped-def]
             from maxwell_daemon.core.action_policy import PolicyDecision
             from maxwell_daemon.core.actions import (
                 Action,
@@ -182,7 +182,7 @@ class TestEditFile:
                 allowed=False, requires_approval=True, reason="disallowed"
             )
 
-        service.propose = mock_propose
+        service.propose = mock_propose  # type: ignore[method-assign]
         edit = make_edit_file(tmp_path, action_service=service, task_id="task-1")
         res = edit(path="f", old_string="a", new_string="b")
         assert "skipped" in res
@@ -202,7 +202,7 @@ class TestEditFile:
 
         orig = os.replace
 
-        def broken_replace(*args, **kwargs):
+        def broken_replace(*args, **kwargs):  # type: ignore[no-untyped-def]
             raise OSError("broken replace")
 
         os.replace = broken_replace
@@ -298,7 +298,7 @@ class TestRunBash:
             policy=ActionPolicy(mode=ApprovalMode.SUGGEST, workspace_root=tmp_path),
         )
 
-        def mock_propose(*args, **kwargs):
+        def mock_propose(*args, **kwargs):  # type: ignore[no-untyped-def]
             from maxwell_daemon.core.action_policy import PolicyDecision
             from maxwell_daemon.core.actions import (
                 Action,
@@ -321,7 +321,7 @@ class TestRunBash:
                 allowed=False, requires_approval=True, reason="disallowed bash"
             )
 
-        service.propose = mock_propose
+        service.propose = mock_propose  # type: ignore[method-assign]
         bash = make_run_bash(tmp_path, runner=runner, action_service=service, task_id="task-1")
         res = await bash(command="echo hi")
         assert "skipped" in res
@@ -448,15 +448,15 @@ class TestGrepFiles:
 
         orig_read_text = pathlib.Path.read_text
 
-        def broken_read(self, *args, **kwargs):
+        def broken_read(self, *args, **kwargs):  # type: ignore[no-untyped-def]
             raise OSError("unreadable")
 
-        pathlib.Path.read_text = broken_read
+        pathlib.Path.read_text = broken_read  # type: ignore[method-assign]
         try:
             grep = make_grep_files(tmp_path)
             result = grep(pattern="needle")
         finally:
-            pathlib.Path.read_text = orig_read_text
+            pathlib.Path.read_text = orig_read_text  # type: ignore[method-assign]
         assert "no match" in result.lower()
 
 

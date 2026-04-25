@@ -48,7 +48,7 @@ class TestCondense:
             {"role": "user", "content": "task"},
             {"role": "assistant", "content": "ok"},
         ]
-        out = await c.condense(messages)
+        out = await c.condense(messages)  # type: ignore[arg-type]
         # 2 messages < anchor(1) + keep_recent(10) + summary(1) → leave untouched.
         assert out == messages
 
@@ -62,7 +62,7 @@ class TestCondense:
             {"role": "user", "content": "m4"},
             {"role": "assistant", "content": "m5"},
         ]
-        out = await c.condense(messages)
+        out = await c.condense(messages)  # type: ignore[arg-type]
         # First message always retained so the task statement stays visible.
         assert out[0] == {"role": "user", "content": "the original task"}
 
@@ -76,7 +76,7 @@ class TestCondense:
             {"role": "user", "content": "latest-1"},
             {"role": "assistant", "content": "latest"},
         ]
-        out = await c.condense(messages)
+        out = await c.condense(messages)  # type: ignore[arg-type]
         assert out[-2:] == [
             {"role": "user", "content": "latest-1"},
             {"role": "assistant", "content": "latest"},
@@ -92,7 +92,7 @@ class TestCondense:
             {"role": "user", "content": "latest-1"},
             {"role": "assistant", "content": "latest"},
         ]
-        out = await c.condense(messages)
+        out = await c.condense(messages)  # type: ignore[arg-type]
         # Shape: [task, summary, latest-1, latest]
         assert len(out) == 4
         summary_msg = out[1]
@@ -117,7 +117,7 @@ class TestCondense:
             {"role": "user", "content": "last-user"},
             {"role": "assistant", "content": "last-assist"},
         ]
-        await c.condense(messages)
+        await c.condense(messages)  # type: ignore[arg-type]
         assert seen
         mid = seen[0]
         # Summarizer sees the middle 3 — not the anchor, not the tail.
@@ -136,7 +136,7 @@ class TestCondense:
             {"role": "user", "content": "latest-1"},
             {"role": "assistant", "content": "latest"},
         ]
-        out = await c.condense(messages)
+        out = await c.condense(messages)  # type: ignore[arg-type]
         # On summarizer failure we keep the original rather than drop context.
         assert out == messages
 

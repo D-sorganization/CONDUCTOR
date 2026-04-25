@@ -565,7 +565,7 @@ class TestReadOnlyBackendExternalAgentAdapters:
         expected_hint: str,
     ) -> None:
         backend = FakeLLMBackend()
-        adapter = factory(backend=backend, model="test-model")
+        adapter = factory(backend=backend, model="test-model")  # type: ignore[call-arg]
 
         result = adapter.run(
             ExternalAgentRunContext(
@@ -596,7 +596,7 @@ class TestReadOnlyBackendExternalAgentAdapters:
         adapter_id: str,
         tmp_path: Path,
     ) -> None:
-        adapter = factory(backend=FakeLLMBackend())
+        adapter = factory(backend=FakeLLMBackend())  # type: ignore[call-arg]
 
         result = adapter.run(
             ExternalAgentRunContext(

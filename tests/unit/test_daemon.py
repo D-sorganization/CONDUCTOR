@@ -22,7 +22,7 @@ T = TypeVar("T")
 
 
 def _run(coro: Awaitable[T]) -> T:
-    return asyncio.run(coro)
+    return asyncio.run(coro)  # type: ignore[arg-type]
 
 
 async def _wait_for_status(
@@ -176,7 +176,7 @@ class TestTaskExecution:
             tasks = [d.submit(f"t{i}") for i in range(8)]
             for t in tasks:
                 await _wait_for_status(d, t.id, TaskStatus.COMPLETED)
-            assert all(d.get_task(t.id).status == TaskStatus.COMPLETED for t in tasks)
+            assert all(d.get_task(t.id).status == TaskStatus.COMPLETED for t in tasks)  # type: ignore[union-attr]
 
         _run(_with_daemon(minimal_config, isolated_ledger_path, worker_count=4, body=body))
 
@@ -244,8 +244,8 @@ class TestTaskIdSubmission:
             d.submit("second", task_id="caller-id")
 
         assert d.get_task("caller-id") is first
-        assert d.get_task("caller-id").prompt == "first"
-        assert d._task_store.get("caller-id").prompt == "first"
+        assert d.get_task("caller-id").prompt == "first"  # type: ignore[union-attr]
+        assert d._task_store.get("caller-id").prompt == "first"  # type: ignore[union-attr]
         assert d._queue.qsize() == queue_depth
 
     def test_submit_rejects_duplicate_id_already_in_task_store(
@@ -259,7 +259,7 @@ class TestTaskIdSubmission:
         with pytest.raises(DuplicateTaskIdError, match="stored-id"):
             d.submit("second", task_id="stored-id")
 
-        assert d._task_store.get("stored-id").prompt == "first"
+        assert d._task_store.get("stored-id").prompt == "first"  # type: ignore[union-attr]
         assert d._queue.qsize() == queue_depth
 
     def test_submit_issue_rejects_duplicate_caller_supplied_task_id(
@@ -273,8 +273,8 @@ class TestTaskIdSubmission:
             d.submit_issue(repo="owner/repo", issue_number=2, task_id="issue-id")
 
         assert d.get_task("issue-id") is first
-        assert d.get_task("issue-id").issue_number == 1
-        assert d._task_store.get("issue-id").issue_number == 1
+        assert d.get_task("issue-id").issue_number == 1  # type: ignore[union-attr]
+        assert d._task_store.get("issue-id").issue_number == 1  # type: ignore[union-attr]
         assert d._queue.qsize() == queue_depth
 
 
@@ -410,14 +410,14 @@ class TestRunningStatusResilience:
                 await _wait_for_status(d, task.id, TaskStatus.COMPLETED, timeout=10.0)
                 # Task is still registered in the daemon dict after completion.
                 assert d.get_task(task.id) is not None
-                assert d.get_task(task.id).status == TaskStatus.COMPLETED
+                assert d.get_task(task.id).status == TaskStatus.COMPLETED  # type: ignore[union-attr]
             finally:
                 await d.stop()
 
         _run(body())
 
     def test_requeue_error_is_logged(
-        self, minimal_config: MaxwellDaemonConfig, isolated_ledger_path: Path, cap_structlog: Any
+        self, minimal_config: MaxwellDaemonConfig, isolated_ledger_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """A failed RUNNING status update is logged at ERROR level."""
 
@@ -451,10 +451,8 @@ class TestRunningStatusResilience:
             try:
                 d.submit("hi")
                 await asyncio.sleep(0.1)  # Wait for processing attempt
-                matched = [
-                    r for r in cap_structlog.entries if "re-queuing" in str(r.get("event", ""))
-                ]
-                assert matched, "expected re-queuing log message"
+                captured = capsys.readouterr()
+                assert "re-queuing" in captured.out or "re-queuing" in captured.err, "expected re-queuing log message"
             finally:
                 await d.stop()
 

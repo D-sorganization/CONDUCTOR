@@ -96,7 +96,7 @@ class TestRunOnce:
         sched = DiscoveryScheduler(
             github=gh,
             daemon=daemon,
-            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],
+            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],  # type: ignore[arg-type]
             interval_seconds=60,
             dedup_path=tmp_path / "dedup.json",
         )
@@ -110,7 +110,7 @@ class TestRunOnce:
         sched = DiscoveryScheduler(
             github=gh,
             daemon=daemon,
-            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],
+            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],  # type: ignore[arg-type]
             dedup_path=tmp_path / "dedup.json",
         )
         tick = await sched.run_once()
@@ -123,7 +123,7 @@ class TestRunOnce:
         sched = DiscoveryScheduler(
             github=gh,
             daemon=daemon,
-            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],
+            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],  # type: ignore[arg-type]
             dedup_path=tmp_path / "dedup.json",
         )
         first = await sched.run_once()
@@ -144,8 +144,8 @@ class TestRunOnce:
             github=gh,
             daemon=daemon,
             repos=[
-                DiscoveryRepoSpec(repo="a/b", labels={"deliver"}),
-                DiscoveryRepoSpec(repo="c/d", labels={"deliver"}),
+                DiscoveryRepoSpec(repo="a/b", labels={"deliver"}),  # type: ignore[arg-type]
+                DiscoveryRepoSpec(repo="c/d", labels={"deliver"}),  # type: ignore[arg-type]
             ],
             dedup_path=tmp_path / "dedup.json",
         )
@@ -168,8 +168,8 @@ class TestRunOnce:
             github=_Flaky(),
             daemon=daemon,
             repos=[
-                DiscoveryRepoSpec(repo="bad/repo", labels={"deliver"}),
-                DiscoveryRepoSpec(repo="ok/repo", labels={"deliver"}),
+                DiscoveryRepoSpec(repo="bad/repo", labels={"deliver"}),  # type: ignore[arg-type]
+                DiscoveryRepoSpec(repo="ok/repo", labels={"deliver"}),  # type: ignore[arg-type]
             ],
             dedup_path=tmp_path / "dedup.json",
         )
@@ -186,7 +186,7 @@ class TestRunOnce:
         sched = DiscoveryScheduler(
             github=gh,
             daemon=daemon,
-            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],
+            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],  # type: ignore[arg-type]
             dedup_path=dedup_file,
         )
         await sched.run_once()
@@ -203,7 +203,7 @@ class TestRunOnce:
         sched1 = DiscoveryScheduler(
             github=gh,
             daemon=_FakeDaemon(),
-            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],
+            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],  # type: ignore[arg-type]
             dedup_path=dedup_file,
         )
         await sched1.run_once()
@@ -213,7 +213,7 @@ class TestRunOnce:
         sched2 = DiscoveryScheduler(
             github=gh,
             daemon=daemon2,
-            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],
+            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],  # type: ignore[arg-type]
             dedup_path=dedup_file,
         )
         tick = await sched2.run_once()
@@ -233,7 +233,7 @@ class TestLifecycle:
         sched = DiscoveryScheduler(
             github=gh,
             daemon=daemon,
-            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],
+            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],  # type: ignore[arg-type]
             interval_seconds=60.0,
             jitter=True,
             dedup_path=tmp_path / "dedup.json",
@@ -256,7 +256,7 @@ class TestLifecycle:
         sched = DiscoveryScheduler(
             github=gh,
             daemon=daemon,
-            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],
+            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],  # type: ignore[arg-type]
             interval_seconds=60.0,
             jitter=True,
             dedup_path=tmp_path / "dedup.json",
@@ -277,7 +277,7 @@ class TestLifecycle:
         sched = DiscoveryScheduler(
             github=gh,
             daemon=daemon,
-            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],
+            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],  # type: ignore[arg-type]
             interval_seconds=0.01,  # tiny interval for test
             dedup_path=tmp_path / "dedup.json",
         )
@@ -354,7 +354,7 @@ class TestDedupPersistence:
         sched = DiscoveryScheduler(
             github=gh,
             daemon=daemon,
-            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],
+            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],  # type: ignore[arg-type]
             dedup_path=dedup_file,
         )
         tick = await sched.run_once()
@@ -371,7 +371,7 @@ class TestDedupPersistence:
         sched = DiscoveryScheduler(
             github=gh,
             daemon=daemon,
-            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],
+            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],  # type: ignore[arg-type]
             dedup_path=dedup_file,
         )
         tick = await sched.run_once()
@@ -403,7 +403,7 @@ class TestDedupPersistence:
         sched = DiscoveryScheduler(
             github=gh,
             daemon=daemon,
-            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],
+            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],  # type: ignore[arg-type]
             dedup_path=dedup_file,
         )
         # Patch write_text to raise an OSError — _save_dedup must swallow it
@@ -438,7 +438,7 @@ class TestSchedulerLoop:
         sched = DiscoveryScheduler(
             github=gh,
             daemon=daemon,
-            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],
+            repos=[DiscoveryRepoSpec(repo="a/b", labels={"deliver"})],  # type: ignore[arg-type]
             interval_seconds=0.01,
             jitter=False,
             dedup_path=tmp_path / "dedup.json",
@@ -491,7 +491,7 @@ class TestSchedulerLoop:
             tick_started.set()
             await tick_may_finish.wait()
 
-        sched.run_once = slow_run_once  # type: ignore[method-assign]
+        sched.run_once = slow_run_once  # type: ignore[assignment,method-assign]
         await sched.start()
         await tick_started.wait()
 

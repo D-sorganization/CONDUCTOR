@@ -23,19 +23,24 @@ def main() -> int:
         for node in ast.walk(tree):
             if isinstance(node, ast.Assign):
                 for target in node.targets:
-                    if isinstance(target, ast.Name) and target.id == "__all__":
-                        if isinstance(node.value, ast.List):
-                            names = []
-                            for elt in node.value.elts:
-                                if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
-                                    names.append(elt.value)
-                            if names and not _is_sorted(names):
-                                print(f"UNSORTED: {path}")
-                                for i, (a, b) in enumerate(zip(names, sorted(names, key=str.lower))):
-                                    if a != b:
-                                        print(f"  position {i}: got {a!r}, expected {b!r}")
-                                        break
-                                errors += 1
+                    if (
+                        isinstance(target, ast.Name)
+                        and target.id == "__all__"
+                        and isinstance(node.value, ast.List)
+                    ):
+                        names = []
+                        for elt in node.value.elts:
+                            if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                                names.append(elt.value)
+                        if names and not _is_sorted(names):
+                            print(f"UNSORTED: {path}")
+                            for i, (a, b) in enumerate(
+                                zip(names, sorted(names, key=str.lower), strict=False)
+                            ):
+                                if a != b:
+                                    print(f"  position {i}: got {a!r}, expected {b!r}")
+                                    break
+                            errors += 1
     return 1 if errors else 0
 
 

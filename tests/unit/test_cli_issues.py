@@ -151,7 +151,7 @@ class TestIssueDispatchBatchFromRepo:
         captured: list[dict[str, Any]] = []
 
         def fake_post(url: str, **kw: Any) -> object:
-            captured.append(kw.get("json"))
+            captured.append(kw.get("json"))  # type: ignore[arg-type]
 
             class _R:
                 def raise_for_status(self) -> None: ...

@@ -24,7 +24,7 @@ class _FakeResponse:
 
             raise httpx.HTTPStatusError(
                 "err",
-                request=None,
+                request=None,  # type: ignore[arg-type]
                 response=None,  # type: ignore[arg-type]
             )
 
@@ -42,7 +42,7 @@ def patch_httpx(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
         response: _FakeResponse = _FakeResponse(payload=[])
 
     def get(
-        url: str, *, headers: dict | None = None, timeout: float | None = None
+        url: str, *, headers: dict | None = None, timeout: float | None = None  # type: ignore[type-arg]
     ) -> _FakeResponse:
         calls.append({"method": "GET", "url": url, "headers": headers})
         return _Holder.response
@@ -50,8 +50,8 @@ def patch_httpx(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     def post(
         url: str,
         *,
-        json: dict | None = None,
-        headers: dict | None = None,
+        json: dict | None = None,  # type: ignore[type-arg]
+        headers: dict | None = None,  # type: ignore[type-arg]
         timeout: float | None = None,
     ) -> _FakeResponse:
         calls.append({"method": "POST", "url": url, "json": json, "headers": headers})

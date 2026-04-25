@@ -98,7 +98,7 @@ class ScriptedBackend(ILLMBackend):
             backend=self.name,
         )
 
-    async def stream(self, *a: Any, **kw: Any):
+    async def stream(self, *a: Any, **kw: Any):  # type: ignore[no-untyped-def]
         if False:
             yield ""
 
@@ -272,7 +272,7 @@ class TestLLMResponseParsing:
                     backend=self.name,
                 )
 
-            async def stream(self, *a: Any, **kw: Any):
+            async def stream(self, *a: Any, **kw: Any):  # type: ignore[no-untyped-def]
                 if False:
                     yield ""
 
@@ -304,7 +304,7 @@ class TestLLMResponseParsing:
                     backend=self.name,
                 )
 
-            async def stream(self, *a: Any, **kw: Any):
+            async def stream(self, *a: Any, **kw: Any):  # type: ignore[no-untyped-def]
                 if False:
                     yield ""
 

@@ -220,7 +220,7 @@ class TestApprovalTierEnforcement:
 
 
 class TestToolPolicyAndInvocationAudit:
-    async def test_readonly_policy_allows_read_tool_and_records_success(self, tmp_path) -> None:
+    async def test_readonly_policy_allows_read_tool_and_records_success(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         store = ToolInvocationStore(tmp_path / "tool-invocations.jsonl")
         reg = ToolRegistry(
             policy=ToolPolicy.readonly_default(),
@@ -318,7 +318,7 @@ class TestToolPolicyAndInvocationAudit:
         assert record.status == "approval_required"
         assert record.redacted_arguments["headers"]["Authorization"] == "***"
 
-    async def test_audit_store_write_failure_does_not_break_tool(self, monkeypatch) -> None:
+    async def test_audit_store_write_failure_does_not_break_tool(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
         """Issue #538: audit-store persistence failures should not break the execution path."""
         store = ToolInvocationStore()
 
@@ -357,7 +357,7 @@ class TestMcpToolDecorator:
         def auto() -> str:
             return "x"
 
-        spec = auto.__mcp_tool__
+        spec = auto.__mcp_tool__  # type: ignore[attr-defined]
         assert spec.name == "auto"
 
     def test_registry_register_from_function_accepts_decorated(self) -> None:

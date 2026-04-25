@@ -51,7 +51,7 @@ def test_valid_prompt_field() -> None:
     assert model.prompt == "a"
 
     model = SampleAPIModel(prompt="a" * 25000)  # within range
-    assert len(model.prompt) == 25000
+    assert len(model.prompt) == 25000  # type: ignore[arg-type]
 
 
 def test_invalid_prompt_field() -> None:
@@ -96,7 +96,7 @@ def test_valid_task_id_field() -> None:
     assert model.task_id == "task-123-abc"
 
     model = SampleAPIModel(task_id="a" * 256)  # max length
-    assert len(model.task_id) == 256
+    assert len(model.task_id) == 256  # type: ignore[arg-type]
 
 
 def test_invalid_task_id_field() -> None:

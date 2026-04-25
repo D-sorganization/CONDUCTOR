@@ -75,7 +75,7 @@ class CapturingBackend(ILLMBackend):
             backend=self.name,
         )
 
-    async def stream(self, *a: Any, **kw: Any):
+    async def stream(self, *a: Any, **kw: Any):  # type: ignore[no-untyped-def]
         if False:
             yield ""
 
@@ -165,8 +165,8 @@ class TestBuildSystemPrompt:
             overrides=RepoOverrides(system_prompt_prefix="Body: {issue_body}"),
             repo="o/r",
             issue_title="t",
-            issue_body=None,
-        )  # type: ignore[arg-type]
+            issue_body=None,  # type: ignore[arg-type]
+        )
         assert "Body: " in result
 
     def test_system_prompt_file_is_read(self, tmp_path: Path) -> None:

@@ -126,8 +126,8 @@ class TestLoadEvents:
             "ObservationEvent",
             "AgentFinish",
         ]
-        assert events[1].tool == "read_file"  # type: ignore[attr-defined]
-        assert events[2].content == "body"  # type: ignore[attr-defined]
+        assert events[1].tool == "read_file"  # type: ignore[union-attr]
+        assert events[2].content == "body"  # type: ignore[union-attr]
 
     def test_load_nonexistent_file_returns_empty(self, tmp_path: Path) -> None:
         assert tuple(load_events(tmp_path / "missing.jsonl")) == ()
@@ -141,8 +141,8 @@ class TestLoadEvents:
         )
         events = tuple(load_events(path))
         assert len(events) == 2
-        assert events[0].content == "ok"  # type: ignore[attr-defined]
-        assert events[1].content == "also ok"  # type: ignore[attr-defined]
+        assert events[0].content == "ok"  # type: ignore[union-attr]
+        assert events[1].content == "also ok"  # type: ignore[union-attr]
 
     def test_load_ignores_unknown_kind(self, tmp_path: Path) -> None:
         path = tmp_path / "s.jsonl"
@@ -281,4 +281,4 @@ class TestLoadEventsEdgeCases:
         )
         events = tuple(load_events(path))
         assert len(events) == 1
-        assert events[0].content == "ok"  # type: ignore[attr-defined]
+        assert events[0].content == "ok"  # type: ignore[union-attr]

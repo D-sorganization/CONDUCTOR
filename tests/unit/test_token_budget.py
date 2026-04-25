@@ -103,10 +103,7 @@ def test_check_budget_with_spending(mock_config: Any, mock_ledger: CostLedger) -
 def test_check_budget_tight_status(mock_config: Any, mock_ledger: CostLedger) -> None:
     """Test budget check when approaching limit.
 
-    At 80% utilization the cheapest model (Haiku) is still affordable,
-    so the status remains ``ok`` and the recommended model stays at the
-    cheapest tier.  The ``tight`` threshold is only reached when the
-    cheapest model can no longer be afforded.
+    At 80% utilization, the budget is considered tight.
     """
     from maxwell_daemon.backends import TokenUsage
 
@@ -123,9 +120,9 @@ def test_check_budget_tight_status(mock_config: Any, mock_ledger: CostLedger) ->
     allocator = TokenBudgetAllocator(mock_config, mock_ledger)
     status = allocator.check_budget()
 
-    assert status.status == "ok"
+    assert status.status == "tight"
     assert status.utilization_percent == 80.0
-    assert status.recommended_model == "claude-haiku-4-5"
+    assert status.recommended_model == "claude-sonnet-4-6"
 
 
 def test_check_budget_no_limit(mock_ledger: CostLedger) -> None:

@@ -58,7 +58,7 @@ class TestPreconditionDecorator:
     def test_enforced_before_call(self) -> None:
         @precondition(lambda x: x >= 0, "x must be non-negative")
         def sqrt_like(x: float) -> float:
-            return x**0.5
+            return x**0.5  # type: ignore[no-any-return]
 
         assert sqrt_like(4) == 2.0
         with pytest.raises(PreconditionError, match="non-negative"):

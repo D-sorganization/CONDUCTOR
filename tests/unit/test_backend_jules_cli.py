@@ -7,8 +7,8 @@ from maxwell_daemon.backends.jules_cli import JulesCLIBackend
 
 
 @pytest.mark.asyncio
-async def test_jules_cli_complete_success():
-    async def mock_runner(*args, **kwargs):
+async def test_jules_cli_complete_success():  # type: ignore[no-untyped-def]
+    async def mock_runner(*args, **kwargs):  # type: ignore[no-untyped-def]
         return (
             0,
             json.dumps(
@@ -32,8 +32,8 @@ async def test_jules_cli_complete_success():
 
 
 @pytest.mark.asyncio
-async def test_jules_cli_unavailable():
-    async def mock_runner(*args, **kwargs):
+async def test_jules_cli_unavailable():  # type: ignore[no-untyped-def]
+    async def mock_runner(*args, **kwargs):  # type: ignore[no-untyped-def]
         raise FileNotFoundError("jules not found")
 
     backend = JulesCLIBackend(runner=mock_runner)
@@ -44,8 +44,8 @@ async def test_jules_cli_unavailable():
 
 
 @pytest.mark.asyncio
-async def test_jules_cli_formatting():
-    async def mock_runner(*args, **kwargs):
+async def test_jules_cli_formatting():  # type: ignore[no-untyped-def]
+    async def mock_runner(*args, **kwargs):  # type: ignore[no-untyped-def]
         assert "System instruction" in args[2]
         assert "User message" in args[2]
         return 0, json.dumps({"result": "ok"}).encode(), b""

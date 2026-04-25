@@ -57,7 +57,7 @@ class TestPreToolBlocks:
             workspace=tmp_path,
             runner=runner,
         )
-        reg = ToolRegistry(hook_runner=hook_runner)
+        reg = ToolRegistry(hook_runner=hook_runner)  # type: ignore[arg-type]
         reg.register(_echo_spec())
 
         result = await reg.invoke("echo", {"text": "hi"})
@@ -72,7 +72,7 @@ class TestPreToolBlocks:
             workspace=tmp_path,
             runner=runner,
         )
-        reg = ToolRegistry(hook_runner=hook_runner)
+        reg = ToolRegistry(hook_runner=hook_runner)  # type: ignore[arg-type]
         reg.register(_echo_spec())
 
         result = await reg.invoke("echo", {"text": "hi"})
@@ -87,7 +87,7 @@ class TestPostToolErrors:
             workspace=tmp_path,
             runner=runner,
         )
-        reg = ToolRegistry(hook_runner=hook_runner)
+        reg = ToolRegistry(hook_runner=hook_runner)  # type: ignore[arg-type]
         reg.register(_echo_spec())
 
         result = await reg.invoke("echo", {"text": "hi"})
@@ -103,7 +103,7 @@ class TestPostToolErrors:
             workspace=tmp_path,
             runner=runner,
         )
-        reg = ToolRegistry(hook_runner=hook_runner)
+        reg = ToolRegistry(hook_runner=hook_runner)  # type: ignore[arg-type]
         reg.register(_echo_spec())
 
         result = await reg.invoke("echo", {"text": "hi"})
@@ -123,7 +123,7 @@ class TestPostToolSkippedOnHandlerError:
             workspace=tmp_path,
             runner=runner,
         )
-        reg = ToolRegistry(hook_runner=hook_runner)
+        reg = ToolRegistry(hook_runner=hook_runner)  # type: ignore[arg-type]
         reg.register(
             ToolSpec(
                 name="bad",
@@ -158,7 +158,7 @@ class TestPreToolRunsBeforePostTool:
             workspace=tmp_path,
             runner=runner,
         )
-        reg = ToolRegistry(hook_runner=hook_runner)
+        reg = ToolRegistry(hook_runner=hook_runner)  # type: ignore[arg-type]
         reg.register(_echo_spec())
 
         await reg.invoke("echo", {"text": "hi"})
@@ -181,7 +181,7 @@ class TestToolContextInEnv:
             workspace=tmp_path,
             runner=recorder,
         )
-        reg = ToolRegistry(hook_runner=hook_runner)
+        reg = ToolRegistry(hook_runner=hook_runner)  # type: ignore[arg-type]
         reg.register(_echo_spec())
         await reg.invoke("echo", {"text": "audit-me"})
         assert captured["MAXWELL_TOOL_NAME"] == "echo"

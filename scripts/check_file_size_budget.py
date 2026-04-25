@@ -18,23 +18,24 @@ import subprocess
 import sys
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 CONFIG_PATH = Path("scripts/config/file_size_budget.json")
 
 
-def _load_config(repo_root: Path) -> dict:
+def _load_config(repo_root: Path) -> dict[str, Any]:
     with (repo_root / CONFIG_PATH).open(encoding="utf-8") as f:
-        return json.load(f)
+        return dict(json.load(f))
 
 
-def _exception_active(exc: dict) -> bool:
+def _exception_active(exc: dict[str, Any]) -> bool:
     expires = exc.get("expires_on")
     if not expires:
         return False
     return date.today() <= date.fromisoformat(expires)
 
 
-def _exception_map(config: dict) -> dict[str, dict]:
+def _exception_map(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {exc["path"]: exc for exc in config.get("exceptions", []) if _exception_active(exc)}
 
 
@@ -56,7 +57,7 @@ def _all_python_files(repo_root: Path) -> list[Path]:
     return [p for p in (repo_root / "maxwell-daemon").rglob("*.py") if p.is_file()]
 
 
-def _check(paths: list[Path], repo_root: Path, config: dict) -> list[str]:
+def _check(paths: list[Path], repo_root: Path, config: dict[str, Any]) -> list[str]:
     max_lines = int(config["max_lines"])
     exc_map = _exception_map(config)
     violations: list[str] = []

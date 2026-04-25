@@ -18,7 +18,7 @@ class DummyBackend:
     def capabilities(self, model: str) -> BackendCapabilities:
         return BackendCapabilities(supports_tool_use=self._can_use_tools)
 
-    async def complete(self, messages, **kwargs):
+    async def complete(self, messages, **kwargs):  # type: ignore[no-untyped-def]
         return BackendResponse(
             content="dummy response",
             finish_reason="stop",
@@ -30,13 +30,13 @@ class DummyBackend:
 
 
 @pytest.mark.asyncio
-async def test_role_player_executes_job_orthogonally():
+async def test_role_player_executes_job_orthogonally():  # type: ignore[no-untyped-def]
     architect_role = Role(
         name="Architect", requires_tool_use=False, system_prompt="You are an architect."
     )
     backend = DummyBackend(can_use_tools=False)
 
-    player = RolePlayer(role=architect_role, backend=backend, model="dummy")
+    player = RolePlayer(role=architect_role, backend=backend, model="dummy")  # type: ignore[arg-type]
     job = Job(instructions="Design a system.")
 
     result = await player.execute(job)
@@ -48,7 +48,7 @@ async def test_role_player_executes_job_orthogonally():
     assert player.last_messages[1].content == "Design a system."
 
 
-def test_role_player_enforces_capabilities():
+def test_role_player_enforces_capabilities():  # type: ignore[no-untyped-def]
     coder_role = Role(name="Coder", requires_tool_use=True, system_prompt="You write code.")
     backend = DummyBackend(can_use_tools=False)
 
@@ -56,4 +56,4 @@ def test_role_player_enforces_capabilities():
         ValueError,
         match="Backend dummy does not support required tool use for role Coder",
     ):
-        RolePlayer(role=coder_role, backend=backend, model="dummy")
+        RolePlayer(role=coder_role, backend=backend, model="dummy")  # type: ignore[arg-type]

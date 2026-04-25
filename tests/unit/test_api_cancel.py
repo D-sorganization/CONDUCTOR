@@ -39,7 +39,7 @@ class TestCancel:
         body = r.json()
         assert body["status"] == "cancelled"
         # Daemon's view should match.
-        assert daemon.get_task(task.id).status.value == "cancelled"
+        assert daemon.get_task(task.id).status.value == "cancelled"  # type: ignore[union-attr]
 
     def test_cancel_missing_returns_404(self, client: tuple[TestClient, Daemon]) -> None:
         c, _ = client
@@ -52,6 +52,6 @@ class TestCancel:
         c, daemon = client
         task = daemon.submit("hi")
         # Simulate it having finished.
-        daemon.get_task(task.id).status = TaskStatus.COMPLETED
+        daemon.get_task(task.id).status = TaskStatus.COMPLETED  # type: ignore[union-attr]
         r = c.post(f"/api/v1/tasks/{task.id}/cancel")
         assert r.status_code == 409

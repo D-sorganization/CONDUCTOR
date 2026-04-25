@@ -7,7 +7,7 @@ from maxwell_daemon.core.roles import Job
 
 
 class DummySummarizer:
-    async def execute(self, job: Job, tools=None):
+    async def execute(self, job: Job, tools=None):  # type: ignore[no-untyped-def]
         from maxwell_daemon.backends.base import BackendResponse, TokenUsage
 
         return BackendResponse(
@@ -21,7 +21,7 @@ class DummySummarizer:
 
 
 @pytest.mark.asyncio
-async def test_memory_annealer_cleanup(tmp_path: Path):
+async def test_memory_annealer_cleanup(tmp_path: Path):  # type: ignore[no-untyped-def]
     raw_dir = tmp_path / ".maxwell" / "raw_logs"
     raw_dir.mkdir(parents=True)
     (raw_dir / "session_1.log").write_text("lots of useless tokens and debug output")

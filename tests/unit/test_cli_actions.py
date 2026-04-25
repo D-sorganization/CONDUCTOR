@@ -24,7 +24,7 @@ class _FakeResponse:
 
             raise httpx.HTTPStatusError(
                 "err",
-                request=None,
+                request=None,  # type: ignore[arg-type]
                 response=None,  # type: ignore[arg-type]
             )
 

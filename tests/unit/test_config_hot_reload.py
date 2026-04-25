@@ -53,7 +53,7 @@ def config_file(tmp_path: Path, register_recording_backend: None) -> Path:
 def file_daemon(config_file: Path, isolated_ledger_path: Path) -> Iterator[Daemon]:
     """Daemon constructed from a real config file so reload works end-to-end."""
     d = Daemon.from_config_path(config_file)
-    d._ledger._path = isolated_ledger_path  # type: ignore[attr-defined]
+    d._ledger._path = isolated_ledger_path
     yield d
 
 
@@ -208,13 +208,13 @@ class TestSIGHUP:
                     with contextlib.suppress(Exception):
                         file_daemon.reload_config()
 
-                loop.add_signal_handler(signal.SIGHUP, _sighup_handler)
+                loop.add_signal_handler(signal.SIGHUP, _sighup_handler)  # type: ignore[attr-defined]
 
                 # Send SIGHUP to ourselves and yield so the loop processes it.
-                os.kill(os.getpid(), signal.SIGHUP)
+                os.kill(os.getpid(), signal.SIGHUP)  # type: ignore[attr-defined]
                 await asyncio.sleep(0.05)
 
-            loop.remove_signal_handler(signal.SIGHUP)
+            loop.remove_signal_handler(signal.SIGHUP)  # type: ignore[attr-defined]
 
         asyncio.run(_run())
         assert len(reloaded_paths) == 1

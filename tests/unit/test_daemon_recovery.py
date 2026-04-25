@@ -117,7 +117,7 @@ class TestRecovery:
         assert recovered[0].priority == 50
         assert recovered[0].dispatched_to == "worker-a"
         assert d.get_task("remote-run") is not None
-        assert d.get_task("remote-run").status is TaskStatus.DISPATCHED
+        assert d.get_task("remote-run").status is TaskStatus.DISPATCHED  # type: ignore[union-attr]
         assert d._queue.qsize() == 0
 
     def test_dispatched_task_without_worker_requeued_on_recovery(
@@ -150,7 +150,7 @@ class TestRecovery:
         assert recovered[0].status is TaskStatus.QUEUED
         assert recovered[0].priority == 10
         assert recovered[0].dispatched_to is None
-        assert d.get_task("missing-worker").status is TaskStatus.QUEUED
+        assert d.get_task("missing-worker").status is TaskStatus.QUEUED  # type: ignore[union-attr]
         assert d._queue.qsize() == 1
 
     def test_task_store_round_trips_priority_and_dispatched_to(self, tmp_path: Path) -> None:

@@ -35,7 +35,7 @@ class SlowBackend(ILLMBackend):
             backend=self.name,
         )
 
-    async def stream(self, *a: Any, **kw: Any):
+    async def stream(self, *a: Any, **kw: Any):  # type: ignore[no-untyped-def]
         if False:
             yield ""
 
@@ -87,7 +87,7 @@ class TestGracefulShutdown:
             await slow_daemon.stop(drain=True, timeout=2.0)
             # After graceful drain, the task should be completed, not cancelled.
             final = slow_daemon.get_task(task.id)
-            assert final.status == TaskStatus.COMPLETED
+            assert final.status == TaskStatus.COMPLETED  # type: ignore[union-attr]
 
         asyncio.run(body())
 
@@ -104,7 +104,7 @@ class TestGracefulShutdown:
 
     def test_drain_timeout_then_cancel(self, tmp_path: Path) -> None:
         """If the drain deadline passes, workers get cancelled anyway."""
-        registry._factories["reallyslow"] = lambda **kw: SlowBackend(delay=5.0)
+        registry._factories["reallyslow"] = lambda **kw: SlowBackend(delay=5.0)  # type: ignore[assignment]
         try:
             cfg = MaxwellDaemonConfig.model_validate(
                 {

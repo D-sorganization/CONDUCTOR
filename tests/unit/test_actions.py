@@ -21,7 +21,7 @@ def _action(**overrides: object) -> Action:
         "summary": "write file",
         "payload": {"path": "src/app.py"},
     }
-    data.update(overrides)
+    data.update(overrides)  # type: ignore[arg-type]
     return Action.model_validate(data)
 
 

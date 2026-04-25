@@ -8,7 +8,7 @@ from maxwell_daemon.config import MaxwellDaemonConfig, RepoConfig
 from maxwell_daemon.core.repo_overrides import RepoOverrides, resolve_overrides
 
 
-def _config(*repo_kwargs: dict) -> MaxwellDaemonConfig:
+def _config(*repo_kwargs: dict) -> MaxwellDaemonConfig:  # type: ignore[type-arg]
     return MaxwellDaemonConfig.model_validate(
         {
             "backends": {"c": {"type": "ollama", "model": "m"}},

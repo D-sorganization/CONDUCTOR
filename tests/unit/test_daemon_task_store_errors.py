@@ -23,7 +23,7 @@ T = TypeVar("T")
 
 
 def _run(coro: Awaitable[T]) -> T:
-    return asyncio.run(coro)
+    return asyncio.run(coro)  # type: ignore[arg-type]
 
 
 class _FailingSaveStore:

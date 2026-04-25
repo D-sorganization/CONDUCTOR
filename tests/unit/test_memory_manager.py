@@ -32,8 +32,8 @@ class TestAssembleContext:
         assert assembled == ""
 
     def test_includes_profile_facts(self, manager: MemoryManager) -> None:
-        manager.profile.learn("o/r", "language", "python")
-        manager.profile.learn("o/r", "test_runner", "pytest")
+        manager.profile.learn("o/r", "language", "python")  # type: ignore[union-attr]
+        manager.profile.learn("o/r", "test_runner", "pytest")  # type: ignore[union-attr]
         assembled = manager.assemble_context(
             repo="o/r", issue_title="fix it", issue_body="x", task_id="task-1"
         )
@@ -41,7 +41,7 @@ class TestAssembleContext:
         assert "test_runner: pytest" in assembled
 
     def test_includes_related_episodes(self, manager: MemoryManager) -> None:
-        manager.episodes.record(
+        manager.episodes.record(  # type: ignore[union-attr]
             Episode(
                 id="e1",
                 repo="o/r",
@@ -72,7 +72,7 @@ class TestAssembleContext:
 
     def test_budget_bound_respected(self, manager: MemoryManager) -> None:
         for i in range(20):
-            manager.profile.learn("o/r", f"k{i}", "x" * 500)
+            manager.profile.learn("o/r", f"k{i}", "x" * 500)  # type: ignore[union-attr]
         assembled = manager.assemble_context(
             repo="o/r", issue_title="t", issue_body="b", task_id="t", max_chars=2000
         )
@@ -92,7 +92,7 @@ class TestRecordOutcome:
             pr_url="https://github.com/o/r/pull/5",
             outcome="merged",
         )
-        assert manager.episodes.search("parser", limit=5)
+        assert manager.episodes.search("parser", limit=5)  # type: ignore[union-attr]
 
     def test_clears_scratchpad_for_task(self, manager: MemoryManager) -> None:
         manager.scratchpad.append("task-x", role="plan", content="p")

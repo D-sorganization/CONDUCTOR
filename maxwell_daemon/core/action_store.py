@@ -8,7 +8,7 @@ import json
 import sqlite3
 import threading
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -294,5 +294,5 @@ def _row_to_action(row: sqlite3.Row) -> Action:
         error=row["error"],
         created_at=_parse_iso_required(row["created_at"]),
         updated_at=_parse_iso_required(row["updated_at"]),
-        inverse_payload=json.loads(row["inverse_payload"]) if row["inverse_payload"] else None,
+        inverse_payload=json.loads(row["inverse_payload"]) if "inverse_payload" in row.keys() and row["inverse_payload"] else None,  # noqa: SIM118
     )

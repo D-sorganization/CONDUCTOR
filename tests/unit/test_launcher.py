@@ -62,14 +62,14 @@ def test_root_wrappers_delegate_to_python_launcher() -> None:
     assert "maxwell_daemon.launcher" in (repo / "Launch-Maxwell.command").read_text()
 
 
-def test_open_dashboard_when_ready_uses_browser_opener(monkeypatch) -> None:
+def test_open_dashboard_when_ready_uses_browser_opener(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     opened: list[str] = []
 
     class _Response:
         def __enter__(self) -> _Response:
             return self
 
-        def __exit__(self, exc_type, exc, tb) -> None:
+        def __exit__(self, exc_type, exc, tb) -> None:  # type: ignore[no-untyped-def]
             return None
 
     monkeypatch.setattr(
@@ -78,7 +78,7 @@ def test_open_dashboard_when_ready_uses_browser_opener(monkeypatch) -> None:
 
     _open_dashboard_when_ready(
         "http://127.0.0.1:8080/ui/",
-        opener=opened.append,
+        opener=opened.append,  # type: ignore[arg-type]
         attempts=1,
         delay_seconds=0,
     )
@@ -86,7 +86,7 @@ def test_open_dashboard_when_ready_uses_browser_opener(monkeypatch) -> None:
     assert opened == ["http://127.0.0.1:8080/ui/"]
 
 
-def test_execute_plan_can_skip_browser_open(monkeypatch, tmp_path: Path) -> None:
+def test_execute_plan_can_skip_browser_open(monkeypatch, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     plan = build_plan(repo_root=tmp_path)
     calls: list[tuple[str, ...]] = []
 
@@ -112,7 +112,7 @@ def test_pyproject_no_longer_advertises_pyqt_desktop_extra() -> None:
     assert "PyQt6>=" not in pyproject
 
 
-def test_launcher_subprocess_env_defaults_to_utf8(monkeypatch) -> None:
+def test_launcher_subprocess_env_defaults_to_utf8(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.delenv("PYTHONUTF8", raising=False)
     monkeypatch.delenv("PYTHONIOENCODING", raising=False)
 
@@ -122,7 +122,7 @@ def test_launcher_subprocess_env_defaults_to_utf8(monkeypatch) -> None:
     assert env["PYTHONIOENCODING"] == "utf-8"
 
 
-def test_launcher_subprocess_env_preserves_explicit_overrides(monkeypatch) -> None:
+def test_launcher_subprocess_env_preserves_explicit_overrides(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("PYTHONUTF8", "0")
     monkeypatch.setenv("PYTHONIOENCODING", "utf-16")
 

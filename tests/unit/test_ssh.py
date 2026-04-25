@@ -129,12 +129,12 @@ class TestSSHSession:
         async def _run() -> list[bytes]:
             session = _make_session()
 
-            async def _fake_chunks():
+            async def _fake_chunks():  # type: ignore[no-untyped-def]
                 yield "hello "
                 yield b"world"
 
             mock_process = MagicMock()
-            mock_process.stdout = _fake_chunks()
+            mock_process.stdout = _fake_chunks()  # type: ignore[no-untyped-call]
             mock_process.close = MagicMock()
             mock_process.wait_closed = AsyncMock()
             session._conn.create_process = AsyncMock(return_value=mock_process)
@@ -157,11 +157,11 @@ class TestSSHSession:
         mock_process.stdin.write.assert_called_once_with(b"input")
 
     def test_list_dir_returns_entries(self) -> None:
-        async def _run() -> list:
+        async def _run() -> list:  # type: ignore[type-arg]
             session = _make_session()
             mock_sftp = MagicMock()
 
-            async def _scandir(path: str):
+            async def _scandir(path: str):  # type: ignore[no-untyped-def]
                 entry = MagicMock()
                 entry.filename = "file.txt"
                 entry.attrs.size = 100

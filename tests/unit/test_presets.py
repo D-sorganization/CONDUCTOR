@@ -39,7 +39,7 @@ class TestPresetStore:
     def test_overwrite(self, store: PresetStore) -> None:
         store.save(FilterPreset(name="x", status="queued"))
         store.save(FilterPreset(name="x", status="failed"))
-        assert store.get("x").status == "failed"
+        assert store.get("x").status == "failed"  # type: ignore[union-attr]
 
     def test_list_alphabetical(self, store: PresetStore) -> None:
         for n in ("zeta", "alpha", "mu"):
@@ -59,7 +59,7 @@ class TestPresetStore:
         s1 = PresetStore(path)
         s1.save(FilterPreset(name="x", repo="owner/r"))
         s2 = PresetStore(path)
-        assert s2.get("x").repo == "owner/r"
+        assert s2.get("x").repo == "owner/r"  # type: ignore[union-attr]
 
     def test_invalid_name_rejected(self, store: PresetStore) -> None:
         for bad in ("", "has space", "x/y", "-leading", "dot."):
@@ -83,7 +83,7 @@ class TestPresetCLI:
         from maxwell_daemon.cli import tasks as tasks_cli
         from maxwell_daemon.cli.main import app
 
-        runner = self._runner()
+        runner = self._runner()  # type: ignore[no-untyped-call]
         presets_path = tmp_path / "presets.json"
         monkeypatch.setattr(tasks_cli, "_presets_path", lambda: presets_path)
 
@@ -111,7 +111,7 @@ class TestPresetCLI:
         from maxwell_daemon.cli import tasks as tasks_cli
         from maxwell_daemon.cli.main import app
 
-        runner = self._runner()
+        runner = self._runner()  # type: ignore[no-untyped-call]
         presets_path = tmp_path / "presets.json"
         monkeypatch.setattr(tasks_cli, "_presets_path", lambda: presets_path)
 
@@ -129,7 +129,7 @@ class TestPresetCLI:
                 status_code = 200
 
                 def raise_for_status(self) -> None: ...
-                def json(self) -> list:
+                def json(self) -> list:  # type: ignore[type-arg]
                     return []
 
             return _R()

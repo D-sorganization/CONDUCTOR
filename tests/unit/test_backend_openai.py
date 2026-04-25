@@ -50,7 +50,7 @@ class TestCapabilities:
         b = OpenAIBackend()
         mini = b.capabilities("gpt-4o-mini")
         full = b.capabilities("gpt-4o")
-        assert mini.cost_per_1k_input_tokens < full.cost_per_1k_input_tokens
+        assert mini.cost_per_1k_input_tokens < full.cost_per_1k_input_tokens  # type: ignore[operator]
 
     def test_o1_supports_vision(self) -> None:
         b = OpenAIBackend()
@@ -59,7 +59,7 @@ class TestCapabilities:
     def test_unknown_model_falls_back_safely(self) -> None:
         b = OpenAIBackend()
         caps = b.capabilities("obscure-model")
-        assert caps.cost_per_1k_input_tokens >= 0
+        assert caps.cost_per_1k_input_tokens >= 0  # type: ignore[operator]
         assert caps.max_context_tokens > 0
 
 
@@ -71,7 +71,7 @@ class TestCostEstimation:
         backend = OpenAIBackend()
         small = backend.estimate_cost(TokenUsage(100, 100, 200), "gpt-4o")
         big = backend.estimate_cost(TokenUsage(1000, 1000, 2000), "gpt-4o")
-        assert big == pytest.approx(small * 10)
+        assert big == pytest.approx(small * 10)  # type: ignore[operator]
 
 
 class _FakeOpenAIStream:

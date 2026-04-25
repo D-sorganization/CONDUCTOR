@@ -39,7 +39,7 @@ def test_revert_file_write_creation(workspace: Path, action_service: ActionServi
     )
 
     reverter.revert(action)
-    assert action_service.reverted_id == "act-1"
+    assert action_service.reverted_id == "act-1"  # type: ignore[attr-defined]
     assert not test_file.exists()
 
 
@@ -60,7 +60,7 @@ def test_revert_file_write_overwrite(workspace: Path, action_service: ActionServ
     )
 
     reverter.revert(action)
-    assert action_service.reverted_id == "act-2"
+    assert action_service.reverted_id == "act-2"  # type: ignore[attr-defined]
     assert test_file.read_text(encoding="utf-8") == "old content"
 
 
@@ -81,7 +81,7 @@ def test_revert_file_edit(workspace: Path, action_service: ActionService) -> Non
     )
 
     reverter.revert(action)
-    assert action_service.reverted_id == "act-3"
+    assert action_service.reverted_id == "act-3"  # type: ignore[attr-defined]
     assert test_file.read_text(encoding="utf-8") == "this is the original text"
 
 

@@ -222,7 +222,7 @@ class TestWebhookEndpoint:
         )
         daemon = Daemon(cfg, ledger_path=None)
         client = TestClient(create_app(daemon))
-        return client, daemon
+        return client, daemon  # type: ignore[return-value]
 
     def test_valid_signature_accepted(self) -> None:
         client, daemon = self._setup()
@@ -240,7 +240,7 @@ class TestWebhookEndpoint:
         assert r.status_code == 200
         # Since we used a real daemon (not a fake), the task is queued but we
         # can still observe it through state().
-        tasks = daemon.state().tasks
+        tasks = daemon.state().tasks  # type: ignore[attr-defined]
         assert any(t.kind.value == "issue" for t in tasks.values())
 
     def test_missing_signature_rejected(self) -> None:

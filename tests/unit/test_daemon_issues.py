@@ -102,14 +102,14 @@ class TestIssueDispatch:
                 )
                 await _run_to_completion(daemon_with_fake_executor, task.id)
                 final = daemon_with_fake_executor.get_task(task.id)
-                assert final.status is TaskStatus.COMPLETED
-                assert final.pr_url == "https://github.com/owner/repo/pull/999"
-                assert "#42" in final.result
-                assert final.backend == daemon_with_fake_executor._config.agent.default_backend
+                assert final.status is TaskStatus.COMPLETED  # type: ignore[union-attr]
+                assert final.pr_url == "https://github.com/owner/repo/pull/999"  # type: ignore[union-attr]
+                assert "#42" in final.result  # type: ignore[operator,union-attr]
+                assert final.backend == daemon_with_fake_executor._config.agent.default_backend  # type: ignore[union-attr]
                 assert (
-                    final.model == daemon_with_fake_executor._config.backends[final.backend].model
+                    final.model == daemon_with_fake_executor._config.backends[final.backend].model  # type: ignore[union-attr]
                 )
-                assert final.route_reason == "global default"
+                assert final.route_reason == "global default"  # type: ignore[union-attr]
             finally:
                 await daemon_with_fake_executor.stop()
 
@@ -124,7 +124,7 @@ class TestIssueDispatch:
                 )
                 await _run_to_completion(daemon_with_fake_executor, task.id)
                 final = daemon_with_fake_executor.get_task(task.id)
-                assert final.status is TaskStatus.COMPLETED
+                assert final.status is TaskStatus.COMPLETED  # type: ignore[union-attr]
             finally:
                 await daemon_with_fake_executor.stop()
 
@@ -160,7 +160,7 @@ class TestIssueDispatch:
                 )
                 await _run_to_completion(daemon_with_fake_executor, task.id)
                 final = daemon_with_fake_executor.get_task(task.id)
-                assert final.status is TaskStatus.COMPLETED
+                assert final.status is TaskStatus.COMPLETED  # type: ignore[union-attr]
 
                 # Give the event loop a chance to propagate events
                 await asyncio.sleep(0.1)
@@ -168,7 +168,7 @@ class TestIssueDispatch:
                 assert len(events) == 1
                 payload = events[0].payload
                 assert payload.get("observability", {}).get("model") == "override-model"
-                assert final.model == "override-model"
+                assert final.model == "override-model"  # type: ignore[union-attr]
             finally:
                 drain_task.cancel()
                 await daemon_with_fake_executor.stop()

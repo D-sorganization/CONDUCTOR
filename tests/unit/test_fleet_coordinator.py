@@ -30,7 +30,7 @@ from maxwell_daemon.daemon.runner import Daemon, Task, TaskKind, TaskStatus
 
 def _make_config(
     role: str = "standalone",
-    machines: list[dict] | None = None,
+    machines: list[dict] | None = None,  # type: ignore[type-arg]
 ) -> MaxwellDaemonConfig:
     """Build a minimal config with the recording backend registered."""
     from maxwell_daemon.backends import registry
@@ -41,7 +41,7 @@ def _make_config(
         def __init__(self, **kw: Any) -> None:
             pass
 
-        async def complete(self, messages: list, *, model: str, **kwargs: Any) -> Any:
+        async def complete(self, messages: list, *, model: str, **kwargs: Any) -> Any:  # type: ignore[type-arg]
             from maxwell_daemon.backends import BackendResponse, TokenUsage
 
             return BackendResponse(
@@ -63,7 +63,7 @@ def _make_config(
                 cost_per_1k_output_tokens=0.002,
             )
 
-    registry._factories["recording"] = _RecordingBackend
+    registry._factories["recording"] = _RecordingBackend  # type: ignore[assignment]
     data: dict[str, Any] = {
         "role": role,
         "backends": {"primary": {"type": "recording", "model": "test-model"}},
@@ -298,7 +298,7 @@ class _FakeHTTPClient:
 
 class TestDispatchToFleet:
     def _daemon_with_machines(
-        self, tmp_path: Path, machines: list[dict]
+        self, tmp_path: Path, machines: list[dict]  # type: ignore[type-arg]
     ) -> tuple[Daemon, _FakeHTTPClient]:
         cfg = _make_config(role="coordinator", machines=machines)
         daemon = Daemon(
@@ -308,7 +308,7 @@ class TestDispatchToFleet:
         )
         fake_http = _FakeHTTPClient()
         # Patch RemoteDaemonClient to use our fake HTTP transport.
-        daemon._fake_http = fake_http  # store ref for assertions
+        daemon._fake_http = fake_http  # type: ignore[attr-defined] # store ref for assertions
         # We'll monkeypatch at the module level for the duration of the test.
         return daemon, fake_http
 
@@ -336,15 +336,15 @@ class TestDispatchToFleet:
 
             original_cls = fleet_client_mod.RemoteDaemonClient
 
-            class _PatchedClient(original_cls):
+            class _PatchedClient(original_cls):  # type: ignore[misc,valid-type]
                 def __init__(self, **kw: Any) -> None:
                     super().__init__(http_client=fake_http, **kw)
 
-            fleet_client_mod.RemoteDaemonClient = _PatchedClient
+            fleet_client_mod.RemoteDaemonClient = _PatchedClient  # type: ignore[misc]
             try:
                 await daemon._dispatch_to_fleet()
             finally:
-                fleet_client_mod.RemoteDaemonClient = original_cls
+                fleet_client_mod.RemoteDaemonClient = original_cls  # type: ignore[misc]
 
             assert task.status is TaskStatus.DISPATCHED
             assert task.dispatched_to == "w1"
@@ -394,15 +394,15 @@ class TestDispatchToFleet:
 
             original_cls = fleet_client_mod.RemoteDaemonClient
 
-            class _PatchedClient(original_cls):
+            class _PatchedClient(original_cls):  # type: ignore[misc,valid-type]
                 def __init__(self, **kw: Any) -> None:
                     super().__init__(http_client=fake_http, **kw)
 
-            fleet_client_mod.RemoteDaemonClient = _PatchedClient
+            fleet_client_mod.RemoteDaemonClient = _PatchedClient  # type: ignore[misc]
             try:
                 await daemon._dispatch_to_fleet()
             finally:
-                fleet_client_mod.RemoteDaemonClient = original_cls
+                fleet_client_mod.RemoteDaemonClient = original_cls  # type: ignore[misc]
 
             # Unhealthy machine: task should remain QUEUED (unassigned).
             assert task.status is TaskStatus.QUEUED
@@ -439,15 +439,15 @@ class TestDispatchToFleet:
 
             original_cls = fleet_client_mod.RemoteDaemonClient
 
-            class _PatchedClient(original_cls):
+            class _PatchedClient(original_cls):  # type: ignore[misc,valid-type]
                 def __init__(self, **kw: Any) -> None:
                     super().__init__(http_client=fake_http, **kw)
 
-            fleet_client_mod.RemoteDaemonClient = _PatchedClient
+            fleet_client_mod.RemoteDaemonClient = _PatchedClient  # type: ignore[misc]
             try:
                 await daemon._dispatch_to_fleet()
             finally:
-                fleet_client_mod.RemoteDaemonClient = original_cls
+                fleet_client_mod.RemoteDaemonClient = original_cls  # type: ignore[misc]
 
             # Task should be requeued.
             assert task.status is TaskStatus.QUEUED

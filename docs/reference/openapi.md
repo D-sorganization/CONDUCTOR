@@ -114,6 +114,7 @@ This inventory is checked against `create_app(...).openapi()` by `tests/unit/tes
 | `/api/v1/memory/assemble` | `POST` | Memory |
 | `/api/v1/memory/record` | `POST` | Memory |
 | `/api/v1/onboarding/smoke-test` | `POST` | Onboarding |
+| `/api/v1/push/subscribe` | `POST` | Webhooks |
 | `/api/v1/ssh/connect` | `POST` | SSH |
 | `/api/v1/ssh/files` | `GET` | SSH |
 | `/api/v1/ssh/keys` | `GET` | SSH |
@@ -128,6 +129,8 @@ This inventory is checked against `create_app(...).openapi()` by `tests/unit/tes
 | `/api/v1/tasks/{task_id}/actions` | `GET` | Tasks |
 | `/api/v1/tasks/{task_id}/artifacts` | `GET` | Tasks |
 | `/api/v1/tasks/{task_id}/cancel` | `POST` | Tasks |
+| `/api/v1/templates` | `GET, POST` | Templates |
+| `/api/v1/templates/{template_id}` | `GET, PUT, DELETE` | Templates |
 | `/api/webhooks/trigger` | `POST` | Webhooks |
 | `/api/v1/webhooks/github` | `POST` | Webhooks |
 | `/api/v1/work-items` | `POST, GET` | Work items |

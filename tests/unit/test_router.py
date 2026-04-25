@@ -63,7 +63,7 @@ class _ExplodingCloseFake(_Fake):
 
 
 @pytest.fixture(autouse=True)
-def _register_fakes() -> None:
+def _register_fakes() -> None:  # type: ignore[misc]
     # Overwrite any existing registration so the test suite is deterministic.
     registry._factories["fake_a"] = _Fake
     registry._factories["fake_b"] = _Fake
@@ -183,7 +183,7 @@ class TestRouter:
 
         await router.aclose_all()
 
-        assert backend.closed is True
+        assert backend.closed is True  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_aclose_all_suppresses_backend_close_errors(self) -> None:
@@ -199,7 +199,7 @@ class TestRouter:
         await router.aclose_all()
 
 
-def _make_budget_mock(utilisation: float):
+def _make_budget_mock(utilisation: float):  # type: ignore[no-untyped-def]
     """Return a mock BudgetEnforcer with given utilisation."""
     from unittest.mock import MagicMock
 
