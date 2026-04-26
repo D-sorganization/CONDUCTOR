@@ -34,6 +34,12 @@ def jwt_system(
             yield daemon, client
     finally:
         loop.run_until_complete(daemon.stop())
+        # Cancel any remaining tasks (TestClient's anyio portal may leave orphans)
+        pending = asyncio.all_tasks(loop)
+        for task in pending:
+            task.cancel()
+        if pending:
+            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
         loop.close()
         asyncio.set_event_loop(None)
 
@@ -174,6 +180,12 @@ class TestWebSocketStaticTokenCompatibility:
                 assert ws is not None
         finally:
             loop.run_until_complete(daemon.stop())
+            # Cancel any remaining tasks (TestClient's anyio portal may leave orphans)
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+            if pending:
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
             loop.close()
             asyncio.set_event_loop(None)
 
@@ -196,6 +208,12 @@ class TestWebSocketStaticTokenCompatibility:
                 message = ws.receive_json()
         finally:
             loop.run_until_complete(daemon.stop())
+            # Cancel any remaining tasks (TestClient's anyio portal may leave orphans)
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+            if pending:
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
             loop.close()
             asyncio.set_event_loop(None)
 
