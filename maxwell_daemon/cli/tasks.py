@@ -70,6 +70,7 @@ def list_tasks(
         if p is None:
             _fail(f"preset {preset!r} not found — try `maxwell-daemon tasks preset list`")
         from maxwell_daemon.contracts import require
+
         require(p is not None, "internal logic error: preset must exist after check")
         assert p is not None  # for mypy
         status = status or p.status
