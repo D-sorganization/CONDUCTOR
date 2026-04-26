@@ -36,7 +36,7 @@ jobs:
           fi
 
   analyze:
-        name: Analyze
+    name: Analyze
     needs: pick-runner
     runs-on: ${{ needs.pick-runner.outputs.runner }}
     permissions:

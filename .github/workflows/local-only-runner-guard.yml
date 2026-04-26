@@ -43,7 +43,7 @@ jobs:
           fi
 
   local-only-workflows:
-        name: Reject hosted runner routing
+    name: Reject hosted runner routing
     needs: pick-runner
     runs-on: ${{ needs.pick-runner.outputs.runner }}
     steps:

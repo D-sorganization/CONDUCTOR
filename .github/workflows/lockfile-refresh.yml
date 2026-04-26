@@ -34,7 +34,7 @@ jobs:
 
   refresh:
     needs: pick-runner
-        runs-on: ${{ needs.pick-runner.outputs.runner }}
+    runs-on: ${{ needs.pick-runner.outputs.runner }}
     permissions:
       contents: write
       pull-requests: write

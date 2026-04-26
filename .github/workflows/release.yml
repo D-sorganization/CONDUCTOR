@@ -36,7 +36,7 @@ jobs:
           fi
 
   build-and-publish:
-        name: Build and publish to PyPI
+    name: Build and publish to PyPI
     needs: pick-runner
     runs-on: ${{ needs.pick-runner.outputs.runner }}
     environment:

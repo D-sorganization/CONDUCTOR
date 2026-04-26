@@ -46,7 +46,7 @@ jobs:
           fi
 
   build:
-        name: Build MkDocs site
+    name: Build MkDocs site
     needs: pick-runner
     runs-on: ${{ needs.pick-runner.outputs.runner }}
     steps:

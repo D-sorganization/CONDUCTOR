@@ -41,7 +41,7 @@ jobs:
           fi
 
   lint:
-        name: Lint (ruff)
+    name: Lint (ruff)
     needs: pick-runner
     runs-on: ${{ needs.pick-runner.outputs.runner }}
     steps:
