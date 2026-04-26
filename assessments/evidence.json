@@ -1,0 +1,21 @@
+{
+  "repo": "Maxwell-Daemon",
+  "owner_repo": "D-sorganization/Maxwell-Daemon",
+  "branch": "fix/adversarial-critical-security",
+  "head_sha": "2d200cf9a577103c4ce630a8501dd0743b3bf349",
+  "head_date": "2026-04-25",
+  "A": {"src_files": 0, "test_files": 212, "manifests": 1, "gitignore_lines": 34, "has_readme": 1},
+  "B": {"readme_lines": 135, "readme_headers": 9, "docs_files": 17, "md_files": 2},
+  "C": {"test_py": 104, "test_rs": 0, "src_py": 0, "src_rs": 0},
+  "D": {"bare_except": 0, "except_exception": 0, "noqa_suppressions": 63},
+  "F": {"todo_fixme": 5},
+  "G": {"req_lockfiles": 0},
+  "H": {"secrets_raw": 0},
+  "I": {"env_example": 0},
+  "J": {"logging_refs": 0, "metrics_refs": 0},
+  "K": {"suppressions": 63},
+  "L": {"workflow_files": 5},
+  "M": {"dockerfile": 0},
+  "N": {"license": 1},
+  "O": {"claude_md": 0, "agents_md": 0, "claude_lines": 0}
+}

@@ -1,0 +1,38 @@
+[
+  {
+    "url": "https://github.com/D-sorganization/Maxwell-Daemon/issues/702",
+    "title": "[Maxwell-Daemon] No performance benchmarks",
+    "priority": "P2",
+    "criterion": "E"
+  },
+  {
+    "url": "https://github.com/D-sorganization/Maxwell-Daemon/issues/703",
+    "title": "[Maxwell-Daemon] No dependency lockfile",
+    "priority": "P1",
+    "criterion": "G"
+  },
+  {
+    "url": "https://github.com/D-sorganization/Maxwell-Daemon/issues/704",
+    "title": "[Maxwell-Daemon] Missing .env.example",
+    "priority": "P1",
+    "criterion": "I"
+  },
+  {
+    "url": "https://github.com/D-sorganization/Maxwell-Daemon/issues/705",
+    "title": "[Maxwell-Daemon] Minimal logging infrastructure",
+    "priority": "P2",
+    "criterion": "J"
+  },
+  {
+    "url": "https://github.com/D-sorganization/Maxwell-Daemon/issues/706",
+    "title": "[Maxwell-Daemon] No deployment artifacts",
+    "priority": "P2",
+    "criterion": "M"
+  },
+  {
+    "url": "https://github.com/D-sorganization/Maxwell-Daemon/issues/707",
+    "title": "[Maxwell-Daemon] No agent guidance files (CLAUDE.md/AGENTS.md)",
+    "priority": "P1",
+    "criterion": "O"
+  }
+]
