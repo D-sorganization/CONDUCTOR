@@ -547,6 +547,7 @@ class IssueExecutor:
         after ``max_retries`` refinements.
         """
         from maxwell_daemon.contracts import require
+
         require(self._test_runner is not None, "IssueExecutor: test_runner must be configured")
         assert self._test_runner is not None  # for mypy
         attempt = 0
