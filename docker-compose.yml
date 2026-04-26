@@ -1,0 +1,51 @@
+services:
+  maxwell-daemon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: maxwell-daemon
+    ports:
+      - "${MAXWELL_PORT:-8080}:8080"
+    env_file:
+      - .env
+    environment:
+      # Override config path for container environment
+      MAXWELL_CONFIG: /app/config/config.toml
+      # Ensure logs are unbuffered in container
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      # Mount user configuration directory (read-only for safety)
+      - type: bind
+        source: ${HOME:-~}/.config/maxwell-daemon
+        target: /root/.config/maxwell-daemon
+        read_only: true
+        bind:
+          create_host_path: true
+      # Optional: mount custom config file
+      - type: bind
+        source: ./fleet.yaml
+        target: /app/fleet.yaml
+        read_only: true
+      # Optional: mount workspace for sandbox operations
+      - type: volume
+        source: maxwell-workspace
+        target: /workspace
+    working_dir: /app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - maxwell-network
+
+networks:
+  maxwell-network:
+    driver: bridge
+
+volumes:
+  maxwell-workspace:
+    driver: local
