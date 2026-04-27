@@ -11,6 +11,7 @@ from maxwell_daemon.launcher import (
     build_plan,
     default_config_path,
     execute_plan,
+    main,
 )
 
 
@@ -131,3 +132,16 @@ def test_launcher_subprocess_env_preserves_explicit_overrides(monkeypatch) -> No
 
     assert env["PYTHONUTF8"] == "0"
     assert env["PYTHONIOENCODING"] == "utf-16"
+
+def test_main_dry_run(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    argv = ["--repo-root", str(tmp_path), "--dry-run"]
+    
+    # Mock execute_plan to ensure it's not called
+    execute_calls = []
+    monkeypatch.setattr("maxwell_daemon.launcher.execute_plan", lambda *args, **kwargs: execute_calls.append(args))
+    
+    exit_code = main(argv)
+    
+    assert exit_code == 0
+    assert len(execute_calls) == 0
+
