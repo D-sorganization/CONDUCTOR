@@ -20,6 +20,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from urllib import error, request
+
 from maxwell_daemon.logging import configure_logging, get_logger
 
 log = get_logger(__name__)
