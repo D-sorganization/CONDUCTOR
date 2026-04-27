@@ -1507,7 +1507,8 @@ def create_app(
                     "role": claims.role.value,
                     "exp": claims.exp.isoformat(),
                 }
-            except Exception:  # nosec B110 — invalid/expired JWT, fall through to token check
+            except Exception:
+                # invalid/expired JWT, fall through to static token check
                 pass
         if auth_token is not None and authorization:
             raw = authorization.removeprefix("Bearer ").strip()
@@ -1516,6 +1517,7 @@ def create_app(
         return {"sub": "anonymous", "role": None, "exp": None}
 
     @app.get("/health")
+    @app.get("/healthz")
     async def health() -> dict[str, Any]:
         state = daemon.state()
         return {
