@@ -49,15 +49,17 @@ class TaskTemplate(BaseModel):
         # Optional jinja2 import to avoid hard dependency if not needed everywhere
         try:
             from jinja2 import Template
+
             t = Template(self.prompt_template)
             rendered: str = t.render(**kwargs)
             return rendered
         except ImportError:
             # Fallback to simple regex replacement if jinja2 is missing
             import re
+
             template = self.prompt_template
             for k, v in kwargs.items():
-                template = re.sub(r'\{\{\s*' + re.escape(k) + r'\s*\}\}', str(v), template)
+                template = re.sub(r"\{\{\s*" + re.escape(k) + r"\s*\}\}", str(v), template)
             return template
 
 
