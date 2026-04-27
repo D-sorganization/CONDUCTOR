@@ -7,9 +7,10 @@ consistent across the codebase.
 
 from __future__ import annotations
 
-from typing import Literal
+import time
+from typing import Any, Literal
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Request, Response
 from prometheus_client import (
     CollectorRegistry,
     Counter,
@@ -19,6 +20,8 @@ from prometheus_client import (
 )
 
 __all__ = [
+    "HTTP_REQUESTS_TOTAL",
+    "HTTP_REQUEST_DURATION_SECONDS",
     "MAXWELL_CACHE_HIT_RATE",
     "MAXWELL_CACHE_HIT_TOKENS_TOTAL",
     "MAXWELL_COST_FORECAST_USD",
@@ -36,6 +39,7 @@ __all__ = [
     "MAXWELL_TOKEN_BUDGET_ALLOCATION",
     "build_registry",
     "mount_metrics_endpoint",
+    "prometheus_middleware",
     "record_cache_hit",
     "record_gate_verdict",
     "record_queue_depth",
@@ -68,6 +72,19 @@ MAXWELL_CACHE_HIT_TOKENS_TOTAL = Counter(
     "maxwell_daemon_cache_hit_tokens_total",
     "Total tokens served from prompt cache",
     labelnames=("backend", "model"),
+)
+
+HTTP_REQUESTS_TOTAL = Counter(
+    "http_requests_total",
+    "Total HTTP API requests by method, route, and status code",
+    labelnames=("method", "route", "status_code"),
+)
+
+HTTP_REQUEST_DURATION_SECONDS = Histogram(
+    "http_request_duration_seconds",
+    "HTTP API request latency in seconds by method and route",
+    labelnames=("method", "route"),
+    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0),
 )
 
 MAXWELL_FREE_REQUESTS_TOTAL = Counter(
@@ -187,6 +204,34 @@ def mount_metrics_endpoint(app: FastAPI, *, path: str = "/metrics") -> None:
             content=generate_latest(),
             media_type="text/plain; version=0.0.4; charset=utf-8",
         )
+
+
+async def prometheus_middleware(request: Request, call_next: Any) -> Response:
+    """FastAPI middleware that records HTTP request metrics.
+
+    Emits ``http_request_duration_seconds`` (Histogram) and
+    ``http_requests_total`` (Counter) with consistent labels.
+    """
+    start = time.perf_counter()
+    response: Response = await call_next(request)
+    duration = time.perf_counter() - start
+
+    route = request.url.path
+    if hasattr(request, "scope") and request.scope.get("route"):
+        route = getattr(request.scope["route"], "path", route)
+
+    HTTP_REQUEST_DURATION_SECONDS.labels(
+        method=request.method,
+        route=route,
+    ).observe(duration)
+
+    HTTP_REQUESTS_TOTAL.labels(
+        method=request.method,
+        route=route,
+        status_code=str(response.status_code),
+    ).inc()
+
+    return response
 
 
 def record_cache_hit(hit_rate: float) -> None:

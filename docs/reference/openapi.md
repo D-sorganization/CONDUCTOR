@@ -148,4 +148,5 @@ This inventory is checked against `create_app(...).openapi()` by `tests/unit/tes
 | `/api/v1/work-items/{item_id}/transition` | `POST` | Work items |
 | `/api/v1/workers` | `GET, PUT` | Workers |
 | `/health` | `GET` | Health |
+| `/healthz` | `GET` | Health |
 | `/readyz` | `GET` | Health |

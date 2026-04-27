@@ -87,7 +87,7 @@ from maxwell_daemon.director import (
     TaskGraphTemplate,
 )
 from maxwell_daemon.logging import bind_context, get_logger
-from maxwell_daemon.metrics import mount_metrics_endpoint
+from maxwell_daemon.metrics import mount_metrics_endpoint, prometheus_middleware
 
 _UI_DIR = _Path(__file__).parent / "ui"
 log = get_logger(__name__)
@@ -1257,6 +1257,7 @@ def create_app(
         description="Remote control plane for Maxwell-Daemon daemons.",
     )
     mount_metrics_endpoint(app)
+    app.middleware("http")(prometheus_middleware)
     _mount_web_ui(app)
 
     from fastapi.responses import JSONResponse
@@ -1516,6 +1517,15 @@ def create_app(
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
+        state = daemon.state()
+        return {
+            "status": "ok",
+            "version": state.version,
+            "uptime_seconds": (datetime.now(timezone.utc) - state.started_at).total_seconds(),
+        }
+
+    @app.get("/healthz")
+    async def healthz() -> dict[str, Any]:
         state = daemon.state()
         return {
             "status": "ok",
