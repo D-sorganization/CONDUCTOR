@@ -234,7 +234,7 @@ class ActionStore:
             assignments = ", ".join(f"{key} = ?" for key in updates)
             args = [*updates.values(), action_id, action.status.value]
             cursor = conn.execute(
-                f"UPDATE actions SET {assignments} WHERE id = ? AND status = ?",  # nosec B608
+                f"UPDATE actions SET {assignments} WHERE id = ? AND status = ?",
                 args,
             )
             if cursor.rowcount != 1:
@@ -294,9 +294,5 @@ def _row_to_action(row: sqlite3.Row) -> Action:
         error=row["error"],
         created_at=_parse_iso_required(row["created_at"]),
         updated_at=_parse_iso_required(row["updated_at"]),
-        inverse_payload=(
-            json.loads(row["inverse_payload"])
-            if "inverse_payload" in row.keys() and row["inverse_payload"]  # noqa: SIM118
-            else None
-        ),
+        inverse_payload=(json.loads(row["inverse_payload"]) if row["inverse_payload"] else None),
     )
