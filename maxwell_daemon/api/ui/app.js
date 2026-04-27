@@ -48,8 +48,30 @@ const ESCAPE_MAP = {
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
 };
 
+// ⚡ Bolt: Extracted to avoid function allocation on every escapeHtml call
+const getEscapeChar = (c) => ESCAPE_MAP[c];
+
+// ⚡ Bolt: Empty object constant to avoid allocations in frequently called handlers
+const EMPTY_OBJ = {};
+
+const sortBackendCostDesc = (a, b) => b[1] - a[1];
+const sortTaskCostDesc = (a, b) => (b.cost_usd || 0) - (a.cost_usd || 0);
+const sortTaskCreatedAtDesc = (a, b) => a.created_at < b.created_at ? 1 : (a.created_at > b.created_at ? -1 : 0);
+const sortGateStatusAsc = (a, b) => gateStatusRank(a.status) - gateStatusRank(b.status);
+const sortCriticFindings = (a, b) => {
+  const severityCmp = findingSeverityRank(a.severity) - findingSeverityRank(b.severity);
+  if (severityCmp !== 0) return severityCmp;
+  return String(a.message || "").localeCompare(String(b.message || ""));
+};
+const sortHistoryItemDesc = (a, b) => {
+  const aT = a.finished_at || a.created_at;
+  const bT = b.finished_at || b.created_at;
+  // ⚡ Bolt: Fast ISO 8601 sort using string operators.
+  return aT < bT ? 1 : (aT > bT ? -1 : 0);
+};
+
 function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ESCAPE_MAP[c]);
+  return String(s).replace(/[&<>"']/g, getEscapeChar);
 }
 
 function fmtUsd(n) { return `$${(n || 0).toFixed(4)}`; }
@@ -317,7 +339,7 @@ async function fetchCostDetail() {
 
   const tbody = document.getElementById("cost-backend-body");
   tbody.innerHTML = "";
-  const entries = Object.entries(byBackend).sort((a, b) => b[1] - a[1]);
+  const entries = Object.entries(byBackend).sort(sortBackendCostDesc);
   if (entries.length === 0) {
     tbody.innerHTML = `<tr><td colspan="2" style="color:var(--muted)">No data yet</td></tr>`;
   }
@@ -343,7 +365,7 @@ function renderCostTasks() {
   }
 
   const sorted = filtered
-    .sort((a, b) => (b.cost_usd || 0) - (a.cost_usd || 0))
+    .sort(sortTaskCostDesc)
     .slice(0, 20);
 
   if (sorted.length === 0) {
@@ -939,9 +961,7 @@ function renderTasks() {
   if (!tbody) return;
   tbody.innerHTML = "";
   // ⚡ Bolt: Fast ISO 8601 sort. String operators are ~3x faster than localeCompare.
-  const sorted = [...state.tasks.values()].sort(
-    (a, b) => a.created_at < b.created_at ? 1 : (a.created_at > b.created_at ? -1 : 0)
-  );
+  const sorted = [...state.tasks.values()].sort(sortTaskCreatedAtDesc);
 
   // ⚡ Bolt: Replace O(n²) nested loop lookup with O(n) hash map lookup.
   // Pre-compute control plane map for O(1) lookups during rendering.
@@ -1042,9 +1062,7 @@ function renderDetail(task) {
 
   const gatesEl = document.getElementById("detail-gates");
   gatesEl.innerHTML = "";
-  const gates = [...(controlPlane?.gates || [])].sort(
-    (a, b) => gateStatusRank(a.status) - gateStatusRank(b.status)
-  );
+  const gates = [...(controlPlane?.gates || [])].sort(sortGateStatusAsc);
   if (!gates.length) {
     gatesEl.innerHTML = `<li class="empty-state">No gauntlet state recorded for this task yet.</li>`;
   } else {
@@ -1064,11 +1082,7 @@ function renderDetail(task) {
 
   const findingsEl = document.getElementById("detail-findings");
   findingsEl.innerHTML = "";
-  const findings = [...(controlPlane?.critic_findings || [])].sort((a, b) => {
-    const severityCmp = findingSeverityRank(a.severity) - findingSeverityRank(b.severity);
-    if (severityCmp !== 0) return severityCmp;
-    return String(a.message || "").localeCompare(String(b.message || ""));
-  });
+  const findings = [...(controlPlane?.critic_findings || [])].sort(sortCriticFindings);
   if (!findings.length) {
     findingsEl.innerHTML = `<li class="empty-state">No critic findings recorded for this task.</li>`;
   } else {
@@ -1155,12 +1169,7 @@ function renderHistory() {
     }
   }
 
-  const items = filtered.sort((a, b) => {
-    const aT = a.finished_at || a.created_at;
-    const bT = b.finished_at || b.created_at;
-    // ⚡ Bolt: Fast ISO 8601 sort using string operators.
-    return aT < bT ? 1 : (aT > bT ? -1 : 0);
-  });
+  const items = filtered.sort(sortHistoryItemDesc);
 
   if (items.length === 0) {
     ol.innerHTML = `<li style="padding:14px;color:var(--muted)">No finished tasks yet.</li>`;
@@ -1351,7 +1360,7 @@ function openEventStream() {
     try { evt = JSON.parse(ev.data); } catch { return; }
     appendDebugEvent(ev.data);
     const ts = fmtTsShort(new Date().toISOString());
-    appendMonitorLine(`[${ts}] ${evt.kind} ${JSON.stringify(evt.payload || {}).slice(0, 120)}`);
+    appendMonitorLine(`[${ts}] ${evt.kind} ${JSON.stringify(evt.payload || EMPTY_OBJ).slice(0, 120)}`);
     handleEvent(evt);
   });
 }
@@ -1365,7 +1374,7 @@ const _fetchTaskDetailTimers = new Map();
 let _testOutputRaf = null;
 
 function handleEvent(evt) {
-  const p = evt.payload || {};
+  const p = evt.payload || EMPTY_OBJ;
   if (evt.kind === "test_output" && p.task_id) {
     const prev = state.testOutput.get(p.task_id) || "";
     state.testOutput.set(p.task_id, (prev + (p.chunk || "")).slice(-64_000));

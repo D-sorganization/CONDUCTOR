@@ -18,6 +18,10 @@
 **Learning:** Returning new objects inside replacer functions (e.g. `replace(..., () => ({}))`) and relying on object literals for lookups inside frequently called functions (e.g., sort comparators or formatting methods) creates new object instances on every call, causing memory churn and GC pressure.
 **Action:** Extract static mapping objects (like `ESCAPE_MAP` or `GATE_STATUS_RANK`) outside of the functions that use them to prevent unnecessary allocations on every execution.
 
+## 2024-05-18 - [Avoid Inline Objects/Functions in Fast Loops]
+**Learning:** In highly active Vanilla JS UI updates, allocating tiny transient objects/functions directly in rapid loops/listeners (e.g. `|| {}` or callback inside `String.replace`) places constant strain on the garbage collector which forces the main UI thread to drop frames.
+**Action:** Extract simple empty objects into module-level `EMPTY_OBJ = {}` constants and extract array sorts or `.replace()` callback functions into named constants/functions so they are allocated only once.
+
 ## 2024-11-20 - Intl.DateTimeFormat Instantiation Overhead
 **Learning:** Calling `toLocaleString(undefined, { options... })` on a Date object instantiates a new `Intl.DateTimeFormat` under the hood on every single invocation. This instantiation is incredibly slow (~260ms vs ~10s for 100k iterations) and allocates new memory. In a UI where timestamps are formatted rapidly on every WebSocket event tick, this causes main thread jitter.
 **Action:** Always extract and reuse `Intl.DateTimeFormat` instances as top-level constants when formatting dates rapidly or in loops.
