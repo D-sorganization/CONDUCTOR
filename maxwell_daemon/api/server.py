@@ -38,7 +38,10 @@ from maxwell_daemon import __version__
 from maxwell_daemon.daemon import Daemon
 from maxwell_daemon.daemon.runner import Task
 from maxwell_daemon.logging import bind_context
-from maxwell_daemon.metrics import mount_metrics_endpoint
+from maxwell_daemon.metrics import (
+    MAXWELL_REQUEST_DURATION,
+    mount_metrics_endpoint,
+)
 
 _UI_DIR = _Path(__file__).parent / "ui"
 
@@ -230,6 +233,30 @@ def create_app(
             "version": state.version,
             "uptime_seconds": (datetime.now(timezone.utc) - state.started_at).total_seconds(),
         }
+
+    @app.get("/healthz", include_in_schema=False)
+    async def healthz() -> Response:
+        """Kubernetes-style liveness probe."""
+        return Response(content="ok", media_type="text/plain")
+
+    @app.middleware("http")
+    async def prometheus_middleware(request: Request, call_next: Any) -> Response:
+        """Record request duration for Prometheus scraping."""
+        import time
+
+        start = time.perf_counter()
+        response: Response = await call_next(request)
+        duration = time.perf_counter() - start
+
+        # Only record API paths to avoid noise from /healthz, /metrics, /ui
+        path = request.url.path
+        if path.startswith("/api/"):
+            MAXWELL_REQUEST_DURATION.labels(
+                backend="http",
+                model="api",
+            ).observe(duration)
+
+        return response
 
     @app.get("/api/v1/backends", dependencies=[Depends(auth)])
     async def list_backends() -> dict[str, Any]:
