@@ -1517,7 +1517,6 @@ def create_app(
         return {"sub": "anonymous", "role": None, "exp": None}
 
     @app.get("/health")
-    @app.get("/healthz")
     async def health() -> dict[str, Any]:
         state = daemon.state()
         return {
