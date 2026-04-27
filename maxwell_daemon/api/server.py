@@ -2993,6 +2993,8 @@ def create_app(
     def _ssh_pool() -> Any:
         if "pool" not in _ssh_pool_ref:
             try:
+                # This import is a presence check for optional SSH dependencies.
+                # It is assigned to a private name to avoid unused-import warning.
                 import asyncssh as _asyncssh  # noqa: F401 — presence check only
 
                 from maxwell_daemon.ssh.session import SSHSessionPool

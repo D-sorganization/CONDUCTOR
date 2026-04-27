@@ -3,7 +3,8 @@
 The root ``Launch-Maxwell.*`` wrappers keep OS-specific shell details small and
 delegate the actual first-run flow here. The launcher is deliberately boring:
 create a local virtual environment if needed, install runtime dependencies,
-initialize a config if one is missing, run doctor, then start the API daemon.
+# initialize a config if one is missing, run doctor, then start the API daemon.
+# Trigger CI for coverage check.
 """
 
 from __future__ import annotations
@@ -20,6 +21,10 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from urllib import error, request
+from maxwell_daemon.logging import configure_logging, get_logger
+
+log = get_logger(__name__)
+
 from maxwell_daemon.logging import configure_logging, get_logger
 
 log = get_logger(__name__)
