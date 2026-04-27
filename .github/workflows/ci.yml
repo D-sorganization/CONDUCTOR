@@ -110,12 +110,18 @@ jobs:
       - run: uv sync --all-extras
       - name: Run tests
         run: .venv/bin/python -m pytest -p no:xvfb --cov=maxwell_daemon --cov-report=xml --cov-report=term-missing
-      - name: Upload coverage artifact
+      - name: Upload coverage XML artifact
         if: matrix.python-version == '3.12'
         uses: actions/upload-artifact@v7
         with:
           name: coverage-xml
           path: coverage.xml
+      - name: Upload .coverage artifact
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-data
+          path: .coverage
 
   coverage-floor:
     name: Coverage floor (ratchet)
