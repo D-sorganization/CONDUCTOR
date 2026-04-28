@@ -8,4 +8,5 @@
   `running`, `retrying`, `codex_totals`, and `rate_limits`. Running task token fields
   are populated from the cost ledger when records exist for the task id; `rate_limits`
   is `null` until backend adapters expose provider rate-limit snapshots.
+- `agent.concurrency_by_kind` can cap queued task dispatch by issue mode or task kind without changing the global worker count.
 

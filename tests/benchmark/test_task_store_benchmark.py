@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -16,7 +15,7 @@ def task_store(tmp_path: Path) -> TaskStore:
     return TaskStore(tmp_path / "tasks.db")
 
 
-def test_save_task(benchmark: Any, task_store: TaskStore) -> None:
+def test_save_task(benchmark: pytest.BenchmarkFixture, task_store: TaskStore) -> None:
     """Benchmark task save operation."""
     from maxwell_daemon.daemon.runner import Task, TaskStatus
 
@@ -33,7 +32,7 @@ def test_save_task(benchmark: Any, task_store: TaskStore) -> None:
     benchmark(_save)
 
 
-def test_get_task(benchmark: Any, task_store: TaskStore) -> None:
+def test_get_task(benchmark: pytest.BenchmarkFixture, task_store: TaskStore) -> None:
     """Benchmark task retrieval by ID."""
     from maxwell_daemon.daemon.runner import Task, TaskStatus
 
@@ -47,7 +46,7 @@ def test_get_task(benchmark: Any, task_store: TaskStore) -> None:
     benchmark(task_store.get, "task-get")
 
 
-def test_list_tasks(benchmark: Any, task_store: TaskStore) -> None:
+def test_list_tasks(benchmark: pytest.BenchmarkFixture, task_store: TaskStore) -> None:
     """Benchmark paginated task listing."""
     from maxwell_daemon.daemon.runner import Task, TaskStatus
 
