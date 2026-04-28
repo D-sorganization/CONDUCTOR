@@ -168,9 +168,9 @@ def assert_cost_record_valid(record: CostRecord) -> None:
     """
     assert record.prompt_tokens >= 0, "prompt_tokens must be non-negative"
     assert record.completion_tokens >= 0, "completion_tokens must be non-negative"
-    assert record.total_tokens == record.prompt_tokens + record.completion_tokens, (
-        "total_tokens must equal sum of prompt+completion"
-    )
+    assert (
+        record.total_tokens == record.prompt_tokens + record.completion_tokens
+    ), "total_tokens must equal sum of prompt+completion"
     assert record.cost_usd >= 0, "cost_usd must be non-negative"
     assert record.backend, "backend must be non-empty"
     assert record.model, "model must be non-empty"
