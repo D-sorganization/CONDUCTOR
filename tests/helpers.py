@@ -9,13 +9,10 @@ Reduces boilerplate across test files by providing:
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
-from maxwell_daemon.backends.base import TokenUsage
 from maxwell_daemon.config import BudgetConfig, MaxwellDaemonConfig
-from maxwell_daemon.config.models import AgentConfig, BackendConfig
 from maxwell_daemon.core.ledger import CostRecord
 from maxwell_daemon.daemon.runner import Task, TaskKind, TaskStatus
 
@@ -95,14 +92,11 @@ class CostRecordFactory:
             cost_usd = (prompt_tokens * 0.003 / 1000) + (completion_tokens * 0.015 / 1000)
 
         return CostRecord(
-            ts=datetime.now(),
             backend="anthropic",
             model=model,
-            usage=TokenUsage(
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                total_tokens=prompt_tokens + completion_tokens,
-            ),
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
             cost_usd=cost_usd,
             **kwargs,
         )
@@ -122,14 +116,11 @@ class CostRecordFactory:
             cost_usd = (prompt_tokens * 0.005 / 1000) + (completion_tokens * 0.015 / 1000)
 
         return CostRecord(
-            ts=datetime.now(),
             backend="openai",
             model=model,
-            usage=TokenUsage(
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                total_tokens=prompt_tokens + completion_tokens,
-            ),
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
             cost_usd=cost_usd,
             **kwargs,
         )
@@ -144,14 +135,11 @@ class CostRecordFactory:
     ) -> CostRecord:
         """Create a zero-cost record for local models."""
         return CostRecord(
-            ts=datetime.now(),
             backend="ollama",
             model=model,
-            usage=TokenUsage(
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                total_tokens=prompt_tokens + completion_tokens,
-            ),
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
             cost_usd=0.0,
             **kwargs,
         )
@@ -163,20 +151,12 @@ class ConfigFactory:
     @staticmethod
     def default() -> MaxwellDaemonConfig:
         """Create a minimal valid config for testing."""
-        return MaxwellDaemonConfig(
-            backends={
-                "claude": BackendConfig(
-                    type="claude",
-                    model="claude-sonnet-4-6",
-                )
-            },
-            agent=AgentConfig(default_backend="claude"),
-        )
+        return MaxwellDaemonConfig.default()
 
     @staticmethod
     def with_budget(monthly_limit_usd: float = 100.0) -> MaxwellDaemonConfig:
         """Create a config with a specific budget limit."""
-        config = ConfigFactory.default()
+        config = MaxwellDaemonConfig.default()
         config.budget = BudgetConfig(monthly_limit_usd=monthly_limit_usd)
         return config
 
@@ -186,11 +166,11 @@ def assert_cost_record_valid(record: CostRecord) -> None:
 
     Raises AssertionError if any constraint is violated.
     """
-    assert record.usage.prompt_tokens >= 0, "prompt_tokens must be non-negative"
-    assert record.usage.completion_tokens >= 0, "completion_tokens must be non-negative"
-    assert (
-        record.usage.total_tokens == record.usage.prompt_tokens + record.usage.completion_tokens
-    ), "total_tokens must equal sum of prompt+completion"
+    assert record.prompt_tokens >= 0, "prompt_tokens must be non-negative"
+    assert record.completion_tokens >= 0, "completion_tokens must be non-negative"
+    assert record.total_tokens == record.prompt_tokens + record.completion_tokens, (
+        "total_tokens must equal sum of prompt+completion"
+    )
     assert record.cost_usd >= 0, "cost_usd must be non-negative"
     assert record.backend, "backend must be non-empty"
     assert record.model, "model must be non-empty"
