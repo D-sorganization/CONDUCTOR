@@ -191,14 +191,14 @@ class TestTaskExecution:
                 self.calls += 1
                 if self.calls == 1:
                     await asyncio.Event().wait()
-                return type("Result", (), {"pr_url": "https://example.invalid/pr/762", "plan": "done"})()
+                return type(
+                    "Result", (), {"pr_url": "https://example.invalid/pr/762", "plan": "done"}
+                )()
 
         async def body() -> None:
             cfg = minimal_config.model_copy(
                 update={
-                    "agent": minimal_config.agent.model_copy(
-                        update={"stall_timeout_seconds": 1}
-                    )
+                    "agent": minimal_config.agent.model_copy(update={"stall_timeout_seconds": 1})
                 }
             )
             executor = _RetryingIssueExecutor()
@@ -232,14 +232,14 @@ class TestTaskExecution:
                 for _ in range(4):
                     await asyncio.sleep(0.4)
                     await on_test_output("ok", "stdout")
-                return type("Result", (), {"pr_url": "https://example.invalid/pr/763", "plan": "streamed"})()
+                return type(
+                    "Result", (), {"pr_url": "https://example.invalid/pr/763", "plan": "streamed"}
+                )()
 
         async def body() -> None:
             cfg = minimal_config.model_copy(
                 update={
-                    "agent": minimal_config.agent.model_copy(
-                        update={"stall_timeout_seconds": 1}
-                    )
+                    "agent": minimal_config.agent.model_copy(update={"stall_timeout_seconds": 1})
                 }
             )
             executor = _StreamingIssueExecutor()
