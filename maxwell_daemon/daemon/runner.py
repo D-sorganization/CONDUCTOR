@@ -106,6 +106,11 @@ class Task:
     issue_mode: str | None = None  # "plan" | "implement"
     # A/B grouping: sibling tasks share an ab_group so the UI pairs them.
     ab_group: str | None = None
+    # Continuation-turn identity for multi-turn task iteration.
+    # ``thread_id`` groups turns; ``turn_count`` is the active zero-based turn id.
+    thread_id: str | None = None
+    turn_count: int = 0
+    max_turns: int = 20
     # DAG dependencies: list of task IDs that must reach COMPLETED before this
     # task is allowed to start.  An empty list (the default) means "no deps".
     depends_on: list[str] = field(default_factory=list)
@@ -125,6 +130,26 @@ class Task:
     finished_at: datetime | None = None
     # Fleet dispatch tracking: set when a coordinator sends this task to a remote worker.
     dispatched_to: str | None = None  # machine name of the worker that received this task
+
+    @property
+    def continuation_thread_id(self) -> str:
+        """Stable logical thread id used for continuation session naming."""
+        return self.thread_id or self.id
+
+    @property
+    def turn_session_id(self) -> str:
+        """Return the Symphony-style ``<thread_id>-<turn_id>`` session id."""
+        return f"{self.continuation_thread_id}-{self.turn_count}"
+
+    @property
+    def is_continuation_turn(self) -> bool:
+        """Whether the active turn should send continuation guidance only."""
+        return self.turn_count > 0
+
+    @property
+    def has_turn_budget(self) -> bool:
+        """Whether another turn may start without exceeding ``max_turns``."""
+        return self.turn_count < self.max_turns
 
     def __lt__(self, other: object) -> bool:
         """Support PriorityQueue ordering — compare by (priority, created_at)."""
@@ -1726,7 +1751,25 @@ class Daemon:
             log.exception("task store write failed for task=%s", task.id)
             raise
         decision_backend = decision_model = "unknown"
+        repo_path = None
         try:
+            target_repo = task.repo or task.issue_repo
+            if target_repo:
+                repo_cfg = next((r for r in snapshot.config.repos if r.name == target_repo), None)
+                if repo_cfg and repo_cfg.path:
+                    repo_path = Path(repo_cfg.path)
+                else:
+                    from maxwell_daemon.gh.workspace import Workspace
+
+                    ws = getattr(self, "_workspace", None) or Workspace(root=self._workspace_root)
+                    repo_path = await ws.ensure_clone(target_repo, task_id=task.id)
+
+                from maxwell_daemon.daemon.workspace_hooks import execute_hooks, load_hooks_config
+
+                hook_config = load_hooks_config(repo_path, global_config=snapshot.config)
+                if hook_config:
+                    await execute_hooks("before_run", repo_path, config=hook_config, fatal=True)
+
             await self._events.publish(
                 Event(
                     kind=EventKind.TASK_STARTED,
@@ -1759,15 +1802,7 @@ class Daemon:
                 return
 
             prompt_content = task.prompt
-            if task.repo:
-                repo_cfg = next((r for r in snapshot.config.repos if r.name == task.repo), None)
-                if repo_cfg and repo_cfg.path:
-                    repo_path = Path(repo_cfg.path)
-                else:
-                    from maxwell_daemon.gh.workspace import Workspace
-
-                    ws = getattr(self, "_workspace", None) or Workspace(root=self._workspace_root)
-                    repo_path = await ws.ensure_clone(task.repo, task_id=task.id)
+            if task.repo and repo_path:
                 from maxwell_daemon.core.repo_overrides import RepoSchematic
 
                 schematic = RepoSchematic(task.repo, repo_path).generate()
@@ -1861,6 +1896,18 @@ class Daemon:
                 )
             )
         finally:
+            if repo_path:
+                try:
+                    from maxwell_daemon.daemon.workspace_hooks import (
+                        execute_hooks,
+                        load_hooks_config,
+                    )
+
+                    hook_config = load_hooks_config(repo_path, global_config=snapshot.config)
+                    if hook_config:
+                        await execute_hooks("after_run", repo_path, config=hook_config, fatal=False)
+                except Exception as e:
+                    log.warning("after_run hook failed (ignored): %s", e)
             task.finished_at = datetime.now(timezone.utc)
             try:
                 self._memory.scratchpad.clear(task.id)

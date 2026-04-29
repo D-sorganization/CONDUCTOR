@@ -107,6 +107,14 @@ class Workspace:
         target.parent.mkdir(parents=True, exist_ok=True)
         url = f"https://github.com/{repo}.git"
         await self._run_git("clone", "--depth", str(depth), url, str(target))
+
+        # Workspace lifecycle hook: after_create
+        from maxwell_daemon.daemon.workspace_hooks import execute_hooks, load_hooks_config
+
+        config = load_hooks_config(target)
+        if config:
+            await execute_hooks("after_create", target, config=config, fatal=True)
+
         return target
 
     async def _branch_exists_on_remote(self, branch: str, *, cwd: Path) -> bool:
@@ -149,7 +157,7 @@ class Workspace:
         await self._run_git("commit", "-m", message, cwd=target)
         await self._run_git("push", "--set-upstream", "origin", branch, cwd=target)
 
-    def cleanup_old(self, *, max_age: timedelta) -> list[Path]:
+    async def cleanup_old(self, *, max_age: timedelta) -> list[Path]:
         """Remove per-task checkouts older than ``max_age``. Returns what was removed.
 
         Intended for a cron/systemd-timer job — the daemon itself doesn't prune
@@ -167,6 +175,15 @@ class Workspace:
                 if not task_dir.is_dir():
                     continue
                 if task_dir.stat().st_mtime < cutoff:
+                    # Workspace lifecycle hook: before_remove
+                    from maxwell_daemon.daemon.workspace_hooks import (
+                        execute_hooks,
+                        load_hooks_config,
+                    )
+
+                    config = load_hooks_config(task_dir)
+                    if config:
+                        await execute_hooks("before_remove", task_dir, config=config, fatal=False)
                     shutil.rmtree(task_dir, ignore_errors=True)
                     removed.append(task_dir)
         return removed
