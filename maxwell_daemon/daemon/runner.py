@@ -8,7 +8,6 @@ External callers (CLI, REST API, gRPC) interact through `Daemon.submit()` and
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
 import signal
 import threading
 import uuid
