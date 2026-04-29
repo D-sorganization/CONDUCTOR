@@ -849,24 +849,26 @@ class Daemon:
             self._loop.call_soon_threadsafe(_put_inline)
             return
 
-        result: concurrent.futures.Future[None] = concurrent.futures.Future()
-
-        def _put() -> None:
+        # From a foreign thread: use run_coroutine_threadsafe with an async wrapper.
+        # This is the recommended pattern for calling async code from threads and
+        # avoids the callback-based approach which can be fragile under high contention.
+        async def _put_async() -> None:
             try:
                 self._queue.put_nowait(item)
-            except asyncio.QueueFull:
-                result.set_exception(
-                    QueueSaturationError(
-                        "Task queue is full, please try again later", backoff_seconds=60
-                    )
-                )
-            except BaseException as exc:  # pragma: no cover - surfaced via Future
-                result.set_exception(exc)
-            else:
-                result.set_result(None)
+            except asyncio.QueueFull as exc:
+                raise QueueSaturationError(
+                    "Task queue is full, please try again later", backoff_seconds=60
+                ) from exc
 
-        self._loop.call_soon_threadsafe(_put)
-        result.result(timeout=60.0)
+        future = asyncio.run_coroutine_threadsafe(_put_async(), self._loop)
+        try:
+            # Use a generous timeout (30s) to handle slow event loops.
+            # In normal operation this should complete near-instantly.
+            future.result(timeout=30.0)
+        except concurrent.futures.TimeoutError as exc:
+            raise TimeoutError(
+                f"task enqueue timeout after 30s for task {getattr(task, 'id', None)}"
+            ) from exc
 
     def submit(
         self,
