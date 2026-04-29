@@ -1751,7 +1751,25 @@ class Daemon:
             log.exception("task store write failed for task=%s", task.id)
             raise
         decision_backend = decision_model = "unknown"
+        repo_path = None
         try:
+            target_repo = task.repo or task.issue_repo
+            if target_repo:
+                repo_cfg = next((r for r in snapshot.config.repos if r.name == target_repo), None)
+                if repo_cfg and repo_cfg.path:
+                    repo_path = Path(repo_cfg.path)
+                else:
+                    from maxwell_daemon.gh.workspace import Workspace
+
+                    ws = getattr(self, "_workspace", None) or Workspace(root=self._workspace_root)
+                    repo_path = await ws.ensure_clone(target_repo, task_id=task.id)
+
+                from maxwell_daemon.daemon.workspace_hooks import execute_hooks, load_hooks_config
+
+                hook_config = load_hooks_config(repo_path, global_config=snapshot.config)
+                if hook_config:
+                    await execute_hooks("before_run", repo_path, config=hook_config, fatal=True)
+
             await self._events.publish(
                 Event(
                     kind=EventKind.TASK_STARTED,
@@ -1784,15 +1802,7 @@ class Daemon:
                 return
 
             prompt_content = task.prompt
-            if task.repo:
-                repo_cfg = next((r for r in snapshot.config.repos if r.name == task.repo), None)
-                if repo_cfg and repo_cfg.path:
-                    repo_path = Path(repo_cfg.path)
-                else:
-                    from maxwell_daemon.gh.workspace import Workspace
-
-                    ws = getattr(self, "_workspace", None) or Workspace(root=self._workspace_root)
-                    repo_path = await ws.ensure_clone(task.repo, task_id=task.id)
+            if task.repo and repo_path:
                 from maxwell_daemon.core.repo_overrides import RepoSchematic
 
                 schematic = RepoSchematic(task.repo, repo_path).generate()
@@ -1886,6 +1896,18 @@ class Daemon:
                 )
             )
         finally:
+            if repo_path:
+                try:
+                    from maxwell_daemon.daemon.workspace_hooks import (
+                        execute_hooks,
+                        load_hooks_config,
+                    )
+
+                    hook_config = load_hooks_config(repo_path, global_config=snapshot.config)
+                    if hook_config:
+                        await execute_hooks("after_run", repo_path, config=hook_config, fatal=False)
+                except Exception as e:
+                    log.warning("after_run hook failed (ignored): %s", e)
             task.finished_at = datetime.now(timezone.utc)
             try:
                 self._memory.scratchpad.clear(task.id)
