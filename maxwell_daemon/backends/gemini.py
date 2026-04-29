@@ -79,6 +79,7 @@ class GeminiBackend(ILLMBackend):
         tools: list[dict[str, Any]] | None = None,
         **kwargs: Any,
     ) -> BackendResponse:
+        del tools
         system_instruction, contents = self._build_contents(messages)
         gen_config: dict[str, Any] = {"temperature": temperature}
         if max_tokens is not None:
@@ -116,6 +117,7 @@ class GeminiBackend(ILLMBackend):
         tools: list[dict[str, Any]] | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
+        del tools
         system_instruction, contents = self._build_contents(messages)
         gen_config: dict[str, Any] = {"temperature": temperature}
         if max_tokens is not None:
