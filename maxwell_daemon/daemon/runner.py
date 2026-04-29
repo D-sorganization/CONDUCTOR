@@ -130,6 +130,8 @@ class Task:
     finished_at: datetime | None = None
     # Fleet dispatch tracking: set when a coordinator sends this task to a remote worker.
     dispatched_to: str | None = None  # machine name of the worker that received this task
+    # Symphony Appendix A.2: once side effects start, transparent failover is forbidden.
+    side_effects_started: bool = False
 
     @property
     def continuation_thread_id(self) -> str:
