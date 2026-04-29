@@ -69,6 +69,7 @@ async def _run_hook(
             return proc.returncode or 0, stdout, stderr
         except asyncio.TimeoutError:
             import contextlib
+
             with contextlib.suppress(OSError):
                 proc.kill()
             raise WorkspaceHookError(f"Hook {name!r} timed out after {timeout_seconds}s") from None
