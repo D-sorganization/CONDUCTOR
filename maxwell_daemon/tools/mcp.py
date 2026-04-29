@@ -365,7 +365,10 @@ class ToolRegistry:
         return [s.to_openai() for s in self._specs.values()]
 
     async def invoke(
-        self, name: str, arguments: dict[str, Any], approval_tier: str | None = None
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        approval_tier: str | None = None,
     ) -> ToolResult:
         """Call the handler for ``name`` with ``arguments``.
 

@@ -52,6 +52,16 @@ class FakeExecutor:
         )
 
 
+class FakeWorkspace:
+    def __init__(self, root: Path) -> None:
+        self.root = root
+
+    async def ensure_clone(self, repo: str, *, task_id: str) -> Path:
+        path = self.root / repo.replace("/", "__") / task_id
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+
 @pytest.fixture
 def daemon_with_fake_executor(
     minimal_config: MaxwellDaemonConfig, isolated_ledger_path: Path, tmp_path: Path
@@ -63,7 +73,7 @@ def daemon_with_fake_executor(
     )
     d.set_issue_collaborators(
         github_client=FakeGithub(),
-        workspace=object(),
+        workspace=FakeWorkspace(tmp_path / "ws"),
         executor_factory=lambda gh, ws, be: FakeExecutor(),
     )
     return d
