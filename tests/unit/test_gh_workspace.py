@@ -197,24 +197,26 @@ class TestCleanupOld:
         task_dir.mkdir()
         old_time = _time.time() - 200000
         os.utime(task_dir, (old_time, old_time))
-        removed = ws.cleanup_old(max_age=timedelta(days=1))
+        removed = asyncio.run(ws.cleanup_old(max_age=timedelta(days=1)))
         assert task_dir in removed
 
     def test_cleanup_keeps_new_dirs(self, tmp_path: Path) -> None:
         from datetime import timedelta
+        import asyncio
 
         ws = Workspace(root=tmp_path)
         repo_dir = tmp_path / "repo"
         repo_dir.mkdir()
         task_dir = repo_dir / "new-task"
         task_dir.mkdir()
-        removed = ws.cleanup_old(max_age=timedelta(days=365))
+        removed = asyncio.run(ws.cleanup_old(max_age=timedelta(days=365)))
         assert task_dir not in removed
 
     def test_cleanup_skips_non_dirs_at_repo_level(self, tmp_path: Path) -> None:
         from datetime import timedelta
+        import asyncio
 
         ws = Workspace(root=tmp_path)
         (tmp_path / "not-a-dir.txt").write_text("noise")
-        removed = ws.cleanup_old(max_age=timedelta(days=1))
+        removed = asyncio.run(ws.cleanup_old(max_age=timedelta(days=1)))
         assert removed == []
