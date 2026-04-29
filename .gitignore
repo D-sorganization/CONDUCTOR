@@ -47,3 +47,5 @@ mypy_test_errors*.txt
 
 # Ansible
 *.retry
+.gaai/project/contexts/backlog/.delivery-locks/
+.gaai/project/contexts/backlog/.delivery-logs/
