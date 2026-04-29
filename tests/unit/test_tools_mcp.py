@@ -408,3 +408,85 @@ class TestUnclassifiedToolDenial:
         [record] = store.records
         assert record.status == "denied"
         assert "unclassified" in (record.error or "")
+
+
+# ── Symphony Appendix A.2: side_effects_started callback ──────────────────
+
+
+class TestOnSideEffectCallback:
+    """Symphony Appendix A.2: ``on_side_effect`` fires before side-effect tools."""
+
+    async def test_callback_fires_for_side_effect_risk_levels(self) -> None:
+        called: list[str] = []
+
+        def callback(tool_name: str) -> None:
+            called.append(tool_name)
+
+        reg = ToolRegistry(on_side_effect=callback)
+
+        # register a write tool (side-effect risk)
+        reg.register(
+            ToolSpec(
+                name="write_file",
+                description="write a file",
+                params=[],
+                handler=lambda: "ok",
+                risk_level="local_write",
+            )
+        )
+        result = await reg.invoke("write_file", {})
+        assert result.is_error is False
+        assert called == ["write_file"]
+
+    async def test_callback_does_not_fire_for_read_only(self) -> None:
+        called: list[str] = []
+
+        def callback(tool_name: str) -> None:
+            called.append(tool_name)
+
+        reg = ToolRegistry(on_side_effect=callback)
+        reg.register(_echo_spec())
+        result = await reg.invoke("echo", {"message": "hello"})
+        assert result.is_error is False
+        assert called == []
+
+    async def test_callback_failure_does_not_block_execution(self) -> None:
+        """Callback exceptions must not prevent the tool handler from running."""
+
+        def bad_callback(_tool_name: str) -> None:
+            raise RuntimeError("boom")
+
+        reg = ToolRegistry(on_side_effect=bad_callback)
+        reg.register(
+            ToolSpec(
+                name="write_file",
+                description="write a file",
+                params=[],
+                handler=lambda: "ok",
+                risk_level="local_write",
+            )
+        )
+        result = await reg.invoke("write_file", {})
+        assert result.is_error is False
+        assert result.content == "ok"
+
+    async def test_approval_tier_blocks_before_callback(self) -> None:
+        """When approval tier blocks, callback must not fire (no side effects started)."""
+        called: list[str] = []
+
+        def callback(tool_name: str) -> None:
+            called.append(tool_name)
+
+        reg = ToolRegistry(approval_tier="suggest", on_side_effect=callback)
+        reg.register(
+            ToolSpec(
+                name="write_file",
+                description="write a file",
+                params=[],
+                handler=lambda: "ok",
+                risk_level="local_write",
+            )
+        )
+        result = await reg.invoke("write_file", {})
+        assert result.is_error is True
+        assert called == []

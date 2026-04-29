@@ -31,6 +31,7 @@ def _machine(
     tags: tuple[str, ...] = (),
     active_tasks: int = 0,
     healthy: bool = True,
+    max_concurrent_agents_per_host: int | None = None,
 ) -> MachineState:
     return MachineState(
         name=name,
@@ -40,6 +41,7 @@ def _machine(
         tags=tags,
         active_tasks=active_tasks,
         healthy=healthy,
+        max_concurrent_agents_per_host=max_concurrent_agents_per_host,
     )
 
 
@@ -252,3 +254,42 @@ class TestFrozenDataclasses:
         plan = DispatchPlan(assignments=(), unassigned=())
         with pytest.raises(dataclasses.FrozenInstanceError):
             plan.unassigned = ("x",)  # type: ignore[misc]
+
+
+# ── Symphony Appendix A.3: per-host concurrency caps ──────────────────────
+
+
+class TestPerHostConcurrencyCap:
+    """Symphony Appendix A.3: ``max_concurrent_agents_per_host`` takes precedence."""
+
+    def test_cap_takes_precedence_over_capacity(self) -> None:
+        m = _machine("m1", capacity=10, max_concurrent_agents_per_host=1)
+        assert m.available_slots == 1
+
+    def test_capacity_used_when_cap_is_none(self) -> None:
+        m = _machine("m1", capacity=5, max_concurrent_agents_per_host=None)
+        assert m.available_slots == 5
+
+    def test_cap_limits_dispatch(self) -> None:
+        """Only one task placed despite capacity=10 because cap=1."""
+        m = _machine("m1", capacity=10, max_concurrent_agents_per_host=1)
+        tasks = (_task("t1"), _task("t2"))
+        plan = FleetDispatcher().plan((m,), tasks)
+        assert len(plan.assignments) == 1
+        assert len(plan.unassigned) == 1
+
+    def test_two_hosts_with_cap_one_each(self) -> None:
+        """Two hosts, cap=1 each → at most two tasks placed."""
+        a = _machine("a", capacity=10, max_concurrent_agents_per_host=1)
+        b = _machine("b", capacity=10, max_concurrent_agents_per_host=1)
+        tasks = tuple(_task(f"t{i}") for i in range(4))
+        plan = FleetDispatcher().plan((a, b), tasks)
+        assert len(plan.assignments) == 2
+        assert len(plan.unassigned) == 2
+
+    def test_active_tasks_consume_cap_slots(self) -> None:
+        m = _machine("m1", capacity=10, active_tasks=1, max_concurrent_agents_per_host=2)
+        tasks = (_task("t1"), _task("t2"), _task("t3"))
+        plan = FleetDispatcher().plan((m,), tasks)
+        assert len(plan.assignments) == 1  # 2 cap - 1 active = 1 slot
+        assert len(plan.unassigned) == 2
