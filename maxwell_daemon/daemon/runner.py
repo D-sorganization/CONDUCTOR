@@ -650,7 +650,7 @@ class Daemon:
                     log.info("retention prune completed: %s", result)
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception:  # noqa: BLE001
                 log.warning("retention prune failed", exc_info=True)
             await asyncio.sleep(interval)
 
@@ -681,7 +681,7 @@ class Daemon:
                     log.debug("evicted %d stale tasks from live memory dict", evicted)
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception:  # noqa: BLE001
                 log.warning("live eviction loop failed", exc_info=True)
             await asyncio.sleep(60.0)
 
@@ -692,7 +692,7 @@ class Daemon:
                 await self._reconcile_stalled_runs()
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception:  # noqa: BLE001
                 log.warning("stall reconcile loop failed", exc_info=True)
             timeout = self._config.agent.stall_timeout_seconds
             interval = 1.0 if timeout <= 2 else min(timeout / 2.0, 30.0)
@@ -786,7 +786,7 @@ class Daemon:
                 log.info("memory dream cycle completed: %s", result)
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception:  # noqa: BLE001
                 log.warning("memory dream cycle failed", exc_info=True)
 
     async def run_memory_dream_cycle(self) -> str:
@@ -864,7 +864,7 @@ class Daemon:
                         backoff_seconds=DEFAULT_RETRY_POLICY.queue_saturation_backoff(),
                     )
                 )
-            except BaseException as exc:  # pragma: no cover - surfaced via Future
+            except BaseException as exc:  # pragma: no cover - surfaced via Future  # noqa: BLE001
                 result.set_exception(exc)
             else:
                 result.set_result(None)
@@ -1523,7 +1523,7 @@ class Daemon:
                 log.exception("coordinator dispatch error")
             await asyncio.sleep(poll_seconds)
 
-    async def _dispatch_to_fleet(self) -> None:
+    async def _dispatch_to_fleet(self) -> None:  # noqa: C901
         """One coordinator dispatch tick: probe machines, plan, submit, requeue stale tasks."""
         from maxwell_daemon.fleet.client import RemoteDaemonClient, RemoteDaemonError
         from maxwell_daemon.fleet.dispatcher import (
@@ -1646,7 +1646,7 @@ class Daemon:
                 log.info("dispatched task %s to machine %s", assigned_task.id, machine.name)
                 try:
                     self._task_store.save(assigned_task)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     log.warning(
                         "Failed to persist DISPATCHED state for task %s: %s",
                         assigned_task.id,
@@ -1749,7 +1749,7 @@ class Daemon:
                     self._task_store.update_status(
                         task.id, TaskStatus.RUNNING, started_at=task.started_at
                     )
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     log.error(
                         "failed to mark task %s RUNNING: %s; re-queuing",
                         task.id,
@@ -1778,7 +1778,7 @@ class Daemon:
                 finally:
                     self._clear_execution_tracking(task.id)
 
-    async def _execute(self, task: Task, snapshot: ConfigSnapshot) -> None:
+    async def _execute(self, task: Task, snapshot: ConfigSnapshot) -> None:  # noqa: C901
         task.status = TaskStatus.RUNNING
         task.started_at = datetime.now(timezone.utc)
         try:
@@ -1942,12 +1942,12 @@ class Daemon:
                     hook_config = load_hooks_config(repo_path, global_config=snapshot.config)
                     if hook_config:
                         await execute_hooks("after_run", repo_path, config=hook_config, fatal=False)
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     log.warning("after_run hook failed (ignored): %s", e)
             task.finished_at = datetime.now(timezone.utc)
             try:
                 self._memory.scratchpad.clear(task.id)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 log.warning(
                     "scratchpad clear failed for task %s: %s",
                     task.id,
@@ -2033,7 +2033,7 @@ class Daemon:
                     selection.model,
                     selection.factors,
                 )
-            except Exception:
+            except Exception:  # noqa: BLE001
                 # Selection is opportunistic — a failure here falls through
                 # to the default model so the task still proceeds.
                 log.warning("model-select failed for task=%s; using default", task.id)
