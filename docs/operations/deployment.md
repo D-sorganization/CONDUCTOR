@@ -223,7 +223,7 @@ For the metrics catalogue and alert rule reference, see
 
 ### System requirements
 
-- Python `>=3.10` (declared in [`pyproject.toml`](../../pyproject.toml)).
+- Python `>=3.10` (declared in [`pyproject.toml`](https://github.com/D-sorganization/Maxwell-Daemon/blob/main/pyproject.toml)).
 - POSIX-like filesystem capable of holding the SQLite WAL files (Linux,
   macOS, or WSL2).  Pure NFS is not recommended — SQLite WAL relies on
   byte-range locking that some NFS implementations handle poorly.
@@ -270,8 +270,9 @@ Production installs should pin to a tagged release rather than tracking
 
 #### Docker
 
-The repo ships a [`Dockerfile`](../../Dockerfile) and
-[`docker-compose.yml`](../../docker-compose.yml).  Build and run with:
+The repo ships a [`Dockerfile`](https://github.com/D-sorganization/Maxwell-Daemon/blob/main/Dockerfile) and
+[`docker-compose.yml`](https://github.com/D-sorganization/Maxwell-Daemon/blob/main/docker-compose.yml).
+Build and run with:
 
 ```bash
 docker build -t maxwell-daemon:local .
@@ -295,7 +296,7 @@ docker compose logs -f maxwell-daemon
 Maxwell-Daemon reads these `MAXWELL_*` variables directly from the
 running code.  The list below is exhaustive for the daemon itself; LLM
 backend keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.) are documented
-in [`.env.example`](../../.env.example).
+in [`.env.example`](https://github.com/D-sorganization/Maxwell-Daemon/blob/main/.env.example).
 
 | Variable | Default | Source | Purpose |
 |----------|---------|--------|---------|
@@ -389,7 +390,7 @@ server {
 ### systemd
 
 A reference unit lives at
-[`deploy/systemd/maxwell-daemon.service`](../../deploy/systemd/maxwell-daemon.service).
+[`deploy/systemd/maxwell-daemon.service`](https://github.com/D-sorganization/Maxwell-Daemon/blob/main/deploy/systemd/maxwell-daemon.service).
 Install it with:
 
 ```bash
@@ -417,8 +418,14 @@ Three first-party endpoints are intended for orchestrators:
 | `GET /api/status` | Readiness | Pipeline state and active task summary; safe for `readinessProbe`. |
 | `GET /api/version` | Contract | Semver + contract version (used for upgrade checks). |
 
-Both `/api/health` and `/api/version` are exempt from the per-IP rate
-limiter, so probe frequency does not need to be throttled.
+`/api/health` and `/api/version` are exempted from the env-driven rate
+limiter (Phase 1 of #796) by default, so orchestrator probes will not
+trigger 429s. Deployments that explicitly enable the YAML-configured
+limiter via `api.rate_limit_default` should add these paths to its
+`exempt_paths` list — `install_rate_limiter()` currently defaults its
+exemption list to `/health` and `/metrics` only. See
+[`monitoring.md`](monitoring.md) for the full breakdown; a follow-up
+under #796 will align that limiter's defaults.
 
 ### SQLite backup and restore
 
@@ -460,8 +467,9 @@ against your provider's billing dashboard if that gap matters.
 
 Maxwell-Daemon advertises an HTTP contract version at `GET /api/version`.
 The contract is **append-only within a major version** (see
-[`SPEC.md`](../../SPEC.md) and [`CLAUDE.md`](../../CLAUDE.md)).  Use
-that endpoint to detect breaking upgrades before rolling them out.
+[`SPEC.md`](https://github.com/D-sorganization/Maxwell-Daemon/blob/main/SPEC.md)
+and [`CLAUDE.md`](https://github.com/D-sorganization/Maxwell-Daemon/blob/main/CLAUDE.md)).
+Use that endpoint to detect breaking upgrades before rolling them out.
 
 1. **Snapshot the database.**
    ```bash

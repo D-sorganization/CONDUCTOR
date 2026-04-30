@@ -6,9 +6,9 @@ companion to [`observability.md`](observability.md), which focuses on the
 developer-facing logging API.
 
 The complete metric definitions live in
-[`maxwell_daemon/metrics.py`](../../maxwell_daemon/metrics.py).  Treat that
-module as the source of truth — this page summarises what is currently
-exported.
+[`maxwell_daemon/metrics.py`](https://github.com/D-sorganization/Maxwell-Daemon/blob/main/maxwell_daemon/metrics.py).
+Treat that module as the source of truth — this page summarises what is
+currently exported.
 
 ## Scrape configuration
 
@@ -74,9 +74,9 @@ histogram_quantile(
 ## Structlog fields
 
 Maxwell-Daemon logs through `structlog` (configured in
-[`maxwell_daemon/logging.py`](../../maxwell_daemon/logging.py)).  Output is
-JSON when stderr is not a TTY, which is the format you should ship to Loki,
-Elastic, Datadog, or Cloud Logging.
+[`maxwell_daemon/logging.py`](https://github.com/D-sorganization/Maxwell-Daemon/blob/main/maxwell_daemon/logging.py)).
+Output is JSON when stderr is not a TTY, which is the format you should
+ship to Loki, Elastic, Datadog, or Cloud Logging.
 
 Stable fields you can index on:
 
@@ -105,7 +105,7 @@ appear verbatim in logs.
 ## Sample dashboards
 
 A Grafana dashboard JSON is shipped at
-[`deploy/grafana/maxwell-daemon-dashboard.json`](../../deploy/grafana/maxwell-daemon-dashboard.json).
+[`deploy/grafana/maxwell-daemon-dashboard.json`](https://github.com/D-sorganization/Maxwell-Daemon/blob/main/deploy/grafana/maxwell-daemon-dashboard.json).
 It covers HTTP request rate, p50/p95/p99 latency, 5xx error rate, active
 tasks, queue depth, agent request rate by backend, token consumption,
 cost-per-hour, and the month-end spend forecast.
@@ -119,7 +119,7 @@ To import:
 ## Sample alerts
 
 Starter Prometheus alert rules ship at
-[`deploy/prometheus/alerts.yml`](../../deploy/prometheus/alerts.yml).
+[`deploy/prometheus/alerts.yml`](https://github.com/D-sorganization/Maxwell-Daemon/blob/main/deploy/prometheus/alerts.yml).
 They are intentionally conservative starting points — review the
 thresholds before paging on them.
 
@@ -148,7 +148,11 @@ balancers:
 | `GET /api/status` | varies | Pipeline state, active task summary.  Use for `readinessProbe`. |
 | `GET /api/version` | none | Semver and contract version — also used by upgrade checks. |
 
-`/api/health` and `/api/version` are exempt from the per-IP rate limiter
-(see `DEFAULT_EXEMPT_PATHS` in
-[`maxwell_daemon/api/rate_limit.py`](../../maxwell_daemon/api/rate_limit.py)),
-so frequent probes from your orchestrator will not trigger 429s.
+Liveness and contract probes (`/api/health`, `/api/version`) are exempted
+from the env-driven rate limiter (Phase 1 of #796) by default. Deployments
+that explicitly enable the YAML-configured limiter via
+`api.rate_limit_default` should add these paths to its `exempt_paths` list
+to prevent 429s on orchestrator probes — `install_rate_limiter()` (see
+[`maxwell_daemon/api/rate_limit.py`](https://github.com/D-sorganization/Maxwell-Daemon/blob/main/maxwell_daemon/api/rate_limit.py))
+currently defaults its exemption list to `/health` and `/metrics` only. A
+follow-up under #796 will align that limiter's defaults.
