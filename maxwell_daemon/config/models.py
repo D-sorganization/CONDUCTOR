@@ -236,6 +236,39 @@ class RateLimitConfig(BaseModel):
     burst: int = Field(50, ge=1, description="Bucket capacity (max burst)")
 
 
+class CORSConfig(BaseModel):
+    """Cross-origin resource sharing settings for the FastAPI app.
+
+    Disabled by default so the dashboard's same-origin integration is
+    unaffected.  Enable explicitly when a browser-based caller from a
+    different origin (e.g. a hosted dashboard) needs access.
+    """
+
+    enabled: bool = Field(
+        False,
+        description="When False the CORSMiddleware is not registered.",
+    )
+    allowed_origins: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Explicit origin allow-list, e.g. ['https://dashboard.example.com']. "
+            "Wildcard '*' is accepted but is incompatible with allow_credentials."
+        ),
+    )
+    allow_credentials: bool = Field(
+        False,
+        description="Forward cookies / Authorization on cross-origin requests.",
+    )
+    allowed_methods: list[str] = Field(
+        default_factory=lambda: ["GET", "POST", "OPTIONS"],
+        description="HTTP methods permitted on cross-origin requests.",
+    )
+    allowed_headers: list[str] = Field(
+        default_factory=lambda: ["Authorization", "Content-Type", "X-Request-ID"],
+        description="Request headers the browser may send across origins.",
+    )
+
+
 class APIConfig(BaseModel):
     enabled: bool = True
     host: str = "127.0.0.1"
@@ -258,6 +291,9 @@ class APIConfig(BaseModel):
     # Rate limiting. Absent = disabled entirely.
     rate_limit_default: RateLimitConfig | None = None
     rate_limit_groups: dict[str, RateLimitConfig] = Field(default_factory=dict)
+    # CORS. Disabled by default; opt in to expose the API to browser callers
+    # served from a different origin than the daemon.
+    cors: CORSConfig = Field(default_factory=lambda: CORSConfig())
 
     def jwt_secret_value(self) -> str | None:
         """Unwrap the JWT secret SecretStr, or None if unset."""

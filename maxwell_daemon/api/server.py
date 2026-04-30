@@ -1408,6 +1408,30 @@ def create_app(
         else None
     )
 
+    api_cfg = daemon._config.api
+
+    # Security-headers middleware — adds nosniff, frame-options, HSTS (HTTPS
+    # only), referrer-policy, and X-XSS-Protection: 0.  CSP is opt-in and
+    # currently disabled to avoid breaking the dashboard UI (issue #797 phase 1).
+    from maxwell_daemon.api.security_headers import SecurityHeadersMiddleware
+
+    app.add_middleware(SecurityHeadersMiddleware)
+
+    # CORS — disabled by default; enable via api.cors.enabled in config when
+    # browser clients on a different origin need access.  Same-origin callers
+    # (the bundled UI) are unaffected.
+    cors_cfg = api_cfg.cors
+    if cors_cfg.enabled:
+        from fastapi.middleware.cors import CORSMiddleware
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_cfg.allowed_origins,
+            allow_credentials=cors_cfg.allow_credentials,
+            allow_methods=cors_cfg.allowed_methods,
+            allow_headers=cors_cfg.allowed_headers,
+        )
+
     # Correlation-ID middleware — attaches a UUID to every request, propagates
     # it through structlog context-vars, and echoes it in X-Correlation-ID.
     from maxwell_daemon.api.correlation import install_correlation_middleware
@@ -1415,7 +1439,6 @@ def create_app(
     install_correlation_middleware(app)
 
     # Rate-limit middleware — installs only when config declares a default group.
-    api_cfg = daemon._config.api
     if api_cfg.rate_limit_default is not None:
         from maxwell_daemon.api.rate_limit import install_rate_limiter
 
