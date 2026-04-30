@@ -1,10 +1,27 @@
-"""Rate limiter — token bucket with per-key isolation."""
+"""Rate limiter — token bucket with per-key isolation.
+
+Also covers the phase-1 sliding-window dependency that protects
+``POST /api/dispatch`` (issue #796).
+"""
 
 from __future__ import annotations
 
 import time
+from unittest.mock import MagicMock
 
-from maxwell_daemon.api.rate_limit import TokenBucket, TokenBucketLimiter
+import pytest
+from fastapi import Depends, FastAPI
+from fastapi.testclient import TestClient
+
+from maxwell_daemon.api.rate_limit import (
+    InMemoryRateLimitStore,
+    RateLimitPolicy,
+    TokenBucket,
+    TokenBucketLimiter,
+    build_rate_limit_dependency,
+    extract_client_id,
+    install_rate_limit_headers_middleware,
+)
 
 
 class TestTokenBucket:
