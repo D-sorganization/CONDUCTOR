@@ -27,7 +27,15 @@
           : (prefersDark ? "dark" : "light");
         document.documentElement.setAttribute("data-theme", theme);
       } catch (e) {
-        document.documentElement.setAttribute("data-theme", "light");
+        var prefersDarkFallback = false;
+        try {
+          prefersDarkFallback = !!(window.matchMedia
+            && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        } catch (e2) { /* matchMedia also unavailable; default to light */ }
+        document.documentElement.setAttribute(
+          "data-theme",
+          prefersDarkFallback ? "dark" : "light"
+        );
       }
     })();
   </script>
