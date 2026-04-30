@@ -724,7 +724,7 @@ def _auth_dep(token: str | None) -> Any:
     return _check
 
 
-def _make_rbac_dep(
+def _make_rbac_dep(  # noqa: C901
     minimum: Role,
     static_token: str | None,
     jwt_config: JWTConfig | None,
@@ -741,7 +741,7 @@ def _make_rbac_dep(
     (open/dev mode — same behaviour as the existing ``_auth_dep(None)``).
     """
 
-    async def _dep(request: Request, authorization: Annotated[str | None, Header()] = None) -> None:
+    async def _dep(request: Request, authorization: Annotated[str | None, Header()] = None) -> None:  # noqa: C901
         # Open mode — nothing to enforce.
         if static_token is None and jwt_config is None:
             return
@@ -1280,7 +1280,7 @@ class EvalLeaderboardEntry(BaseModel):
     pass_rate: float
 
 
-def create_app(
+def create_app(  # noqa: C901
     daemon: Daemon,
     *,
     auth_token: str | None = None,
