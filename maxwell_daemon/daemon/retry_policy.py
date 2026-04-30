@@ -19,10 +19,16 @@ from __future__ import annotations
 import secrets
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import TYPE_CHECKING
+from typing import Any
 
-if TYPE_CHECKING:
-    from maxwell_daemon.daemon.runner import Task
+# ``Task`` lives in ``maxwell_daemon.daemon.runner``, which imports
+# ``DEFAULT_RETRY_POLICY`` from this module at import time. Importing
+# ``Task`` here — even guarded by ``TYPE_CHECKING`` — is enough for static
+# analyzers (CodeQL) to flag a cyclic-import risk. ``should_retry`` only
+# touches duck-typed attributes, so the parameter is annotated as ``Any``
+# and the terminal-status check uses string values from ``TaskStatus``
+# (which subclasses ``str, Enum``) without importing the enum itself.
+_TERMINAL_STATUS_VALUES = frozenset({"completed", "cancelled"})
 
 
 # Default backoff parameters chosen to preserve the previously hard-coded
@@ -68,7 +74,7 @@ class RetryPolicy:
                 f"got max={self.max_delay_seconds} base={self.base_delay_seconds}",
             )
 
-    def should_retry(self, task: Task) -> bool:
+    def should_retry(self, task: Any) -> bool:
         """Return ``True`` while the task has retry budget remaining.
 
         Counts attempts via ``getattr(task, "retry_count", 0)`` so this is
@@ -76,11 +82,18 @@ class RetryPolicy:
         not yet carry an explicit retry counter — and against a future
         version that does. Tasks already terminal (``COMPLETED``,
         ``CANCELLED``) never qualify for retry.
-        """
-        from maxwell_daemon.daemon.runner import TaskStatus
 
+        ``task`` is annotated as ``Any`` to avoid an import cycle with
+        :mod:`maxwell_daemon.daemon.runner`; the terminal-status check
+        uses the underlying string values of ``TaskStatus`` (a
+        ``str, Enum``) and accepts either the enum member or its raw
+        string form.
+        """
         status = getattr(task, "status", None)
-        if status in (TaskStatus.COMPLETED, TaskStatus.CANCELLED):
+        # ``TaskStatus`` is ``str, Enum``, so equality with a string works
+        # without importing the enum and breaking the cycle.
+        status_value = getattr(status, "value", status)
+        if isinstance(status_value, str) and status_value.lower() in _TERMINAL_STATUS_VALUES:
             return False
         attempts = int(getattr(task, "retry_count", 0))
         return attempts < self.max_retries
@@ -96,9 +109,14 @@ class RetryPolicy:
         """
         if retry_count < 0:
             raise ValueError(f"retry_count must be >= 0, got {retry_count}")
-        # Clamp the exponent so ``2 ** retry_count`` never overflows the
-        # cap calculation for absurd inputs.
-        capped_exp = min(retry_count, 30)
+        # Clamp the exponent so ``2 ** retry_count`` never builds a
+        # pathologically large int for absurd inputs. 64 is a generous
+        # ceiling: ``base_delay_seconds * 2 ** 64`` ~= 1.8e19 * base, which
+        # exceeds any realistic ``max_delay_seconds``, so the
+        # ``min(raw, max_delay_seconds)`` below still binds first and the
+        # documented "exponential then cap" behavior holds even for large
+        # retry counts.
+        capped_exp = min(retry_count, 64)
         raw = self.base_delay_seconds * (2**capped_exp)
         capped = min(raw, self.max_delay_seconds)
         # Multiplicative jitter in [1 - _JITTER_RATIO, 1 + _JITTER_RATIO].
