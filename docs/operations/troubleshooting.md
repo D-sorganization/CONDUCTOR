@@ -1,6 +1,101 @@
 # Troubleshooting Runbook
 
-This guide contains standard operating procedures for resolving common issues with the Maxwell Daemon in production environments.
+This guide contains standard operating procedures for resolving common
+issues with the Maxwell Daemon in production environments.
+
+For deployment-shaped guidance (env vars, capacity, docker-compose) see
+[`production-deployment.md`](production-deployment.md). For
+metrics-driven alerts that often fire alongside these symptoms, see
+[`monitoring.md`](monitoring.md).
+
+## Quick triage
+
+When a production incident comes in, check these three things first:
+
+1. `curl -fsS http://127.0.0.1:8080/api/health` — is the API up?
+2. `curl -fsS http://127.0.0.1:8080/api/status` — pipeline state and
+   active task.
+3. `curl -fsS http://127.0.0.1:8080/metrics | grep -E 'maxwell_daemon_(active_tasks|queue_depth|requests_total)'`
+   — current load.
+
+The next three sections cover the highest-frequency production
+symptoms; everything below them is the historical runbook.
+
+## Symptom: Stuck task (running but no progress)
+
+A task is reported as `RUNNING` in `/api/status` but emits no events for
+several minutes and `maxwell_daemon_active_tasks` stays pinned at >= 1.
+
+* **Check**:
+  ```bash
+  curl -s http://127.0.0.1:8080/api/status | jq '.active_task'
+  curl -s http://127.0.0.1:8080/metrics | grep maxwell_daemon_active_tasks
+  tail -n 200 ~/.local/share/maxwell-daemon/logs/daemon.log | jq 'select(.task_id == "<id>")'
+  ```
+* **Common causes**: provider-side stall (LLM call hanging), critic
+  process wedged, sandbox subprocess never exited, stall-detector
+  threshold not configured.
+* **Fix**:
+  1. Set `agent.stall_timeout_seconds` in config so the daemon
+     auto-cancels and retries silent runs (logs as
+     `event=stall_detected`).
+  2. If the task is genuinely stuck, abort and requeue via
+     `POST /api/control/abort` followed by a fresh dispatch.
+  3. Restart the daemon as a last resort — the state machine is
+     idempotent and resumes from the persisted `TaskStore`.
+
+## Symptom: `database is locked` / SQLite OperationalError
+
+Cost-ledger writes raise `sqlite3.OperationalError: database is locked`,
+or ledger writes time out.
+
+* **Check**:
+  ```bash
+  curl -s http://127.0.0.1:8080/metrics | grep maxwell_ledger_connections_in_use
+  ls -la ~/.local/share/maxwell-daemon/ledger.db*
+  lsof ~/.local/share/maxwell-daemon/ledger.db 2>/dev/null
+  ```
+* **Common causes**: another process opened the same ledger file (e.g.,
+  a stale daemon, a manual `sqlite3` shell holding a write lock), the
+  data directory lives on a network filesystem that doesn't honor
+  fcntl locks, or WAL mode was turned off.
+* **Fix**:
+  1. Ensure only one daemon writes the ledger at a time — running two
+     daemons against the same `ledger.db` is unsupported.
+  2. Close any external `sqlite3` shell sessions on the ledger.
+  3. Confirm the ledger lives on a local filesystem (ext4, xfs, apfs).
+     Avoid NFS, SMB, and most overlay/network volumes.
+  4. Verify WAL mode: `sqlite3 ledger.db 'pragma journal_mode;'` should
+     return `wal`. If not, back the file up and let the daemon
+     recreate it.
+
+## Symptom: High memory / OOM kills
+
+The daemon's RSS grows unbounded or the kernel OOM-kills it.
+
+* **Check**:
+  ```bash
+  ps -o rss,vsz,cmd -C python | grep maxwell
+  du -sh ~/.local/share/maxwell-daemon/
+  curl -s http://127.0.0.1:8080/metrics | grep -E 'maxwell_daemon_(active_tasks|live_tasks_dict_size)'
+  ```
+* **Common causes**: memory annealer disabled
+  (`memory_dream_interval_seconds` is `0` or unset), too many
+  concurrent tasks for the host, leaked subprocess output captured in
+  memory, runaway prompt context.
+* **Fix**:
+  1. Enable the memory annealer in config:
+     `memory_dream_interval_seconds = 900` (or any positive value) so
+     verbose logs are compacted into `architectural_state.md`.
+  2. Lower `agent.max_concurrent_tasks` until RSS stabilizes.
+  3. Turn on aggressive compression for very long contexts:
+     `MAXWELL_AGGRESSIVE_COMPRESSION=on`.
+  4. Prune old artifacts under
+     `~/.local/share/maxwell-daemon/artifacts/`.
+  5. If RSS keeps climbing under steady load, capture a heap snapshot
+     and file an issue with the trace.
+
+---
 
 ## Symptom: Tasks queued but not running
 

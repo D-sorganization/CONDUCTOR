@@ -84,6 +84,16 @@ so it always tracks the live code. The contract version
 **append-only** semantics within a major version — see
 [`SPEC.md`](SPEC.md) for details.
 
+## Operations
+
+Running Maxwell-Daemon in production? Start with these guides:
+
+| Doc | Purpose |
+| --- | --- |
+| [`docs/operations/production-deployment.md`](docs/operations/production-deployment.md) | Prerequisites, env vars, single-instance docker-compose, capacity planning. |
+| [`docs/operations/monitoring.md`](docs/operations/monitoring.md) | Prometheus metric reference, sample alert rules, Grafana dashboard pointer. |
+| [`docs/operations/troubleshooting.md`](docs/operations/troubleshooting.md) | Runbook for stuck tasks, locked SQLite ledger, OOM, and other production symptoms. |
+
 ## 🧠 Architectural Highlights
 - **RepoSchematic**: Generates highly compressed file-and-symbol trees, saving massive token budgets compared to dumping raw files.
 - **Memory Annealer**: Automatically compresses verbose agent logs into dense `architectural_state.md` files, responsibly purging raw logs to save disk space.
