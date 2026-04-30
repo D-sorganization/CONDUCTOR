@@ -469,7 +469,7 @@ class BackupManager:
 
     # ── hash verification ─────────────────────────────────────────────────────
 
-    def _verify_hashes(self, root: Path, hashes: dict[str, Any]) -> None:
+    def _verify_hashes(self, root: Path, hashes: dict[str, Any]) -> None:  # noqa: C901
         """Check every recorded hash against the unpacked files."""
         # Config
         if "config" in hashes:

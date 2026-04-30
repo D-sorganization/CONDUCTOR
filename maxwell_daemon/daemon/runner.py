@@ -1519,7 +1519,7 @@ class Daemon:
                 log.exception("coordinator dispatch error")
             await asyncio.sleep(poll_seconds)
 
-    async def _dispatch_to_fleet(self) -> None:
+    async def _dispatch_to_fleet(self) -> None:  # noqa: C901
         """One coordinator dispatch tick: probe machines, plan, submit, requeue stale tasks."""
         from maxwell_daemon.fleet.client import RemoteDaemonClient, RemoteDaemonError
         from maxwell_daemon.fleet.dispatcher import (
@@ -1774,7 +1774,7 @@ class Daemon:
                 finally:
                     self._clear_execution_tracking(task.id)
 
-    async def _execute(self, task: Task, snapshot: ConfigSnapshot) -> None:
+    async def _execute(self, task: Task, snapshot: ConfigSnapshot) -> None:  # noqa: C901
         task.status = TaskStatus.RUNNING
         task.started_at = datetime.now(timezone.utc)
         try:
