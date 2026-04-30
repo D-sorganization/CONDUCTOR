@@ -105,9 +105,14 @@ async def execute_hooks(
     for cmd in commands:
         logger.info(f"Running {hook_type} hook in {cwd}: {cmd}")
         try:
-            rc, _stdout, stderr = await _run_hook(hook_type, cmd, cwd, timeout_seconds)
+            rc, _stdout, stderr = await _run_hook(
+                hook_type, cmd, cwd, timeout_seconds
+            )
             if rc != 0:
-                err_msg = f"Hook {hook_type} command {cmd!r} exited with {rc}. Stderr: {_truncate(stderr)}"
+                err_msg = (
+                    f"Hook {hook_type} command {cmd!r} exited with {rc}. "
+                    f"Stderr: {_truncate(stderr)}"
+                )
                 if fatal:
                     raise WorkspaceHookError(err_msg)
                 else:

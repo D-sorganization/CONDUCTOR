@@ -83,7 +83,9 @@ def precondition(check: Callable[..., bool], message: str) -> Callable[[F], F]:
                     raise PreconditionError(f"{func.__qualname__}: {message}")
                 return await func(*args, **kwargs)
 
-            return async_wrapper  # type: ignore[return-value]
+            # type: ignore[return-value] - functools.wraps doesn't preserve the
+            # TypeVar bound _F through the wrapping, so mypy sees wrapper as Any
+            return async_wrapper
 
         @functools.wraps(func)
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -91,7 +93,8 @@ def precondition(check: Callable[..., bool], message: str) -> Callable[[F], F]:
                 raise PreconditionError(f"{func.__qualname__}: {message}")
             return func(*args, **kwargs)
 
-        return sync_wrapper  # type: ignore[return-value]
+        # type: ignore[return-value] - Same as above for sync wrapper
+        return sync_wrapper
 
     return decorator
 
@@ -109,7 +112,8 @@ def postcondition(check: Callable[[Any], bool], message: str) -> Callable[[F], F
                     raise PostconditionError(f"{func.__qualname__}: {message}")
                 return result
 
-            return async_wrapper  # type: ignore[return-value]
+            # type: ignore[return-value] - Same functools.wraps limitation
+            return async_wrapper
 
         @functools.wraps(func)
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -118,7 +122,8 @@ def postcondition(check: Callable[[Any], bool], message: str) -> Callable[[F], F
                 raise PostconditionError(f"{func.__qualname__}: {message}")
             return result
 
-        return sync_wrapper  # type: ignore[return-value]
+        # type: ignore[return-value] - Same functools.wraps limitation
+        return sync_wrapper
 
     return decorator
 

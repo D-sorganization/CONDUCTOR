@@ -1667,7 +1667,8 @@ class Daemon:
     def _handle_stale_dispatched_task(self, task: Task, machine_name: str) -> None:
         if task.side_effects_started:
             log.warning(
-                "worker %s appears offline after task %s started side effects; failing instead of transparent failover",
+                "worker %s appears offline after task %s started side effects; "
+                "failing instead of transparent failover",
                 machine_name,
                 task.id,
             )
@@ -2061,11 +2062,13 @@ class Daemon:
                 )
             )
 
+        # type: ignore[arg-type] - mode is narrowed to Literal["plan" | "implement"]
+        # but execute_issue expects a broader union type; the narrowing is safe at runtime
         result = await executor.execute_issue(
             repo=task.issue_repo,
             issue_number=task.issue_number,
             model=effective_model,
-            mode=mode,  # type: ignore[arg-type]
+            mode=mode,
             overrides=overrides,
             task_id=task.id,
             dry_run=task.dry_run,

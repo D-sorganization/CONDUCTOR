@@ -75,13 +75,15 @@ class ClaudeBackend(ILLMBackend):
         **kwargs: Any,
     ) -> BackendResponse:
         system, msgs = self._split_system(messages)
+        # type: ignore[arg-type] - Anthropic SDK's TypeVar-based dispatch doesn't
+        # fully satisfy mypy when we construct messages list dynamically.
         resp = await self._client.messages.create(
             model=model,
-            messages=msgs,  # type: ignore[arg-type]
+            messages=msgs,
             system=cast(Any, system or anthropic.NOT_GIVEN),
             temperature=temperature,
             max_tokens=max_tokens or 4096,
-            tools=tools or anthropic.NOT_GIVEN,  # type: ignore[arg-type]
+            tools=tools or anthropic.NOT_GIVEN,
             **kwargs,
         )
         text_parts = [
@@ -116,13 +118,14 @@ class ClaudeBackend(ILLMBackend):
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         system, msgs = self._split_system(messages)
+        # type: ignore[arg-type] - Same as above; SDK dispatching with TypeVar
         async with self._client.messages.stream(
             model=model,
-            messages=msgs,  # type: ignore[arg-type]
+            messages=msgs,
             system=cast(Any, system or anthropic.NOT_GIVEN),
             temperature=temperature,
             max_tokens=max_tokens or 4096,
-            tools=tools or anthropic.NOT_GIVEN,  # type: ignore[arg-type]
+            tools=tools or anthropic.NOT_GIVEN,
             **kwargs,
         ) as stream:
             async for text in stream.text_stream:

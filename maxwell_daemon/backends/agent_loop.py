@@ -354,9 +354,12 @@ class AgentLoopBackend(ILLMBackend):
             response = await self._client.messages.create(
                 model=effective_model,
                 max_tokens=max_tokens or 8096,
-                system=system_prompt,  # type: ignore[arg-type]
-                tools=tool_defs,  # type: ignore[arg-type]
-                messages=sdk_messages,  # type: ignore[arg-type]
+                # type: ignore[arg-type] - SDK accepts str | list[dict] for system,
+                # and list[dict] for both tools and messages; mypy sees the union
+                # but the SDK's TypeVar constraints handle the runtime types correctly.
+                system=system_prompt,
+                tools=tool_defs,
+                messages=sdk_messages,
             )
 
             # Usage + cost.
@@ -537,12 +540,14 @@ class AgentLoopBackend(ILLMBackend):
             # after streaming completes — both paths go through the same
             # ``async with`` block so the HTTP connection is always closed.
             collected_text_chunks: list[str] = []
+            # type: ignore[arg-type] - Same as above; SDK's system/tools/messages
+            # accept unions that mypy doesn't fully resolve with our construction.
             async with self._client.messages.stream(
                 model=effective_model,
                 max_tokens=max_tokens or 8096,
-                system=system_prompt,  # type: ignore[arg-type]
-                tools=tool_defs,  # type: ignore[arg-type]
-                messages=sdk_messages,  # type: ignore[arg-type]
+                system=system_prompt,
+                tools=tool_defs,
+                messages=sdk_messages,
             ) as stream:
                 # Collect text chunks as they arrive so we can yield them
                 # immediately to the caller on the final turn.

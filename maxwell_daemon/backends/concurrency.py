@@ -171,7 +171,9 @@ def retry_on_rate_limit(
                     )
                     await asyncio.sleep(delay)
 
-        return wrapper  # type: ignore[return-value]
+        # type: ignore[return-value] - mypy can't infer that wrapper
+        # (async def) correctly matches the bound Callable[..., Coroutine] signature
+        return wrapper
 
     return decorator
 
@@ -290,6 +292,8 @@ def with_concurrency_limit(
             async with limiter.acquire(backend_name):
                 return await fn(*args, **kwargs)
 
-        return wrapper  # type: ignore[return-value]
+        # type: ignore[return-value] - Same as above; mypy doesn't infer the
+        # async wrapper's type correctly despite functools.wraps
+        return wrapper
 
     return decorator

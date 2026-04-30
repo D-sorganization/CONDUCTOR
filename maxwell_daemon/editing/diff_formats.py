@@ -368,11 +368,15 @@ def parse_any(
     for fmt in prefer:
         parser = _PARSERS[fmt]
         try:
-            edits = parser(text)  # type: ignore[operator]
+            # type: ignore[operator] - dict[Enum, object] indexed by Enum value
+            # mypy's inference of the dict value type isn't precise enough
+            edits = parser(text)
         except DiffParseError as e:
             failures.append(f"{fmt.value}: {e}")
             continue
         if edits:
-            return edits  # type: ignore[no-any-return]
+            # type: ignore[no-any-return] - parser is object type; mypy can't narrow
+            # to callable return, but callers guarantee it's a parser function
+            return edits
         failures.append(f"{fmt.value}: returned no edits")
     raise DiffParseError("parse_any: no format matched — " + "; ".join(failures))

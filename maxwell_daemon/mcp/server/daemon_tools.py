@@ -154,16 +154,18 @@ def build_daemon_registry(client: DaemonClient) -> ToolRegistry:
         res = await client.get("/memory/search", params={"q": query})
         return json.dumps(res, indent=2)
 
-    registry.register(submit_task.__mcp_tool__)  # type: ignore[attr-defined]
-    registry.register(list_tasks.__mcp_tool__)  # type: ignore[attr-defined]
-    registry.register(get_task.__mcp_tool__)  # type: ignore[attr-defined]
-    registry.register(cancel_task.__mcp_tool__)  # type: ignore[attr-defined]
-    registry.register(list_fleet.__mcp_tool__)  # type: ignore[attr-defined]
-    registry.register(get_cost.__mcp_tool__)  # type: ignore[attr-defined]
-    registry.register(list_work_items.__mcp_tool__)  # type: ignore[attr-defined]
-    registry.register(submit_issue.__mcp_tool__)  # type: ignore[attr-defined]
-    registry.register(list_approvals.__mcp_tool__)  # type: ignore[attr-defined]
-    registry.register(approve_action.__mcp_tool__)  # type: ignore[attr-defined]
-    registry.register(search_memory.__mcp_tool__)  # type: ignore[attr-defined]
+    # type: ignore[attr-defined] - @mcp_tool decorator dynamically adds __mcp_tool__
+    # attribute to the wrapped function; mypy doesn't see dynamic attributes.
+    registry.register(submit_task.__mcp_tool__)
+    registry.register(list_tasks.__mcp_tool__)
+    registry.register(get_task.__mcp_tool__)
+    registry.register(cancel_task.__mcp_tool__)
+    registry.register(list_fleet.__mcp_tool__)
+    registry.register(get_cost.__mcp_tool__)
+    registry.register(list_work_items.__mcp_tool__)
+    registry.register(submit_issue.__mcp_tool__)
+    registry.register(list_approvals.__mcp_tool__)
+    registry.register(approve_action.__mcp_tool__)
+    registry.register(search_memory.__mcp_tool__)
 
     return registry

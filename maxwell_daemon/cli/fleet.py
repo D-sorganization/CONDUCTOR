@@ -139,12 +139,16 @@ def nodes(
 
 
 def _render_status(payload: dict[str, Any]) -> None:
+    selected = (
+        payload.get('selected_node', {}).get('hostname', '-')
+        if payload.get('selected_node')
+        else '-'
+    )
     console.print(
         f"[bold]Repo:[/bold] {payload.get('repo', '-')}\n"
         f"[bold]Tool:[/bold] {payload.get('tool', '-')}\n"
         f"[bold]Required:[/bold] {', '.join(payload.get('required_capabilities', [])) or '-'}\n"
-        f"[bold]Selected:[/bold] "
-        f"{payload.get('selected_node', {}).get('hostname', '-') if payload.get('selected_node') else '-'}\n"
+        f"[bold]Selected:[/bold] {selected}\n"
         f"[bold]Decision:[/bold] {payload.get('explanation', '-')}"
     )
 

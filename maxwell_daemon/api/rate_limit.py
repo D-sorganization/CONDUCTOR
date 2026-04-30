@@ -183,7 +183,10 @@ def install_rate_limiter(
     exempt = frozenset(exempt_paths)
 
     @app.middleware("http")
-    async def _rate_limit_middleware(request: Request, call_next) -> object:  # type: ignore[no-untyped-def]
+    async def _rate_limit_middleware(
+        request: Request, call_next
+    ) -> object:  # type: ignore[no-untyped-def] - FastAPI middleware signature
+        # call_next is a callable from Starlette that isn't fully typed
         if request.url.path in exempt:
             return await call_next(request)
         key = _client_key(request)

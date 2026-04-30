@@ -2218,12 +2218,15 @@ def create_app(
         status_code=status.HTTP_201_CREATED,
     )
     async def create_work_item(payload: WorkItemCreate) -> WorkItemView:
+        # type: ignore[arg-type] - payload.source is str | None (from Pydantic)
+        # but WorkItem.source expects a WorkItemSource enum; validation happens
+        # in WorkItem.__init__ so the coercion is safe
         item = WorkItem(
             id=payload.id or uuid.uuid4().hex[:12],
             title=payload.title,
             body=payload.body,
             repo=payload.repo,
-            source=payload.source,  # type: ignore[arg-type]
+            source=payload.source,
             source_url=payload.source_url,
             acceptance_criteria=payload.acceptance_criteria,
             scope=payload.scope,
