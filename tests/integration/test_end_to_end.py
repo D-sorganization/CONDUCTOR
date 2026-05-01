@@ -137,7 +137,7 @@ class TestEndToEnd:
         self, live_system: tuple[Daemon, TestClient, asyncio.AbstractEventLoop]
     ) -> None:
         _, client, _ = live_system
-        r = client.get("/healthz")
+        r = client.get("/readyz")
         assert r.status_code == 200, r.json()
         assert r.json()["status"] == "ready"
 
