@@ -139,7 +139,7 @@ class TestEndToEnd:
         _, client, _ = live_system
         r = client.get("/healthz")
         assert r.status_code == 200, r.json()
-        assert r.json()["status"] == "ready"
+        assert r.json()["status"] == "ok"
 
     def test_metrics_endpoint_records_http_requests(
         self, live_system: tuple[Daemon, TestClient, asyncio.AbstractEventLoop]
