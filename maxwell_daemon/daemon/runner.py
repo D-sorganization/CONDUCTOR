@@ -296,7 +296,7 @@ class Daemon:
                     mode=ApprovalMode(new_config.tools.approval_tier),
                     workspace_root=self._workspace_root,
                 )
-            if hasattr(self, "_fleet_coordinator"):
+            if self._fleet_coordinator is not None:
                 self._fleet_coordinator.update_config(new_config)
 
         log.info("config reloaded from %s", path)
@@ -1449,6 +1449,36 @@ class Daemon:
     # methods have been extracted to FleetCoordinator (phase 2 of #798).
     # Daemon.start() creates a FleetCoordinator instance and drives it via
     # FleetCoordinator.run_loop() when role == "coordinator".
+    #
+    # Compatibility shims: delegate to FleetCoordinator or construct an
+    # ad-hoc one. This preserves the existing test surface without requiring
+    # test rewrites when tests call these methods directly on the Daemon.
+
+    def _handle_stale_dispatched_task(self, task: Task, machine_name: str) -> None:
+        """Compatibility shim: delegate to FleetCoordinator."""
+        coord = self._fleet_coordinator or FleetCoordinator(
+            config=self._config,
+            tasks=self._tasks,
+            tasks_lock=self._tasks_lock,
+            task_store=self._task_store,
+            worker_last_seen=self._worker_last_seen,
+            enqueue_task_entry=self._enqueue_task_entry,
+            running_flag=lambda: self._running,
+        )
+        coord._handle_stale_dispatched_task(task, machine_name)
+
+    async def _dispatch_to_fleet(self) -> None:
+        """Compatibility shim: delegate to FleetCoordinator."""
+        coord = self._fleet_coordinator or FleetCoordinator(
+            config=self._config,
+            tasks=self._tasks,
+            tasks_lock=self._tasks_lock,
+            task_store=self._task_store,
+            worker_last_seen=self._worker_last_seen,
+            enqueue_task_entry=self._enqueue_task_entry,
+            running_flag=lambda: self._running,
+        )
+        await coord._dispatch_tick()
 
     async def _reload_config_signal(self) -> None:
         """Signal handler wrapper — logs errors rather than crashing the event loop."""
