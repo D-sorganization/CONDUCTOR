@@ -12,6 +12,7 @@ The shapes returned here MUST match ``StatusResponse`` and
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime, timezone
 
 from fastapi import FastAPI
@@ -41,7 +42,7 @@ def _status_v2_tokens(usage: TokenUsage | None) -> StatusV2Tokens:
     )
 
 
-def _status_v2_counts(tasks: list[Task]) -> dict[str, int]:
+def _status_v2_counts(tasks: Sequence[Task]) -> dict[str, int]:
     counts: dict[str, int] = {
         "running": 0,
         "retrying": 0,
