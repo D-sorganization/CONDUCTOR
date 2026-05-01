@@ -30,34 +30,34 @@
 
   <div class="workbench-shell">
     <nav class="activity-bar" role="tablist" aria-label="Activity Bar">
-      <button class="tab active" data-view="tasks" role="tab" aria-selected="true" title="Tasks" aria-label="Tasks">T</button>
-      <button class="tab" data-view="fleet" role="tab" aria-selected="false" title="Fleet" aria-label="Fleet">F</button>
-      <button class="tab" data-view="gauntlet" role="tab" aria-selected="false" title="Gauntlet" aria-label="Gauntlet">G</button>
-      <button class="tab" data-view="work-items" role="tab" aria-selected="false" title="Work Items" aria-label="Work Items">W</button>
-      <button class="tab" data-view="approvals" role="tab" aria-selected="false" title="Approvals" aria-label="Approvals">A</button>
-      <button class="tab" data-view="artifacts" role="tab" aria-selected="false" title="Artifacts" aria-label="Artifacts">I</button>
-      <button class="tab" data-view="graphs" role="tab" aria-selected="false" title="Graphs" aria-label="Graphs">G</button>
-      <button class="tab" data-view="checks" role="tab" aria-selected="false" title="Checks" aria-label="Checks">K</button>
-      <button class="tab" data-view="repos" role="tab" aria-selected="false" title="Repositories" aria-label="Repositories">R</button>
-      <button class="tab" data-view="monitor" role="tab" aria-selected="false" title="Monitor" aria-label="Monitor">M</button>
-      <button class="tab" data-view="history" role="tab" aria-selected="false" title="History" aria-label="History">H</button>
-      <button class="tab" data-view="cost" role="tab" aria-selected="false" title="Cost" aria-label="Cost">C</button>
-      <button class="tab" data-view="debug" role="tab" aria-selected="false" title="Debug" aria-label="Debug">D</button>
+      <button type="button" class="tab active" data-view="tasks" role="tab" aria-selected="true" title="Tasks" aria-label="Tasks">T</button>
+      <button type="button" class="tab" data-view="fleet" role="tab" aria-selected="false" title="Fleet" aria-label="Fleet">F</button>
+      <button type="button" class="tab" data-view="gauntlet" role="tab" aria-selected="false" title="Gauntlet" aria-label="Gauntlet">G</button>
+      <button type="button" class="tab" data-view="work-items" role="tab" aria-selected="false" title="Work Items" aria-label="Work Items">W</button>
+      <button type="button" class="tab" data-view="approvals" role="tab" aria-selected="false" title="Approvals" aria-label="Approvals">A</button>
+      <button type="button" class="tab" data-view="artifacts" role="tab" aria-selected="false" title="Artifacts" aria-label="Artifacts">I</button>
+      <button type="button" class="tab" data-view="graphs" role="tab" aria-selected="false" title="Graphs" aria-label="Graphs">G</button>
+      <button type="button" class="tab" data-view="checks" role="tab" aria-selected="false" title="Checks" aria-label="Checks">K</button>
+      <button type="button" class="tab" data-view="repos" role="tab" aria-selected="false" title="Repositories" aria-label="Repositories">R</button>
+      <button type="button" class="tab" data-view="monitor" role="tab" aria-selected="false" title="Monitor" aria-label="Monitor">M</button>
+      <button type="button" class="tab" data-view="history" role="tab" aria-selected="false" title="History" aria-label="History">H</button>
+      <button type="button" class="tab" data-view="cost" role="tab" aria-selected="false" title="Cost" aria-label="Cost">C</button>
+      <button type="button" class="tab" data-view="debug" role="tab" aria-selected="false" title="Debug" aria-label="Debug">D</button>
     </nav>
 
     <aside class="sidebar" aria-label="Sidebar">
       <section>
         <h2>Explorer</h2>
-        <button class="sidebar-item active" data-view="tasks">Tasks</button>
-        <button class="sidebar-item" data-view="fleet">Fleet nodes</button>
-        <button class="sidebar-item" data-view="gauntlet">Gauntlet</button>
-        <button class="sidebar-item" data-view="work-items">Work items</button>
-        <button class="sidebar-item" data-view="approvals">Approvals</button>
-        <button class="sidebar-item" data-view="artifacts">Artifacts</button>
-        <button class="sidebar-item" data-view="graphs">Task graphs</button>
-        <button class="sidebar-item" data-view="checks">Checks</button>
-        <button class="sidebar-item" data-view="repos">Repositories</button>
-        <button class="sidebar-item" data-view="monitor">Daemon logs</button>
+        <button type="button" class="sidebar-item active" data-view="tasks">Tasks</button>
+        <button type="button" class="sidebar-item" data-view="fleet">Fleet nodes</button>
+        <button type="button" class="sidebar-item" data-view="gauntlet">Gauntlet</button>
+        <button type="button" class="sidebar-item" data-view="work-items">Work items</button>
+        <button type="button" class="sidebar-item" data-view="approvals">Approvals</button>
+        <button type="button" class="sidebar-item" data-view="artifacts">Artifacts</button>
+        <button type="button" class="sidebar-item" data-view="graphs">Task graphs</button>
+        <button type="button" class="sidebar-item" data-view="checks">Checks</button>
+        <button type="button" class="sidebar-item" data-view="repos">Repositories</button>
+        <button type="button" class="sidebar-item" data-view="monitor">Daemon logs</button>
       </section>
       <section>
         <h2>Agents</h2>
@@ -111,7 +111,7 @@
     <section class="card" id="detail-card" hidden>
       <div class="card-head">
         <h2 id="detail-title">Task detail</h2>
-        <button id="detail-close" aria-label="Close task details" title="Close">×</button>
+        <button id="detail-close" type="button" aria-label="Close task details" title="Close">×</button>
       </div>
       <div id="detail-next-action" class="detail-banner" hidden></div>
       <section class="detail-section">
