@@ -108,6 +108,7 @@ def register(app: FastAPI, daemon: Daemon) -> None:
             state = daemon.state()
             if not state.backends_available:
                 from fastapi import HTTPException
+
                 raise HTTPException(503, "no backends available")
             return {"status": "ready"}
         except HTTPException:
