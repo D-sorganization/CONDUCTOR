@@ -64,12 +64,18 @@ def register(app: FastAPI, daemon: Daemon) -> None:
 
     @app.get("/healthz")
     async def legacy_healthz() -> dict[str, Any]:
-        """Kubernetes-style liveness probe alias for ``/health``."""
+        """Kubernetes-style liveness probe.
+
+        Returns ``{"status": "ready"}`` when the daemon is healthy and
+        backends are available, or ``{"status": "ok"}`` when alive but not
+        yet ready.  HTTP 200 in both cases.
+        """
         try:
             state = daemon.state()
             uptime = (datetime.now(timezone.utc) - state.started_at).total_seconds()
+            probe_status = "ready" if state.backends_available else "ok"
             return {
-                "status": "ok",
+                "status": probe_status,
                 "uptime_seconds": uptime,
                 "version": __version__,
             }
