@@ -296,7 +296,7 @@ class Daemon:
                     mode=ApprovalMode(new_config.tools.approval_tier),
                     workspace_root=self._workspace_root,
                 )
-            if hasattr(self, "_fleet_coordinator"):
+            if self._fleet_coordinator is not None:
                 self._fleet_coordinator.update_config(new_config)
 
         log.info("config reloaded from %s", path)
