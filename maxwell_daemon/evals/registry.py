@@ -77,8 +77,7 @@ _STARTER_SCENARIOS = (
         id="approval-tool-policy",
         title="Approval-required tool policy scenario",
         description=(
-            "Verify a risky operation requests approval and "
-            "records a denial-safe artifact."
+            "Verify a risky operation requests approval and records a denial-safe artifact."
         ),
         source_type=EvalSourceType.SECURITY_REVIEW,
         fixture_repo_ref="fixture://approval-tool-policy",

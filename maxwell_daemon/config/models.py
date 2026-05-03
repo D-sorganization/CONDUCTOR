@@ -105,8 +105,7 @@ class AgentConfig(BaseModel):
         30,
         ge=0,
         description=(
-            "Delete terminal tasks and cost records older than this many days. "
-            "0 disables pruning."
+            "Delete terminal tasks and cost records older than this many days. 0 disables pruning."
         ),
     )
     task_prune_interval_seconds: int = Field(
@@ -142,8 +141,7 @@ class AgentConfig(BaseModel):
         600,
         ge=0,
         description=(
-            "Seconds to keep terminal tasks in memory before "
-            "evicting them to the database."
+            "Seconds to keep terminal tasks in memory before evicting them to the database."
         ),
     )
 

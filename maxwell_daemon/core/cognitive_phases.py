@@ -48,8 +48,7 @@ class CognitivePipeline:
         # Phase 2: Implement (Coder)
         impl_job = Job(
             instructions=(
-                f"Implement the following plan. Adhere to DbC, DRY, and LOD.\n\n"
-                f"Plan:\n{plan}"
+                f"Implement the following plan. Adhere to DbC, DRY, and LOD.\n\nPlan:\n{plan}"
             ),
             context_data=job.context_data,
         )

@@ -445,8 +445,7 @@ _DEFAULT_CRITIC_PROFILES: tuple[CriticProfile, ...] = (
         name="Security Critic",
         adapter="security-critic",
         scope=(
-            "Checks auth, secrets, sandbox escape, path traversal, "
-            "and destructive-command risks."
+            "Checks auth, secrets, sandbox escape, path traversal, and destructive-command risks."
         ),
         required_inputs=("goal", "diff", "changed-files", "test-results", "policy"),
         forbidden_actions=("edit-files", "merge-pr", "waive-gate"),

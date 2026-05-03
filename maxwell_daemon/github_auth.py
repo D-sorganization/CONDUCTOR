@@ -226,8 +226,7 @@ class GitHubAuth:
 
         async with _httpx.AsyncClient(timeout=15) as client:
             resp = await client.post(
-                f"https://api.github.com/app/installations/"
-                f"{self._installation_id}/access_tokens",
+                f"https://api.github.com/app/installations/{self._installation_id}/access_tokens",
                 headers={
                     "Authorization": f"Bearer {jwt_token}",
                     "Accept": "application/vnd.github+json",

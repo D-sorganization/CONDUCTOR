@@ -773,8 +773,7 @@ class BackendReadOnlyExternalAgentAdapter(ExternalAgentAdapterBase):
                 "and next steps. Do not edit files."
             ),
             ExternalAgentOperation.READ: (
-                "Inspect and summarize the requested context. "
-                "Do not edit files."
+                "Inspect and summarize the requested context. Do not edit files."
             ),
         }
         return instructions.get(operation, "Respond without editing files.")
