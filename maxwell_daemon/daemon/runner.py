@@ -1542,6 +1542,11 @@ class Daemon:
         except Exception:
             log.exception("task store write failed for task=%s", task.id)
             raise
+        # Record stream event immediately so stall detection has a valid anchor
+        # from the moment execution starts. This prevents false-positive stall
+        # detection for issue tasks where _execute_issue() may take time to
+        # initialize before emitting its first TEST_OUTPUT event.
+        self._record_stream_event(task.id, EventKind.TASK_STARTED.value)
         decision_backend = decision_model = "unknown"
         repo_path = None
         try:
@@ -1571,7 +1576,6 @@ class Daemon:
                     ),
                 )
             )
-            self._record_stream_event(task.id, EventKind.TASK_STARTED.value)
             snapshot.budget.require_under_budget()
             decision = snapshot.router.route(
                 repo=task.repo,
@@ -1804,6 +1808,11 @@ class Daemon:
                 "task store write failed while recording issue routing for task=%s",
                 task.id,
             )
+
+        # Record a stream event before calling the executor to reset the stall
+        # timer. This prevents false-positive stall detection if github.get_issue()
+        # or other setup code took significant time.
+        self._record_stream_event(task.id, "issue_executor_starting")
 
         async def _emit_test_output(chunk: str, stream: str) -> None:
             self._record_stream_event(task.id, f"{EventKind.TEST_OUTPUT.value}:{stream}")
